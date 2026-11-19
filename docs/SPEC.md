@@ -413,7 +413,11 @@ Both interfaces get **fake (in-memory) test doubles** and **real** implementatio
 
 ```ts
 // pi-agent-client.ts
-export interface SpawnOptions { cwd: string; }
+export interface SpawnOptions {
+  cwd: string;
+  systemPrompt?: string;        // --system-prompt (built by T5 buildRolePrompt)
+  appendSystemPrompt?: string;  // --append-system-prompt (built by T5 buildSocialContract)
+}
 
 export interface PromptRequest {
   message: string;                 // composed room message for this turn

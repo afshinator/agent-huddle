@@ -3,6 +3,8 @@ import type { AgentSpec } from "../config";
 
 export interface SpawnOptions {
   cwd: string;
+  systemPrompt?: string;        // --system-prompt (built by T5 buildRolePrompt)
+  appendSystemPrompt?: string;  // --append-system-prompt (built by T5 buildSocialContract)
 }
 
 export interface PromptRequest {
