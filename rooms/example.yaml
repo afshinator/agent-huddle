@@ -1,0 +1,39 @@
+name: tiny-factory
+task: |
+  Design and document a small service.
+definition_of_done: |
+  A README plus one tested module.
+max_hops: 12
+
+lead:
+  id: lead
+  handle: "@lead"
+  role: "Lead coordinator: decompose, assign, integrate. Never do specialist work."
+  system_prompt_file: prompts/lead.md
+  provider: commandcode
+  model: deepseek/deepseek-v4-pro
+  thinking: medium
+  tools: [read, bash, edit, write, grep]
+
+agents:
+  - id: dev1
+    handle: "@dev1"
+    role: "Implement features and tests."
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
+    thinking: high
+    tools: [read, bash, edit, write, grep]
+  - id: dev2
+    handle: "@dev2"
+    role: "Implement features and tests."
+    provider: commandcode
+    model: z-ai/glm-5.3-flash
+    thinking: high
+    tools: [read, bash, edit, write, grep]
+  - id: reviewer
+    handle: "@reviewer"
+    role: "Review changes for correctness and safety."
+    provider: commandcode
+    model: gpt-5.6-luna
+    thinking: high
+    tools: [read, grep]
