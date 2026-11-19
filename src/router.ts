@@ -4,16 +4,15 @@ const MENTION_RE = /@[A-Za-z0-9_-]+/g;
 const BROADCAST_TOKENS = new Set(["@all", "@everyone"]);
 
 /**
- * Resolve a room message's `@mentions` into ordered, deduplicated agent ids.
+ * Extract explicit `@mentions` as ordered, deduplicated agent ids.
+ * Returns `[]` when the text mentions nobody (no lead fallback).
  *
  * - `@handle` → that agent's id (first-occurrence order).
  * - `@lead` (or the lead's handle) → lead id.
  * - `@all` / `@everyone` → every agent (lead + specialists).
- * - no mention → `[leadId]`.
- * - unknown `@handle` → skipped (never throws). If every mention is unknown,
- *   the message falls back to the lead rather than being silently dropped.
+ * - unknown `@handle` → skipped (never throws).
  */
-export function resolveTargets(text: string, config: LoadedConfig): string[] {
+export function extractMentions(text: string, config: LoadedConfig): string[] {
   const handleToId = new Map<string, string>();
   for (const a of config.allAgents) handleToId.set(a.handle, a.id);
 
@@ -46,6 +45,16 @@ export function resolveTargets(text: string, config: LoadedConfig): string[] {
     // unknown @handle: skip
   }
 
-  if (!found || targets.length === 0) return [leadId];
+  if (!found || targets.length === 0) return [];
   return targets;
+}
+
+/**
+ * Routing entry point: explicit mentions, else the lead (§6.1/§6.4).
+ * An unknown-only mention also falls back to the lead so a typo'd directive
+ * is not silently dropped.
+ */
+export function resolveTargets(text: string, config: LoadedConfig): string[] {
+  const mentions = extractMentions(text, config);
+  return mentions.length > 0 ? mentions : [config.config.lead.id];
 }

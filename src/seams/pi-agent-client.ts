@@ -100,18 +100,19 @@ export class FakePiAgentClient implements PiAgentClient {
     const turn = a.script.shift() ?? { lastText: null };
 
     let resolveSettle!: (r: SettledResult) => void;
-    const promise = new Promise<SettledResult>((res) => {
+    let rejectSettle!: (e: Error) => void;
+    const promise = new Promise<SettledResult>((res, rej) => {
       resolveSettle = res;
+      rejectSettle = rej;
     });
+    promise.catch(() => {}); // a rejected turn is observed via waitForSettled
     a.settle = { promise, resolve: resolveSettle };
 
     queueMicrotask(() => {
       if (turn.error) {
         for (const fn of this.ls(agentId, "error")) fn(turn.error);
-        const result: SettledResult = { aborted: false, lastText: null };
         a.lastText = null;
-        resolveSettle(result);
-        for (const fn of this.ls(agentId, "settled")) fn(result);
+        rejectSettle(turn.error);
         return;
       }
       for (const delta of turn.deltas ?? []) {

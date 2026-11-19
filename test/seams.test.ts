@@ -44,17 +44,16 @@ describe("FakePiAgentClient", () => {
     expect(c.calls.filter((x) => x.op === "prompt")).toHaveLength(0);
   });
 
-  test("scripted error emits error event and settles with null text", async () => {
+  test("scripted error emits error event and rejects the settle", async () => {
     const c = new FakePiAgentClient();
     await c.spawn(dev1, { cwd: "/w" });
     const errors: Error[] = [];
     c.on("error", "dev1", (e) => errors.push(e));
     c.script("dev1", [{ error: new Error("boom") }]);
     await c.prompt("dev1", { message: "x" });
-    const r = await c.waitForSettled("dev1", 1000);
+    await expect(c.waitForSettled("dev1", 1000)).rejects.toThrow("boom");
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toBe("boom");
-    expect(r).toEqual({ aborted: false, lastText: null });
   });
 
   test("aborted turn reports aborted=true", async () => {

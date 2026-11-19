@@ -63,16 +63,11 @@ export class JsonlTelemetry implements Telemetry {
     const span_id = randomBytes(8).toString("hex");
     const start_time = new Date().toISOString();
     const js = new JsonlSpan();
-    this.stack.push({ trace_id, span_id });
-    try {
-      return fn(js);
-    } catch (e) {
-      if (js.status === null) {
-        js.status = { code: "error", description: (e as Error).message };
-      }
-      throw e;
-    } finally {
-      this.stack.pop();
+    const entry: ActiveSpan = { trace_id, span_id };
+
+    const finish = (): void => {
+      const at = this.stack.lastIndexOf(entry);
+      if (at >= 0) this.stack.splice(at, 1);
       this.emit({
         kind: "span",
         name,
@@ -85,7 +80,35 @@ export class JsonlTelemetry implements Telemetry {
         events: js.events,
         status: js.status ?? { code: "ok" },
       });
+    };
+
+    this.stack.push(entry);
+    let result: T;
+    try {
+      result = fn(js);
+    } catch (e) {
+      if (js.status === null) js.status = { code: "error", description: (e as Error).message };
+      finish();
+      throw e;
     }
+
+    // An async fn keeps the span open until it settles.
+    if (result instanceof Promise) {
+      return result.then(
+        (value) => {
+          finish();
+          return value as T;
+        },
+        (e) => {
+          if (js.status === null) js.status = { code: "error", description: String(e) };
+          finish();
+          throw e;
+        },
+      ) as unknown as T;
+    }
+
+    finish();
+    return result;
   }
 
   log(level: "info" | "warn" | "error", msg: string, attrs?: Record<string, unknown>): void {
