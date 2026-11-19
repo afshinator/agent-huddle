@@ -52,7 +52,7 @@ export interface RecordedCall {
 type ListenerEvent = "settled" | "stream" | "error";
 
 interface FakeAgent {
-  spec: AgentSpec;
+  spec?: AgentSpec;
   spawned: boolean;
   shutdown: boolean;
   script: ScriptedTurn[];
@@ -70,26 +70,12 @@ export class FakePiAgentClient implements PiAgentClient {
 
   /** Queue scripted turns for an agent (consumed FIFO on each prompt). */
   script(agentId: string, turns: ScriptedTurn[]): void {
-    this.requireAgent(agentId).script.push(...turns);
+    this.ensure(agentId).script.push(...turns);
   }
 
   async spawn(agent: AgentSpec, opts: SpawnOptions): Promise<AgentProcessInfo> {
-    if (!this.agents.has(agent.id)) {
-      this.agents.set(agent.id, {
-        spec: agent,
-        spawned: false,
-        shutdown: false,
-        script: [],
-        lastText: null,
-        settle: null,
-      });
-      this.listeners.set(agent.id, new Map<ListenerEvent, Array<(arg: any) => void>>([
-        ["settled", []],
-        ["stream", []],
-        ["error", []],
-      ]));
-    }
-    const a = this.agents.get(agent.id)!;
+    const a = this.ensure(agent.id);
+    a.spec = agent;
     a.spawned = true;
     a.shutdown = false;
     this.record("spawn", agent.id, opts);
@@ -157,6 +143,21 @@ export class FakePiAgentClient implements PiAgentClient {
   private requireAgent(agentId: string): FakeAgent {
     const a = this.agents.get(agentId);
     if (!a) throw new Error(`FakePiAgentClient: unknown agent "${agentId}"`);
+    return a;
+  }
+
+  /** Lazily register an agent so `script()` can queue turns before `spawn()`. */
+  private ensure(agentId: string): FakeAgent {
+    let a = this.agents.get(agentId);
+    if (!a) {
+      a = { spawned: false, shutdown: false, script: [], lastText: null, settle: null };
+      this.agents.set(agentId, a);
+      this.listeners.set(agentId, new Map<ListenerEvent, Array<(arg: any) => void>>([
+        ["settled", []],
+        ["stream", []],
+        ["error", []],
+      ]));
+    }
     return a;
   }
 

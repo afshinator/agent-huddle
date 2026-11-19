@@ -5,6 +5,9 @@ import type { RoomMessage } from "./messages";
 import type { AgentRuntime, RoomState } from "./state";
 
 export class RoomStore {
+  /** Live room-stream hook; the coordinator prints each appended message here. */
+  onAppend?: (msg: RoomMessage) => void;
+
   constructor(private readonly roomDir: string) {}
 
   get messagesPath(): string {
@@ -18,6 +21,7 @@ export class RoomStore {
   async appendMessage(msg: RoomMessage): Promise<void> {
     await mkdir(this.roomDir, { recursive: true });
     await appendFile(this.messagesPath, JSON.stringify(msg) + "\n", "utf8");
+    this.onAppend?.(msg);
   }
 
   async readMessages(): Promise<RoomMessage[]> {

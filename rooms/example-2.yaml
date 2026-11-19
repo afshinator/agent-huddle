@@ -1,0 +1,26 @@
+name: tiny-factory-2
+task: |
+  Design and document a small service.
+definition_of_done: |
+  A README plus one tested module.
+max_hops: 8
+
+lead:
+  id: lead
+  handle: "@lead"
+  role: "Lead coordinator: decompose, assign, integrate. Never do specialist work."
+  system_prompt: "Delegate work to @dev1 via @handle. When the definition of done is satisfied, reply with a line that is exactly DONE."
+  provider: commandcode
+  model: deepseek/deepseek-v4-pro
+  thinking: medium
+  tools: [read, bash, edit, write, grep]
+
+agents:
+  - id: dev1
+    handle: "@dev1"
+    role: "Implement features and tests."
+    system_prompt: "Reply tersely. Report to @lead when done."
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
+    thinking: high
+    tools: [read, bash, edit, write, grep]
