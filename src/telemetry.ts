@@ -1,0 +1,131 @@
+import { appendFile, mkdir } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { dirname } from "node:path";
+
+export interface Span {
+  addEvent(name: string, attrs?: Record<string, unknown>): void;
+  setStatus(code: "ok" | "error", description?: string): void;
+}
+
+export interface Telemetry {
+  span<T>(name: string, attrs: Record<string, unknown>, fn: (s: Span) => T): T;
+  log(level: "info" | "warn" | "error", msg: string, attrs?: Record<string, unknown>): void;
+  counter(name: string, attrs?: Record<string, unknown>, inc?: number): void;
+}
+
+interface ActiveSpan {
+  trace_id: string;
+  span_id: string;
+}
+
+interface SpanEvent {
+  name: string;
+  timestamp: string;
+  attributes?: Record<string, unknown>;
+}
+
+class JsonlSpan implements Span {
+  events: SpanEvent[] = [];
+  status: { code: "ok" | "error"; description?: string } | null = null;
+
+  addEvent(name: string, attrs?: Record<string, unknown>): void {
+    this.events.push({ name, timestamp: new Date().toISOString(), attributes: attrs });
+  }
+
+  setStatus(code: "ok" | "error", description?: string): void {
+    this.status = { code, ...(description !== undefined ? { description } : {}) };
+  }
+}
+
+class NoopSpan implements Span {
+  addEvent(): void {}
+  setStatus(): void {}
+}
+
+export class NoopTelemetry implements Telemetry {
+  span<T>(_name: string, _attrs: Record<string, unknown>, fn: (s: Span) => T): T {
+    return fn(new NoopSpan());
+  }
+  log(_level: "info" | "warn" | "error", _msg: string, _attrs?: Record<string, unknown>): void {}
+  counter(_name: string, _attrs?: Record<string, unknown>, _inc?: number): void {}
+}
+
+export class JsonlTelemetry implements Telemetry {
+  private readonly stack: ActiveSpan[] = [];
+  private pending: Promise<void> = Promise.resolve();
+  private ensuredDir = false;
+
+  constructor(private readonly logPath: string) {}
+
+  span<T>(name: string, attrs: Record<string, unknown>, fn: (s: Span) => T): T {
+    const parent = this.stack[this.stack.length - 1] ?? null;
+    const trace_id = parent ? parent.trace_id : randomBytes(16).toString("hex");
+    const span_id = randomBytes(8).toString("hex");
+    const start_time = new Date().toISOString();
+    const js = new JsonlSpan();
+    this.stack.push({ trace_id, span_id });
+    try {
+      return fn(js);
+    } catch (e) {
+      if (js.status === null) {
+        js.status = { code: "error", description: (e as Error).message };
+      }
+      throw e;
+    } finally {
+      this.stack.pop();
+      this.emit({
+        kind: "span",
+        name,
+        trace_id,
+        span_id,
+        parent_id: parent ? parent.span_id : null,
+        start_time,
+        end_time: new Date().toISOString(),
+        attributes: attrs,
+        events: js.events,
+        status: js.status ?? { code: "ok" },
+      });
+    }
+  }
+
+  log(level: "info" | "warn" | "error", msg: string, attrs?: Record<string, unknown>): void {
+    const cur = this.stack[this.stack.length - 1] ?? null;
+    this.emit({
+      kind: "log",
+      trace_id: cur ? cur.trace_id : null,
+      span_id: cur ? cur.span_id : null,
+      timestamp: new Date().toISOString(),
+      level,
+      message: msg,
+      attributes: attrs ?? {},
+    });
+  }
+
+  counter(name: string, attrs?: Record<string, unknown>, inc = 1): void {
+    const cur = this.stack[this.stack.length - 1] ?? null;
+    this.emit({
+      kind: "metric",
+      name,
+      trace_id: cur ? cur.trace_id : null,
+      span_id: cur ? cur.span_id : null,
+      timestamp: new Date().toISOString(),
+      value: inc,
+      attributes: attrs ?? {},
+    });
+  }
+
+  flush(): Promise<void> {
+    return this.pending;
+  }
+
+  private emit(record: unknown): void {
+    const line = JSON.stringify(record) + "\n";
+    this.pending = this.pending.then(async () => {
+      if (!this.ensuredDir) {
+        await mkdir(dirname(this.logPath), { recursive: true });
+        this.ensuredDir = true;
+      }
+      await appendFile(this.logPath, line, "utf8");
+    });
+  }
+}
