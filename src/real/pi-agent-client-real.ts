@@ -56,7 +56,7 @@ function waitForExit(child: ChildProcessWithoutNullStreams, ms: number): Promise
 export class RealPiAgentClient implements PiAgentClient {
   private readonly agents = new Map<string, RealAgent>();
   private readonly listeners = new Map<string, Map<ListenerEvent, Array<(arg: any) => void>>>();
-  private readonly pendingCommands = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private readonly pendingCommands = new Map<string, { agentId: string; resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private cmdSeq = 0;
 
   constructor(private readonly opts: { roomDir: string; piBin?: string }) {}
@@ -231,11 +231,15 @@ export class RealPiAgentClient implements PiAgentClient {
     child.on("exit", () => {
       const a = this.agents.get(agent.id);
       if (a) a.exited = true;
-      for (const [, p] of this.pendingCommands) p.reject(new Error(`pi process for ${agent.id} exited`));
-      this.pendingCommands.clear();
-      const settle = this.agents.get(agent.id)?.pendingSettle;
+      for (const [id, p] of this.pendingCommands) {
+        if (p.agentId === agent.id) {
+          this.pendingCommands.delete(id);
+          p.reject(new Error(`pi process for ${agent.id} exited`));
+        }
+      }
+      const settle = a?.pendingSettle;
       if (settle) {
-        this.agents.get(agent.id)!.pendingSettle = null;
+        a!.pendingSettle = null;
         settle.reject(new Error(`pi process for ${agent.id} exited before settling`));
       }
     });
@@ -257,6 +261,9 @@ export class RealPiAgentClient implements PiAgentClient {
 
     if (rec.type === "message_update") {
       const ev = rec.assistantMessageEvent;
+      // shortcut: lastText is delta-accumulated; text_end authoritative content
+      // is not applied. Works for all pi streamed providers; upgrade if a model
+      // ever yields empty replies.
       if (ev && ev.type === "text_delta" && typeof ev.delta === "string") {
         agent.textBuffer += ev.delta;
         this.emit(agentId, "stream", ev.delta);
@@ -286,8 +293,10 @@ export class RealPiAgentClient implements PiAgentClient {
   private command(agent: RealAgent, cmd: Record<string, unknown>): Promise<unknown> {
     const id = `cmd-${++this.cmdSeq}`;
     const full = { ...cmd, id };
+    // shortcut: no command-acceptance timeout; a hung (not exited) pi would
+    // hang the caller. Upgrade if a run ever wedges on prompt acceptance.
     return new Promise((resolve, reject) => {
-      this.pendingCommands.set(id, { resolve, reject });
+      this.pendingCommands.set(id, { agentId: agent.id, resolve, reject });
       agent.child.stdin.write(JSON.stringify(full) + "\n", (err) => {
         if (err) {
           this.pendingCommands.delete(id);
