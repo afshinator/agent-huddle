@@ -177,7 +177,7 @@ export interface RoomMessage {
   text: string;          // message body (final text for agents)
   mentions: string[];    // agent ids targeted by @mention, in order of appearance
   chainId: string;       // user-turn chain this belongs to
-  hop: number;           // hop index within chain (0 for user/startup/notice)
+  hop: number;           // hop index within chain (0 for user/startup/notice); non-counted nudge/conclude turns reuse the current hopCount
   doneSignal?: boolean;  // true when an agent message carries the DONE signal (§6.5)
 }
 ```
@@ -303,7 +303,7 @@ A **hop** = one dispatched agent turn (one `prompt` → `agent_settled`). `chain
 | `hopCount < max_hops` | dispatch target normally |
 | `hopCount == max_hops`, DoD not signalled, `nudgeIssued == false` | route to **lead** with a wrap-up prompt (below); set `nudgeIssued = true`, chain `status = "wrap_up"`. Nudge does **not** increment `hopCount`. |
 | `nudgeIssued == true`, DoD still not signalled, target would be another hop | **halt**: append `hop_limit_reached` notice, `status = "halted"`, stop auto-routing, wait for human. |
-| DoD signalled (`DONE`) at any point | chain complete, `status = "idle"`, reset chain |
+| DoD signalled (`DONE`) at any point | chain complete; room status returns to `idle` (chain state is transient) |
 
 Wrap-up prompt to lead:
 
@@ -495,9 +495,9 @@ export interface Telemetry {
 
 ## 10. Error handling & process lifecycle
 
-- **Agent exit mid-chain:** mark `AgentStatus.error`, append a `notice` to `messages.jsonl`, route the failure to the lead (one turn) so it can reassign or report the blocker. Do not spin.
+- **Agent exit mid-chain:** mark `AgentStatus.error`, append a `notice` to `messages.jsonl`, halt the chain, and wait for human input. Do not spin. (v1: no automatic reroute to the lead.)
 - **RPC parse error** (`success:false` with no id): log to the agent pane, do not count as a hop.
-- **Timeout:** `waitForSettled` enforces a per-turn timeout; on timeout, send `abort`, then treat as a failed hop (counted, failure routed to lead).
+- **Timeout:** `waitForSettled` enforces a per-turn timeout (real `PiAgentClient`, T8); on timeout, send `abort`, then treat as a failed hop (counted, chain halts with a notice).
 - **Boot:** on start, if `state.json` exists and `status != "halted"`, the coordinator may resume: re-open each agent session (`--session-id`) and continue. v1 minimum: resume is optional; a fresh boot starting `idle` is acceptable, and `state.json` rebuild is always possible from `messages.jsonl`.
 - **Shutdown:** coordinator closes each agent's stdin, SIGTERM, grace period, SIGKILL; writes final `state.json`.
 

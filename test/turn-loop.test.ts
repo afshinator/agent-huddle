@@ -217,6 +217,45 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("@all dispatches every agent in order", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("lead", [{ lastText: "lead ack" }]);
+      pi.script("dev1", [{ lastText: "dev1 ack" }]);
+      pi.script("dev2", [{ lastText: "dev2 ack" }]);
+      pi.script("reviewer", [{ lastText: "reviewer ack" }]);
+      const result = await loop.submit("@all go");
+      expect(result.status).toBe("completed");
+      expect(result.hopCount).toBe(4);
+      const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
+      expect(prompts).toEqual(["lead", "dev1", "dev2", "reviewer"]);
+    });
+  });
+
+  test("multiple @mentions in one message dispatch all named agents", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("dev1", [{ lastText: "dev1 ack" }]);
+      pi.script("dev2", [{ lastText: "dev2 ack" }]);
+      const result = await loop.submit("@dev1 @dev2 both go");
+      expect(result.status).toBe("completed");
+      expect(result.hopCount).toBe(2);
+      const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
+      expect(prompts).toEqual(["dev1", "dev2"]);
+    });
+  });
+
+  test("lead delegating to two devs dispatches both", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("lead", [{ lastText: "@dev1 @dev2 split the work" }]);
+      pi.script("dev1", [{ lastText: "part A done" }]);
+      pi.script("dev2", [{ lastText: "part B done" }]);
+      const result = await loop.submit("build it");
+      expect(result.status).toBe("completed");
+      expect(result.hopCount).toBe(3);
+      const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
+      expect(prompts).toEqual(["lead", "dev1", "dev2"]);
+    });
+  });
+
   test("startup_task kind is recorded as startup_task from room", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "ok\nDONE" }]);

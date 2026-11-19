@@ -87,23 +87,26 @@ export class TurnLoop {
       async () => {
         await this.append(chain, kind, kind === "user" ? "supervisor" : "room", text, 0);
 
-        let targets = resolveTargets(text, this.cfg);
-        await this.syncContext(text, targets);
+        const queue: Array<{ agentId: string; text: string }> = resolveTargets(
+          text,
+          this.cfg,
+        ).map((agentId) => ({ agentId, text }));
+        await this.syncContext(text, queue.map((t) => t.agentId));
 
-        let currentText = text;
-        while (targets.length > 0) {
-          const agentId = targets.shift()!;
+        while (queue.length > 0) {
+          const { agentId, text: promptText } = queue.shift()!;
           if (chain.hopCount >= this.cfg.config.max_hops) {
             return this.wrapUp(chain);
           }
-          const settled = await this.dispatch(chain, agentId, currentText, true);
+          const settled = await this.dispatch(chain, agentId, promptText, true);
           if (settled === null) return this.finish(chain, "halted");
 
           if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
 
-          currentText = settled.lastText ?? "";
-          targets = extractMentions(currentText, this.cfg);
-          await this.syncContext(currentText, targets, agentId);
+          const reply = settled.lastText ?? "";
+          const nextIds = extractMentions(reply, this.cfg);
+          for (const nextId of nextIds) queue.push({ agentId: nextId, text: reply });
+          await this.syncContext(reply, nextIds, agentId);
         }
 
         return this.finish(chain, "completed");
@@ -113,8 +116,6 @@ export class TurnLoop {
 
   /** Lead wrap-up, then one concluding turn per previously dispatched agent. */
   private async wrapUp(chain: ChainState): Promise<SubmitResult> {
-    if (chain.nudgeIssued) return this.halt(chain);
-
     chain.nudgeIssued = true;
     chain.status = "wrap_up";
     this.telemetry.log("warn", "max_hops reached; issuing wrap-up nudge", {
@@ -192,7 +193,7 @@ export class TurnLoop {
   }
 
   private finish(chain: ChainState, status: ChainOutcome): SubmitResult {
-    chain.status = status === "halted" ? "halted" : "active";
+    if (status === "halted") chain.status = "halted";
     return { chainId: chain.chainId, status, hopCount: chain.hopCount };
   }
 

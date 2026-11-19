@@ -29,3 +29,5 @@ Spec: `../SPEC.md` §6
 
 - Uses fakes only; no real `pi`.
 - "active agents" = `chain.dispatchedAgentIds` (§4.2).
+- Multi-target messages (broadcast `@all`, multiple `@mentions`) are dispatched FIFO via a target queue; each target receives the text that mentioned it.
+- Also patched `src/telemetry.ts` `span()` in this ticket: the original closed async spans at return time (every span had ~0ms duration); it now keeps an async span open until the returned promise settles.

@@ -17,6 +17,7 @@ Compose everything into the runnable coordinator; CLI entry point.
 - [ ] `bun test` green (all unit + both integration suites) and `tsc --noEmit` clean.
 - [ ] end-to-end run of the 2-agent room: startup task → lead → specialist → `DONE`, stream visible in the room pane, per-agent panes tailing logs.
 - [ ] `max_hops` nudge and `hop_limit_reached` halt both observed in a test.
+- [ ] persist `RoomState` to `state.json` at chain completion/halt and on shutdown (§4.2/§10).
 
 ## Notes
 
