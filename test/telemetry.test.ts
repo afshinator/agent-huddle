@@ -81,6 +81,8 @@ describe("JsonlTelemetry", () => {
       t.span("chain", {}, () => {
         t.log("info", "hello", { k: 1 });
         t.counter("room.hops_total", { chainId: "c" }, 2);
+        t.histogram("agent.settle_latency_ms", 12.5, { agentId: "lead" });
+        t.upDownCounter("room.active_chains", { room: "r" }, 1);
       });
       await t.flush();
       const lines = await readLines(p);
@@ -95,6 +97,8 @@ describe("JsonlTelemetry", () => {
       expect(metric.name).toBe("room.hops_total");
       expect(metric.value).toBe(2);
       expect(metric.attributes).toEqual({ chainId: "c" });
+      expect(lines.some((line) => line.name === "agent.settle_latency_ms" && line.instrument === "histogram")).toBe(true);
+      expect(lines.some((line) => line.name === "room.active_chains" && line.instrument === "up_down_counter")).toBe(true);
     });
   });
 

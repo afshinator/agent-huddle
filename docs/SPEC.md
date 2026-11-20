@@ -492,7 +492,7 @@ export interface Telemetry {
 - `NoopTelemetry` for tests; `JsonlTelemetry` appends OTel-shaped records to `<room_dir>/telemetry.jsonl` (same append-only pattern as `messages.jsonl`).
 - Records carry `trace_id`/`span_id`/`parent_id`/start/end/`attributes`/`events`/`status`, so a later `@opentelemetry/api` + OTLP implementation swaps in behind the same interface.
 - Span map: one root span per chain; `agent.turn` child span per hop (attrs `agentId`, `model`, `chainId`, `hop`); `router.resolve` and `store.append` leaf spans.
-- Metrics: `room.hops_total` (counter), `agent.settle_latency_ms` (histogram), `room.active_chains` (updown), `agent.tokens_total` (counter from `get_session_stats`).
+- Metrics: `room.hops_total` (counter), `agent.settle_latency_ms` (histogram), `room.active_chains` (updown). `agent.tokens_total` from `get_session_stats` is deferred until the PiAgentClient seam exposes session statistics; v1 emits no token metric.
 - Logs: notices, errors, agent lifecycle — each carrying `trace_id`/`span_id`.
 
 ---

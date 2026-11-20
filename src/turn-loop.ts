@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import type { LoadedConfig } from "./config";
 import type { MessageKind, RoomMessage } from "./messages";
 import type { ChainState } from "./state";
@@ -89,6 +90,7 @@ export class TurnLoop {
       "chain",
       { chainId: chain.chainId, room: this.cfg.config.name, kind },
       async () => {
+        this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, 1);
         await this.append(chain, kind, kind === "user" ? "supervisor" : "room", text, 0);
 
         const queue: Array<{ agentId: string; text: string }> = resolveTargets(
@@ -159,7 +161,9 @@ export class TurnLoop {
       span.addEvent("dispatch", { agentId });
       try {
         await this.pi.prompt(agentId, { message: text, streamingBehavior: "followUp" });
+        const startedAt = performance.now();
         const settled = await this.pi.waitForSettled(agentId, this.turnTimeoutMs);
+        this.telemetry.histogram("agent.settle_latency_ms", performance.now() - startedAt, { agentId, chainId: chain.chainId });
         if (settled.aborted) {
           span.setStatus("error", "aborted");
           await this.append(chain, "notice", "room", `agent ${agentId} aborted`, hop);
@@ -204,6 +208,7 @@ export class TurnLoop {
 
   private async finish(chain: ChainState, status: ChainOutcome): Promise<SubmitResult> {
     if (status === "halted") chain.status = "halted";
+    this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, -1);
     await this.notifyChainState(status === "completed" ? null : chain);
     return { chainId: chain.chainId, status, hopCount: chain.hopCount };
   }

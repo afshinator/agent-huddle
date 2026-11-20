@@ -11,6 +11,8 @@ export interface Telemetry {
   span<T>(name: string, attrs: Record<string, unknown>, fn: (s: Span) => T): T;
   log(level: "info" | "warn" | "error", msg: string, attrs?: Record<string, unknown>): void;
   counter(name: string, attrs?: Record<string, unknown>, inc?: number): void;
+  histogram(name: string, value: number, attrs?: Record<string, unknown>): void;
+  upDownCounter(name: string, attrs?: Record<string, unknown>, delta?: number): void;
 }
 
 interface ActiveSpan {
@@ -48,6 +50,8 @@ export class NoopTelemetry implements Telemetry {
   }
   log(_level: "info" | "warn" | "error", _msg: string, _attrs?: Record<string, unknown>): void {}
   counter(_name: string, _attrs?: Record<string, unknown>, _inc?: number): void {}
+  histogram(_name: string, _value: number, _attrs?: Record<string, unknown>): void {}
+  upDownCounter(_name: string, _attrs?: Record<string, unknown>, _delta?: number): void {}
 }
 
 export class JsonlTelemetry implements Telemetry {
@@ -125,16 +129,20 @@ export class JsonlTelemetry implements Telemetry {
   }
 
   counter(name: string, attrs?: Record<string, unknown>, inc = 1): void {
+    this.metric("counter", name, inc, attrs);
+  }
+
+  histogram(name: string, value: number, attrs?: Record<string, unknown>): void {
+    this.metric("histogram", name, value, attrs);
+  }
+
+  upDownCounter(name: string, attrs?: Record<string, unknown>, delta = 1): void {
+    this.metric("up_down_counter", name, delta, attrs);
+  }
+
+  private metric(kind: string, name: string, value: number, attrs?: Record<string, unknown>): void {
     const cur = this.stack[this.stack.length - 1] ?? null;
-    this.emit({
-      kind: "metric",
-      name,
-      trace_id: cur ? cur.trace_id : null,
-      span_id: cur ? cur.span_id : null,
-      timestamp: new Date().toISOString(),
-      value: inc,
-      attributes: attrs ?? {},
-    });
+    this.emit({ kind: "metric", instrument: kind, name, trace_id: cur ? cur.trace_id : null, span_id: cur ? cur.span_id : null, timestamp: new Date().toISOString(), value, attributes: attrs ?? {} });
   }
 
   flush(): Promise<void> {
