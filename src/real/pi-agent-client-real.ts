@@ -13,6 +13,7 @@ import type {
 } from "../seams/pi-agent-client";
 import { AgentListeners, requireAgentEntry } from "../seams/pi-agent-client";
 import { errorMessage } from "../errors";
+import { shellWord } from "../shell";
 
 interface PendingSettle {
   promise: Promise<SettledResult>;
@@ -44,11 +45,6 @@ interface RpcRecord {
   assistantMessageEvent?: { type?: string; delta?: string; content?: string };
   toolName?: string;
   args?: unknown;
-}
-
-/** POSIX single-quote escaping: `'` → `'\''`; newlines stay literal inside quotes. */
-function shellQuote(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
 function asError(value: unknown): Error {
@@ -164,7 +160,7 @@ export class RealPiAgentClient implements PiAgentClient {
     // UserMessage on the agent's next prompt — context without a reply (D8/Q3).
     await this.command(agent, {
       type: "bash",
-      command: `echo ${shellQuote(text)}`,
+      command: `echo ${shellWord(text)}`,
       excludeFromContext: false,
     });
   }

@@ -1,7 +1,4 @@
-/** Wrap a path as one POSIX shell word. */
-function shellWord(path: string): string {
-  return `'${path.replaceAll("'", "'\\''")}'`;
-}
+import { shellWord } from "./shell";
 
 /**
  * The script a pane runs (D7, §9.2).
