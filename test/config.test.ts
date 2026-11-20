@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadConfig, ConfigError } from "../src/config";
@@ -54,9 +54,19 @@ describe("loadConfig", () => {
     });
   });
 
+  test("missing system_prompt_file is rejected during load", async () => {
+    const yaml = `name: r\nlead:\n  id: lead\n  handle: "@lead"\n  role: r\n  system_prompt_file: prompts/missing.md\n`;
+    await withConfig(yaml, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/system_prompt_file is not readable/);
+      await expect(loadConfig(p, cwd)).rejects.toThrow(resolve(cwd, "prompts/missing.md"));
+    });
+  });
+
   test("system_prompt_file resolves relative to the YAML file", async () => {
     const yaml = `name: r\nlead:\n  id: lead\n  handle: "@lead"\n  role: r\n  system_prompt_file: prompts/lead.md\n`;
     await withConfig(yaml, async (p, cwd) => {
+      await mkdir(join(cwd, "prompts"), { recursive: true });
+      await writeFile(join(cwd, "prompts", "lead.md"), "lead", "utf8");
       const { config } = await loadConfig(p, cwd);
       expect(config.lead.system_prompt_file).toBe(resolve(cwd, "prompts/lead.md"));
     });

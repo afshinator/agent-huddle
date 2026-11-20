@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 
@@ -188,6 +188,12 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
       agent.system_prompt_file = isAbsolute(agent.system_prompt_file)
         ? agent.system_prompt_file
         : resolve(yamlDir, agent.system_prompt_file);
+      try {
+        await access(agent.system_prompt_file);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        fail(`${agent.id}.system_prompt_file is not readable: ${agent.system_prompt_file} (${message})`);
+      }
     }
   }
 
