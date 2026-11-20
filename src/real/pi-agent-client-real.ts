@@ -34,6 +34,10 @@ function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
 function waitForExit(child: ChildProcessWithoutNullStreams, ms: number): Promise<void> {
   return new Promise((resolve) => {
     if (child.exitCode !== null || child.signalCode !== null) return resolve();
@@ -217,8 +221,9 @@ export class RealPiAgentClient implements PiAgentClient {
         let rec: Record<string, any>;
         try {
           rec = JSON.parse(line);
-        } catch {
-          continue; // non-protocol garbage on stdout
+        } catch (error: unknown) {
+          this.reportProtocolError(agent.id, `invalid JSON record: ${String(error)}`);
+          continue;
         }
         this.handleRecord(agent.id, rec);
       }
@@ -252,6 +257,8 @@ export class RealPiAgentClient implements PiAgentClient {
         this.pendingCommands.delete(rec.id);
         if (rec.success) pending.resolve(rec.data);
         else pending.reject(new Error(rec.error ?? `command ${rec.command} failed`));
+      } else if (rec.success === false) {
+        this.reportProtocolError(agentId, `unmatched failed response: ${rec.error ?? "unknown error"}`);
       }
       return;
     }
@@ -261,12 +268,11 @@ export class RealPiAgentClient implements PiAgentClient {
 
     if (rec.type === "message_update") {
       const ev = rec.assistantMessageEvent;
-      // shortcut: lastText is delta-accumulated; text_end authoritative content
-      // is not applied. Works for all pi streamed providers; upgrade if a model
-      // ever yields empty replies.
-      if (ev && ev.type === "text_delta" && typeof ev.delta === "string") {
+      if (ev?.type === "text_delta" && typeof ev.delta === "string") {
         agent.textBuffer += ev.delta;
         this.emit(agentId, "stream", ev.delta);
+      } else if (ev?.type === "text_end" && typeof ev.content === "string") {
+        agent.textBuffer = ev.content;
       }
       return;
     }
@@ -278,16 +284,46 @@ export class RealPiAgentClient implements PiAgentClient {
     }
 
     if (rec.type === "agent_settled") {
-      const result: SettledResult = { aborted: !!rec.aborted, lastText: agent.textBuffer };
-      agent.lastText = result.lastText;
       const settle = agent.pendingSettle;
-      agent.pendingSettle = null;
-      this.emit(agentId, "settled", result);
-      if (settle) settle.resolve(result);
+      if (!settle) return;
+
+      void this.readAuthoritativeText(agent).then(
+        (lastText) => {
+          const result: SettledResult = { aborted: !!rec.aborted, lastText };
+          agent.lastText = lastText;
+          agent.pendingSettle = null;
+          this.emit(agentId, "settled", result);
+          settle.resolve(result);
+        },
+        (error: unknown) => {
+          const err = asError(error);
+          agent.pendingSettle = null;
+          this.emit(agentId, "error", err);
+          settle.reject(err);
+        },
+      );
+      return;
+    }
+
+    // Keep the authoritative completed text as a fallback for providers that
+    // emit text_end without text_delta. The post-settle RPC remains canonical.
+    if (rec.type === "message_update" && rec.assistantMessageEvent?.type === "text_end") {
+      const content = rec.assistantMessageEvent.content;
+      if (typeof content === "string") agent.textBuffer = content;
       return;
     }
 
     // agent_end, bash_execution_update, queue_update, etc. are ignored.
+  }
+
+  private async readAuthoritativeText(agent: RealAgent): Promise<string | null> {
+    const data = await this.command(agent, { type: "get_last_assistant_text" });
+    const text = (data as { text?: unknown } | undefined)?.text;
+    return typeof text === "string" ? text : agent.textBuffer || null;
+  }
+
+  private reportProtocolError(agentId: string, message: string): void {
+    this.emit(agentId, "error", new Error(`pi RPC protocol error: ${message}`));
   }
 
   private command(agent: RealAgent, cmd: Record<string, unknown>): Promise<unknown> {
