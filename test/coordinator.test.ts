@@ -102,6 +102,7 @@ async function harness(
     cwd?: string;
     launchGuard?: "refuse" | "warn" | "off";
     agentStream?: AgentStream;
+    inboxRead?: (path: string) => Promise<string>;
   },
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
@@ -124,6 +125,7 @@ async function harness(
       ...(opts.cwd ? { cwd: opts.cwd } : { cwd: dir }),
       inboxPollMs: 5,
       ...(opts.agentStream ? { agentStream: opts.agentStream } : {}),
+      ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
     });
     await fn({ dir, coordinator, store, pi, panes, telemetry, out });
   } finally {
@@ -574,6 +576,46 @@ describe("Coordinator (fakes)", () => {
       await waitForMessage(store, (m) => m.kind === "notice" && m.text.includes("@nobody"));
       await waitUntil(() => pi.calls.some((c) => c.op === "prompt"));
       expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
+    });
+  });
+
+  test("a failing inbox read is reported once and the room keeps working", async () => {
+    let reads = 0;
+    const read = async (path: string): Promise<string> => {
+      reads += 1;
+      if (String(path).includes("dev1")) {
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      }
+      return readFile(path, "utf8");
+    };
+
+    await harness({ task: undefined, inboxRead: read }, async ({ coordinator, store, pi, telemetry }) => {
+      await coordinator.boot();
+
+      // Several polls must pass before the "once" claim means anything.
+      await waitUntil(() => reads >= 6);
+      const failures = telemetry.warns.filter((w) => w.msg.includes("pane inbox read"));
+      expect(failures).toHaveLength(1);
+      expect(failures[0].attrs?.agentId).toBe("dev1");
+      expect(String(failures[0].attrs?.error)).toContain("permission denied");
+
+      // A dead inbox is not a dead room: the chat pane still routes.
+      pi.script("lead", [{ lastText: "still here\nDONE" }]);
+      const result = await coordinator.submit("@lead ping");
+      expect(result.status).toBe("completed");
+      expect((await store.readMessages()).messages.some((m) => m.text === "still here\nDONE")).toBe(true);
+    });
+  });
+
+  test("a missing inbox file produces no record", async () => {
+    const read = async (path: string): Promise<string> => {
+      const err = Object.assign(new Error("no such file"), { code: "ENOENT" });
+      throw err;
+    };
+    await harness({ task: undefined, inboxRead: read }, async ({ coordinator, telemetry }) => {
+      await coordinator.boot();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(telemetry.warns.filter((w) => w.msg.includes("pane inbox read"))).toEqual([]);
     });
   });
 

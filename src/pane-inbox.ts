@@ -8,6 +8,10 @@ import { readFile } from "node:fs/promises";
  *
  * Only complete lines (terminated by `\n`) are reported: a line is submitted when
  * the human presses Enter, not on every keystroke the pty passes through.
+ *
+ * A read that fails is reported to `onError`, never swallowed: a silent failure here
+ * means typed lines vanish with no record anywhere (#46). A missing file is not a
+ * failure — it is the normal state before the first line — so `ENOENT` stays quiet.
  */
 export class PaneInbox {
   private readonly tracked = new Map<string, { path: string; offset: number }>();
@@ -16,6 +20,8 @@ export class PaneInbox {
   constructor(
     private readonly opts: {
       onLine: (agentId: string, line: string) => void;
+      /** Called on every failed read; the caller decides how often to record it. */
+      onError?: (agentId: string, error: unknown) => void;
       pollMs?: number;
       read?: (path: string) => Promise<string>;
     },
@@ -25,16 +31,27 @@ export class PaneInbox {
     return (this.opts.read ?? ((p: string) => readFile(p, "utf8")))(path);
   }
 
+  /** Read a tracked file, or `null` when it cannot be read (missing counts as empty). */
+  private async readOrNull(agentId: string, path: string): Promise<string | null> {
+    try {
+      return await this.read(path);
+    } catch (e) {
+      if ((e as { code?: string }).code !== "ENOENT") this.opts.onError?.(agentId, e);
+      return null;
+    }
+  }
+
   /** Start watching `path`, with everything already in it treated as consumed. */
   async track(agentId: string, path: string): Promise<void> {
-    const existing = await this.read(path).catch(() => "");
-    this.tracked.set(agentId, { path, offset: existing.length });
+    const existing = await this.readOrNull(agentId, path);
+    this.tracked.set(agentId, { path, offset: existing?.length ?? 0 });
   }
 
   /** Read every tracked file once and report lines that arrived since the last poll. */
   async pollOnce(): Promise<void> {
     for (const [agentId, state] of this.tracked) {
-      const text = await this.read(state.path).catch(() => "");
+      const text = await this.readOrNull(agentId, state.path);
+      if (text === null) continue;
       // A truncated or rewritten file starts over rather than being skipped.
       if (text.length < state.offset) state.offset = 0;
       const fresh = text.slice(state.offset);

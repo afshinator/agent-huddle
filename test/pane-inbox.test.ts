@@ -5,13 +5,25 @@ import { join } from "node:path";
 import { PaneInbox } from "../src/pane-inbox";
 
 async function harness(
-  fn: (opts: { dir: string; inbox: PaneInbox; lines: Array<[string, string]>; path: string }) => Promise<void>,
+  fn: (opts: {
+    dir: string;
+    inbox: PaneInbox;
+    lines: Array<[string, string]>;
+    path: string;
+    errors: Array<[string, unknown]>;
+  }) => Promise<void>,
+  opts?: { read?: (path: string) => Promise<string> },
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-inbox-"));
   const lines: Array<[string, string]> = [];
-  const inbox = new PaneInbox({ onLine: (agentId, line) => lines.push([agentId, line]) });
+  const errors: Array<[string, unknown]> = [];
+  const inbox = new PaneInbox({
+    onLine: (agentId, line) => lines.push([agentId, line]),
+    onError: (agentId, error) => errors.push([agentId, error]),
+    ...(opts?.read ? { read: opts.read } : {}),
+  });
   try {
-    await fn({ dir, inbox, lines, path: join(dir, "inbox") });
+    await fn({ dir, inbox, lines, path: join(dir, "inbox"), errors });
   } finally {
     inbox.stop();
     await rm(dir, { recursive: true, force: true });
@@ -89,5 +101,51 @@ describe("PaneInbox", () => {
       await inbox.pollOnce();
       expect(lines).toEqual([]);
     });
+  });
+});
+
+describe("PaneInbox read failures", () => {
+  test("a read that fails is reported once per poll, naming the agent", async () => {
+    let calls = 0;
+    await harness(
+      async ({ inbox, lines, path, errors }) => {
+        await inbox.track("dev1", path);
+        await inbox.pollOnce();
+        await inbox.pollOnce();
+
+        expect(lines).toEqual([]);
+        // One read at track, then one per poll; every failure is surfaced.
+        expect(calls).toBe(3);
+        expect(errors).toHaveLength(3);
+        expect(errors[0][0]).toBe("dev1");
+        expect(String(errors[0][1])).toContain("permission denied");
+      },
+      {
+        read: async () => {
+          calls += 1;
+          throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+        },
+      },
+    );
+  });
+
+  test("a missing inbox file is silent, because that is the state before the first line", async () => {
+    let calls = 0;
+    await harness(
+      async ({ inbox, lines, path, errors }) => {
+        await inbox.track("dev1", path);
+        await inbox.pollOnce();
+
+        expect(lines).toEqual([]);
+        expect(errors).toEqual([]);
+        expect(calls).toBe(2);
+      },
+      {
+        read: async () => {
+          calls += 1;
+          throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+        },
+      },
+    );
   });
 });

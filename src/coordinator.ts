@@ -27,6 +27,7 @@ export interface CoordinatorDeps {
   now?: () => string;
   inboxPollMs?: number;
   agentStream?: AgentStream;
+  inboxRead?: (path: string) => Promise<string>;
 }
 
 /**
@@ -68,6 +69,8 @@ export class Coordinator {
     this.inbox = new PaneInbox({
       pollMs: deps.inboxPollMs,
       onLine: (agentId, line) => this.submitFromPane(agentId, line),
+      onError: (agentId, error) => this.reportFailure("pane inbox read", agentId, error),
+      ...(deps.inboxRead ? { read: deps.inboxRead } : {}),
     });
     this.loop = new TurnLoop({
       config: deps.config,
@@ -336,13 +339,22 @@ export class Coordinator {
    */
   private watchFailure(op: string, agentId: string, work: Promise<void>): Promise<void> {
     return work.catch((e: unknown) => {
-      const key = `${op}:${agentId}`;
-      if (this.reportedFailures.has(key)) return;
-      this.reportedFailures.add(key);
-      this.telemetry.log("error", `${op} failed`, {
-        agentId,
-        error: errorMessage(e),
-      });
+      this.reportFailure(op, agentId, e);
+    });
+  }
+
+  /**
+   * Report one agent's failure once, not once per poll or per delta.
+   * `warn`: the inbox is an input channel, so a failed read degrades a feature
+   * without losing anything already committed — unlike a failed log write.
+   */
+  private reportFailure(op: string, agentId: string, e: unknown): void {
+    const key = `${op}:${agentId}`;
+    if (this.reportedFailures.has(key)) return;
+    this.reportedFailures.add(key);
+    this.telemetry.log(op === "pane inbox read" ? "warn" : "error", `${op} failed`, {
+      agentId,
+      error: errorMessage(e),
     });
   }
 
