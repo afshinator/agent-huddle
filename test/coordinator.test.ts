@@ -21,6 +21,7 @@ function makeConfig(roomDir: string, opts?: { maxHops?: number; task?: string })
       ...(opts?.task !== undefined ? { task: opts.task } : {}),
       definition_of_done: "done",
       max_hops: opts?.maxHops ?? 12,
+      turn_timeout_ms: 300_000,
       lead,
       agents: [dev1],
     },

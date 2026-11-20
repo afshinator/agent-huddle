@@ -20,6 +20,7 @@ function makeConfig(opts?: { task?: string }): LoadedConfig {
       room_dir: "/r",
       ...(opts?.task !== undefined ? { task: opts.task } : {}),
       max_hops: 12,
+      turn_timeout_ms: 300_000,
       lead,
       agents: [dev1],
     },

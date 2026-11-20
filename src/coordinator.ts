@@ -61,6 +61,7 @@ export class Coordinator {
       store: deps.store,
       pi: deps.pi,
       telemetry: deps.telemetry,
+      turnTimeoutMs: deps.config.config.turn_timeout_ms,
       onChainState: (chain) => this.updateChainState(chain),
     });
     deps.store.onAppend = (msg) => {
@@ -239,7 +240,7 @@ export class Coordinator {
         kind: "notice",
         from: "room",
         handle: "room",
-        text: `agent ${agentId} failed: ${error.message}`,
+        text: `agent ${agentId}: ${error.message}`,
         mentions: [],
         chainId: chain.chainId,
         hop: chain.hopCount,

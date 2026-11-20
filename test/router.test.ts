@@ -13,6 +13,7 @@ function makeConfig(leadHandle = "@lead"): LoadedConfig {
       name: "r",
       room_dir: "/r",
       max_hops: 12,
+      turn_timeout_ms: 300_000,
       lead,
       agents: [dev1, dev2, reviewer],
     },

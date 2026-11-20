@@ -72,6 +72,7 @@ task: |                    # optional initial mission (D2). omit -> idle start.
 definition_of_done: |      # optional, advisory to lead (D2). omit -> none.
   A README plus one tested module.
 max_hops: 12               # D6. default 12.
+turn_timeout_ms: 300000    # how long one agent turn may take. default 300000.
 
 lead:                      # D5. required.
   id: lead
@@ -137,6 +138,7 @@ export interface RoomConfig {
   task?: string;                 // D2 optional startup task
   definition_of_done?: string;   // D2 optional
   max_hops: number;              // default 12
+  turn_timeout_ms: number;       // default 300000
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -528,7 +530,7 @@ export interface Telemetry {
 
 - **Agent exit mid-chain:** mark `AgentStatus.error`, append a `notice` to `messages.jsonl`, halt the chain, and wait for human input. Do not spin. (v1: no automatic reroute to the lead.)
 - **RPC parse error** (`success:false` with no id): log to the agent pane, do not count as a hop.
-- **Timeout:** `waitForSettled` enforces a per-turn timeout (real `PiAgentClient`, T8); on timeout, send `abort`, then treat as a failed hop (counted, chain halts with a notice).
+- **Timeout:** `waitForSettled` enforces a per-turn timeout, `turn_timeout_ms` (default 300000). On timeout, send `abort`, then treat as a failed hop (counted, chain halts). The notice is `agent <id>: settle timeout after <ms>ms` — a slow turn is reported as a timeout, never as `failed`.
 - **Context push failure (`pushContext`, §6.6 / Q3):** best-effort. A failed push is logged and appended as a `notice`, then routing continues; it never halts the chain and never aborts boot.
 - **Boot:** on start, if `state.json` exists and `status != "halted"`, the coordinator may resume: re-open each agent session (`--session-id`) and continue. v1 minimum: resume is optional; a fresh boot starting `idle` is acceptable, and `state.json` rebuild is always possible from `messages.jsonl`.
 - **Damaged files:** a line of `messages.jsonl` that is not readable JSON (a crash mid-append) is skipped on read and counted in one `warn` log; a damaged `state.json` is treated as absent and rebuilt. Neither aborts boot.

@@ -48,6 +48,23 @@ describe("loadConfig", () => {
     });
   });
 
+  test("turn_timeout_ms is configurable and defaults above the real turnaround", async () => {
+    await withConfig(`name: r\nturn_timeout_ms: 5000\n${LEAD}`, async (p, cwd) => {
+      const { config } = await loadConfig(p, cwd);
+      expect(config.turn_timeout_ms).toBe(5000);
+    });
+    await withConfig(`name: r\n${LEAD}`, async (p, cwd) => {
+      const { config } = await loadConfig(p, cwd);
+      expect(config.turn_timeout_ms).toBe(300_000);
+    });
+  });
+
+  test("turn_timeout_ms rejects a non-positive value", async () => {
+    await withConfig(`name: r\nturn_timeout_ms: 0\n${LEAD}`, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/positive integer/);
+    });
+  });
+
   test("explicit room_dir resolves absolute", async () => {
     await withConfig(`name: r\nroom_dir: ./custom\n${LEAD}`, async (p, cwd) => {
       const { config } = await loadConfig(p, cwd);

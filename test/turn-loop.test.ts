@@ -22,6 +22,7 @@ function makeConfig(maxHops = 12, agents: AgentSpec[] = [dev1, dev2, reviewer]):
       room_dir: "/r",
       definition_of_done: "things done",
       max_hops: maxHops,
+      turn_timeout_ms: 300_000,
       lead,
       agents,
     },
@@ -39,14 +40,14 @@ interface Harness {
   msgs: () => Promise<Array<{ kind: string; from: string; text: string; hop: number; mentions: string[] }>>;
 }
 
-async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: number; agents?: AgentSpec[] }): Promise<void> {
+async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: number; agents?: AgentSpec[]; turnTimeoutMs?: number }): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-loop-"));
   try {
     const config = makeConfig(opts?.maxHops, opts?.agents);
     const store = new RoomStore(dir);
     const pi = new FakePiAgentClient();
     const telemetry = new RecordingTelemetry();
-    const loop = new TurnLoop({ config, store, pi, telemetry });
+    const loop = new TurnLoop({ config, store, pi, telemetry, turnTimeoutMs: opts?.turnTimeoutMs });
 
     for (const a of config.allAgents) await pi.spawn(a, { cwd: dir });
 
@@ -154,6 +155,29 @@ describe("TurnLoop", () => {
       const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
       expect(prompts).toEqual(["lead"]);
     });
+  });
+
+  test("a turn timeout is reported as a timeout, not a failure", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.failOn("waitForSettled", new Error("settle timeout after 5000ms"));
+
+      const result = await loop.submit("go");
+      expect(result.status).toBe("halted");
+      const notice = (await msgs()).find((m) => m.kind === "notice")!;
+      expect(notice.text).toBe("agent lead: settle timeout after 5000ms");
+      expect(notice.text).not.toContain("failed");
+    });
+  });
+
+  test("the room's turn timeout reaches the client", async () => {
+    await harness(
+      async ({ loop, pi }) => {
+        pi.script("lead", [{ lastText: "ok\nDONE" }]);
+        await loop.submit("go");
+        expect(pi.calls.find((c) => c.op === "waitForSettled")!.payload).toBe(5000);
+      },
+      { turnTimeoutMs: 5000 },
+    );
   });
 
   test("DONE from a non-lead agent does not complete the chain", async () => {

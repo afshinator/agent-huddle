@@ -69,7 +69,7 @@ export class TurnLoop {
     this.store = deps.store;
     this.pi = deps.pi;
     this.telemetry = deps.telemetry;
-    this.turnTimeoutMs = deps.turnTimeoutMs ?? 120_000;
+    this.turnTimeoutMs = deps.turnTimeoutMs ?? 300_000;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.newId = deps.newId ?? (() => randomUUID());
     this.handleById = new Map(deps.config.allAgents.map((a) => [a.id, a.handle]));
@@ -194,7 +194,7 @@ export class TurnLoop {
         const msg = errorMessage(e);
         this.telemetry.log("error", "agent turn failed", { agentId, error: msg });
         span.setStatus("error", msg);
-        await this.append(chain, "notice", "room", `agent ${agentId} failed: ${msg}`, hop);
+        await this.append(chain, "notice", "room", `agent ${agentId}: ${msg}`, hop);
         return null;
       }
     });

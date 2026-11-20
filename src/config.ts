@@ -24,6 +24,7 @@ export interface RoomConfig {
   task?: string;                 // D2 optional startup task
   definition_of_done?: string;   // D2 optional
   max_hops: number;              // default 12
+  turn_timeout_ms: number;       // default 300000: how long one agent turn may take
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -40,7 +41,7 @@ const THINKING_LEVELS = new Set<string>([
 ]);
 
 const ROOM_KEYS = new Set<string>([
-  "name", "room_dir", "task", "definition_of_done", "max_hops", "lead", "agents",
+  "name", "room_dir", "task", "definition_of_done", "max_hops", "turn_timeout_ms", "lead", "agents",
 ]);
 
 const AGENT_KEYS = new Set<string>([
@@ -179,6 +180,15 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
     max_hops = maxHopsRaw;
   }
 
+  const turnTimeoutRaw = obj.turn_timeout_ms;
+  let turn_timeout_ms = 300_000;
+  if (turnTimeoutRaw !== undefined) {
+    if (typeof turnTimeoutRaw !== "number" || !Number.isInteger(turnTimeoutRaw) || turnTimeoutRaw < 1) {
+      fail("config.turn_timeout_ms must be a positive integer");
+    }
+    turn_timeout_ms = turnTimeoutRaw;
+  }
+
   if (obj.lead === undefined) fail("config.lead is required");
   const lead = parseAgent(obj.lead, "config.lead");
 
@@ -234,6 +244,7 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
       ...(task !== undefined ? { task: task as string } : {}),
       ...(definition_of_done !== undefined ? { definition_of_done: definition_of_done as string } : {}),
       max_hops,
+      turn_timeout_ms,
       lead,
       agents,
     },

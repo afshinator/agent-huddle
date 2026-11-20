@@ -43,7 +43,7 @@ export interface ScriptedTurn {
 }
 
 export interface RecordedCall {
-  op: "spawn" | "prompt" | "pushContext" | "shutdown";
+  op: "spawn" | "prompt" | "pushContext" | "waitForSettled" | "shutdown";
   agentId: string;
   payload: unknown;
 }
@@ -107,7 +107,7 @@ interface FakeAgent {
   settle: { promise: Promise<SettledResult>; resolve: (r: SettledResult) => void } | null;
 }
 
-export type FakePiOp = "spawn" | "prompt" | "pushContext" | "shutdown";
+export type FakePiOp = "spawn" | "prompt" | "pushContext" | "waitForSettled" | "shutdown";
 
 export class FakePiAgentClient implements PiAgentClient {
   readonly calls: RecordedCall[] = [];
@@ -193,8 +193,11 @@ export class FakePiAgentClient implements PiAgentClient {
     this.record("pushContext", agentId, text);
   }
 
-  async waitForSettled(agentId: string, _timeoutMs: number): Promise<SettledResult> {
+  async waitForSettled(agentId: string, timeoutMs: number): Promise<SettledResult> {
     const a = this.requireAgent(agentId);
+    this.record("waitForSettled", agentId, timeoutMs);
+    const failure = this.takeFailure("waitForSettled");
+    if (failure) throw failure.error;
     return a.settle ? a.settle.promise : { aborted: false, lastText: a.lastText };
   }
 

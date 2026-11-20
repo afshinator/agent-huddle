@@ -175,7 +175,7 @@ export class RealPiAgentClient implements PiAgentClient {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await new Promise<SettledResult>((resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`agent ${agentId} settle timeout after ${timeoutMs}ms`)), timeoutMs);
+        timer = setTimeout(() => reject(new Error(`settle timeout after ${timeoutMs}ms`)), timeoutMs);
         settle.promise.then(resolve, reject);
       });
     } catch (e) {

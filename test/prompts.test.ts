@@ -33,6 +33,7 @@ function cfg(overrides?: {
       room_dir: "/r",
       ...(overrides?.dod !== undefined ? { definition_of_done: overrides.dod } : {}),
       max_hops: 12,
+      turn_timeout_ms: 300_000,
       lead: l,
       agents: a,
     },

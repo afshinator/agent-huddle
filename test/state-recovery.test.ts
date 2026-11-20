@@ -15,7 +15,7 @@ const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 
 function config(roomDir: string): LoadedConfig {
   const allAgents = [lead, dev1];
-  return { config: { name: "room", room_dir: roomDir, max_hops: 4, lead, agents: [dev1] }, sourcePath: join(roomDir, "team.yaml"), allAgents, agentById: new Map(allAgents.map((a) => [a.id, a])) };
+  return { config: { name: "room", room_dir: roomDir, max_hops: 4, turn_timeout_ms: 300_000, lead, agents: [dev1] }, sourcePath: join(roomDir, "team.yaml"), allAgents, agentById: new Map(allAgents.map((a) => [a.id, a])) };
 }
 
 test("Coordinator repairs a partial state cache before boot", async () => {

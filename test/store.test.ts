@@ -35,7 +35,7 @@ function makeConfig(roomDir: string): LoadedConfig {
   const dev1 = { id: "dev1", handle: "@dev1", role: "d" };
   const allAgents = [lead, dev1];
   return {
-    config: { name: "r", room_dir: roomDir, max_hops: 12, lead, agents: [dev1] },
+    config: { name: "r", room_dir: roomDir, max_hops: 12, turn_timeout_ms: 300_000, lead, agents: [dev1] },
     sourcePath: join(roomDir, "team.yaml"),
     allAgents,
     agentById: new Map(allAgents.map((a) => [a.id, a])),
