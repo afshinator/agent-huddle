@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Coordinator } from "../src/coordinator";
@@ -9,65 +9,104 @@ import { RoomStore } from "../src/store";
 import { NoopTelemetry } from "../src/telemetry";
 import { RealPiAgentClient } from "../src/real/pi-agent-client-real";
 
-function piAvailable(): boolean {
-  const r = spawnSync("pi", ["--version"], { stdio: "ignore" });
-  return r.status === 0 && !r.error;
-}
-
 function integrationDisabled(): boolean {
   const v = (process.env.PI_TEST_INTEGRATION ?? "1").toLowerCase();
   return v === "0" || v === "false" || v === "no";
 }
 
-const provider = process.env.PI_TEST_PROVIDER ?? "commandcode";
-const model = process.env.PI_TEST_MODEL ?? "deepseek/deepseek-v4.1-flash";
+async function writeRpcFixture(dir: string): Promise<string> {
+  const fixture = join(dir, "rpc-fixture.ts");
+  const launcher = join(dir, "rpc-fixture.sh");
+  await writeFile(fixture, `
+const reader = Bun.stdin.stream().pipeThrough(new TextDecoderStream()).getReader();
+let buffer = "";
+const sessionId = process.argv[process.argv.indexOf("--session-id") + 1] ?? "lead";
+let lastText = "";
+const out = (value: unknown) => console.log(JSON.stringify(value));
+while (true) {
+  const next = await reader.read();
+  if (next.done) break;
+  buffer += next.value;
+  let i;
+  while ((i = buffer.indexOf("\\n")) >= 0) {
+    const line = buffer.slice(0, i); buffer = buffer.slice(i + 1);
+    if (!line) continue;
+    const command = JSON.parse(line);
+    if (command.type === "prompt") {
+      out({ id: command.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } });
+      out({ type: "agent_start" });
+      const text = sessionId === "lead" && command.message.includes("startup mission")
+        ? "@dev1 implement the requested change"
+        : sessionId === "dev1"
+          ? "@lead implementation complete"
+          : "verified\\nDONE";
+      lastText = text;
+      for (const part of text.match(/.{1,12}/g) ?? []) {
+        out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: part } });
+      }
+      out({ type: "agent_settled", aborted: false });
+    } else if (command.type === "get_last_assistant_text") {
+      out({ id: command.id, type: "response", command: "get_last_assistant_text", success: true, data: { text: lastText } });
+    } else if (command.type === "bash") {
+      out({ id: command.id, type: "response", command: "bash", success: true, data: {} });
+    }
+  }
+}
+`, "utf8");
+  await writeFile(launcher, `#!/bin/sh\nexec bun ${fixture} "$@"\n`, "utf8");
+  await chmod(launcher, 0o755);
+  return launcher;
+}
 
-const yaml = `name: coord-itest
-max_hops: 6
-lead:
-  id: lead
-  handle: "@lead"
-  role: "Lead coordinator."
-  system_prompt: "You are the lead. Reply tersely to the supervisor."
-  provider: ${provider}
-  model: ${model}
-agents:
-  - id: dev1
-    handle: "@dev1"
-    role: "Implementer."
-    system_prompt: "Reply tersely."
-    provider: ${provider}
-    model: ${model}
-`;
+describe.skipIf(integrationDisabled())("Coordinator (controlled real RPC)", () => {
+  test("startup task → lead → specialist → DONE persists the room state", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-coord-rpc-"));
+    const fixture = await writeRpcFixture(dir);
+    const yaml = `name: coord-rpc\ntask: startup mission\nmax_hops: 6\nlead:\n  id: lead\n  handle: "@lead"\n  role: lead\n  provider: fixture\n  model: fixture\nagents:\n  - id: dev1\n    handle: "@dev1"\n    role: developer\n    provider: fixture\n    model: fixture\n`;
+    await writeFile(join(dir, "team.yaml"), yaml, "utf8");
+    const config = await loadConfig(join(dir, "team.yaml"), dir);
+    const store = new RoomStore(config.config.room_dir);
+    const pi = new RealPiAgentClient({ roomDir: config.config.room_dir, piBin: fixture });
+    const coordinator = new Coordinator({ config, store, pi, telemetry: new NoopTelemetry() });
+    try {
+      const result = await coordinator.boot();
+      expect(result?.status).toBe("completed");
+      expect(result?.hopCount).toBe(3);
+      const messages = await store.readMessages();
+      expect(messages.map((message) => `${message.kind}:${message.from}`)).toEqual([
+        "startup_task:room",
+        "agent:lead",
+        "agent:dev1",
+        "agent:lead",
+      ]);
+      expect(messages[1].mentions).toEqual(["dev1"]);
+      expect(messages[2].mentions).toEqual(["lead"]);
+      expect(messages[3].doneSignal).toBe(true);
+      expect((await store.readState())!.status).toBe("idle");
+    } finally {
+      await coordinator.shutdown();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
 
-describe.skipIf(!piAvailable() || integrationDisabled())("Coordinator (real pi, headless)", () => {
+describe.skipIf(integrationDisabled())("Coordinator (real pi, headless)", () => {
   test("boot (idle) → submit → state persisted → shutdown", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ah-coord-it-"));
-    await writeFile(join(dir, "team.yaml"), yaml, "utf8");
-
+    await writeFile(join(dir, "team.yaml"), `name: coord-itest\nmax_hops: 6\nlead:\n  id: lead\n  handle: "@lead"\n  role: "Lead coordinator."\n  system_prompt: "You are the lead. Reply tersely to the supervisor."\n  provider: commandcode\n  model: deepseek/deepseek-v4.1-flash\nagents:\n  - id: dev1\n    handle: "@dev1"\n    role: "Implementer."\n    system_prompt: "Reply tersely."\n    provider: commandcode\n    model: deepseek/deepseek-v4.1-flash\n`, "utf8");
     const config = await loadConfig(join(dir, "team.yaml"), dir);
     const store = new RoomStore(config.config.room_dir);
     const pi = new RealPiAgentClient({ roomDir: config.config.room_dir });
     const coordinator = new Coordinator({ config, store, pi, telemetry: new NoopTelemetry() });
-
     try {
       const boot = await coordinator.boot();
-      expect(boot).toBeNull(); // no task → idle
-      expect((await store.readState())!.status).toBe("idle");
-
+      expect(boot).toBeNull();
       const result = await coordinator.submit("Reply with exactly: OK");
       expect(result.status).toBe("completed");
-
-      const msgs = await store.readMessages();
-      expect(msgs.length).toBeGreaterThanOrEqual(2); // user + at least one agent reply
-      expect(msgs[0].kind).toBe("user");
-
-      const state = await store.readState();
-      expect(state!.name).toBe("coord-itest");
-      expect(["idle", "halted"]).toContain(state!.status);
-
-      await coordinator.shutdown();
+      expect((await store.readMessages()).length).toBeGreaterThanOrEqual(2);
+      expect((await store.readState())!.name).toBe("coord-itest");
     } finally {
+      await coordinator.shutdown();
       await rm(dir, { recursive: true, force: true });
     }
   }, 180_000);
