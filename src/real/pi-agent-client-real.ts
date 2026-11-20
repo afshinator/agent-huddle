@@ -296,6 +296,7 @@ export class RealPiAgentClient implements PiAgentClient {
         agent.textBuffer += ev.delta;
         this.bus.emit(agentId, "stream", ev.delta);
       } else if (ev?.type === "text_end" && typeof ev.content === "string") {
+        // Replaces rather than appends: some providers emit text_end without text_delta.
         agent.textBuffer = ev.content;
       }
       return;
@@ -326,14 +327,6 @@ export class RealPiAgentClient implements PiAgentClient {
           settle.reject(err);
         },
       );
-      return;
-    }
-
-    // Keep the authoritative completed text as a fallback for providers that
-    // emit text_end without text_delta. The post-settle RPC remains canonical.
-    if (rec.type === "message_update" && rec.assistantMessageEvent?.type === "text_end") {
-      const content = rec.assistantMessageEvent.content;
-      if (typeof content === "string") agent.textBuffer = content;
       return;
     }
 
