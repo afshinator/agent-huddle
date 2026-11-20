@@ -40,6 +40,7 @@ export class Coordinator {
   private readonly stdout: { write(s: string): void };
   private readonly now: () => string;
   private persistQueue: Promise<void> = Promise.resolve();
+  private submitQueue: Promise<unknown> = Promise.resolve();
   private readonly agentLogs = new Map<string, string>();
   private roomState: RoomState | null = null;
   private roomStatus: RoomStatus = "idle";
@@ -109,19 +110,23 @@ export class Coordinator {
     return result;
   }
 
-  async submit(text: string): Promise<SubmitResult> {
-    this.roomStatus = "active";
-    for (const agent of Object.values(this.roomState?.agents ?? {})) agent.status = "busy";
-    await this.persistState();
+  submit(text: string): Promise<SubmitResult> {
+    const run = this.submitQueue.then(async () => {
+      this.roomStatus = "active";
+      for (const agent of Object.values(this.roomState?.agents ?? {})) agent.status = "busy";
+      await this.persistState();
 
-    const result = await this.loop.submit(text, "user");
-    this.roomStatus = result.status === "halted" ? "halted" : "idle";
-    for (const agent of Object.values(this.roomState?.agents ?? {})) {
-      if (agent.status === "busy") agent.status = "idle";
-      agent.lastActivityAt = this.now();
-    }
-    await this.persistState();
-    return result;
+      const result = await this.loop.submit(text, "user");
+      this.roomStatus = result.status === "halted" ? "halted" : "idle";
+      for (const agent of Object.values(this.roomState?.agents ?? {})) {
+        if (agent.status === "busy") agent.status = "idle";
+        agent.lastActivityAt = this.now();
+      }
+      await this.persistState();
+      return result;
+    });
+    this.submitQueue = run.catch(() => undefined);
+    return run;
   }
 
   async shutdown(): Promise<void> {

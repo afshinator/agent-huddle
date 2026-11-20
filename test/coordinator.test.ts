@@ -166,6 +166,26 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
+  test("concurrent submissions run FIFO without interleaving prompts", async () => {
+    await harness({ task: undefined }, async ({ coordinator, pi, store }) => {
+      pi.script("lead", [
+        { lastText: "first\nDONE" },
+        { lastText: "second\nDONE" },
+      ]);
+      await coordinator.boot();
+
+      const first = coordinator.submit("first");
+      const second = coordinator.submit("second");
+      const results = await Promise.all([first, second]);
+
+      expect(results.map((result) => result.status)).toEqual(["completed", "completed"]);
+      expect(pi.calls.filter((call) => call.op === "prompt").map((call) => call.agentId)).toEqual(["lead", "lead"]);
+      const messages = await store.readMessages();
+      expect(messages.filter((message) => message.kind === "user").map((message) => message.text)).toEqual(["first", "second"]);
+      expect(messages.filter((message) => message.kind === "agent").map((message) => message.text)).toEqual(["first\nDONE", "second\nDONE"]);
+    });
+  });
+
   test("shutdown stops every agent and persists state", async () => {
     await harness({ task: "do the work" }, async ({ coordinator, store, pi }) => {
       pi.script("lead", [{ lastText: "done\nDONE" }]);
