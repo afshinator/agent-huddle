@@ -50,7 +50,9 @@ The coordinator's terminal is the shared chat room:
 - no mention: nobody is activated; every agent still receives it as context
 - unknown-only mentions: append a notice and dispatch nobody
 
-Panes need `HERDR_ENV=1`; without it the coordinator runs headless with the same routing and no panes. Closing an agent pane hides it and does not stop that agent's `pi` process.
+Panes need `HERDR_ENV=1`; without it the coordinator runs headless with the same routing and no panes.
+
+A `pi` child's stderr is kept out of the room: it goes to `agents/<id>/stderr.log`. Set `PI_STDERR=1` to see it inline (prefixed `[pi:<id>]`) when diagnosing a child that misbehaves. Closing an agent pane hides it and does not stop that agent's `pi` process.
 
 ## Room files
 
@@ -61,6 +63,7 @@ A room's `room_dir` contains:
 - `telemetry.jsonl` — JSONL traces, logs, counters, histograms, and up/down counters
 - `agents/<id>/sessions/` — persistent isolated pi session storage
 - `agents/<id>/output.log` — the agent's pane text: prose plus one-line lifecycle events
+- `agents/<id>/stderr.log` — the `pi` child's own stderr, which no longer reaches the room
 - `agents/<id>/inbox` — lines typed into the agent's pane, read once by the coordinator
 - `agents/<id>/pane.sh` — the script a writable pane runs (tail plus reader)
 - `agents/<id>/log.jsonl` — the same activity as JSON records, for analysis

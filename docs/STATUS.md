@@ -50,7 +50,7 @@ where a supervised room belongs, so the guard leaves it alone (#48).
 and counted), `state.json` (recoverable cache, atomic write, terminal status on shutdown),
 `telemetry.jsonl` (OTel-shaped: `chain` and `agent.turn` spans, `agent.settle_latency_ms`,
 `room.hops_total`, balanced `room.active_chains`, one `context.push` per push, `pane.input` per typed
-line), plus per-agent session dirs, `output.log`, `inbox` and `pane.sh`.
+line), plus per-agent session dirs, `output.log`, `inbox`, `pane.sh` and `stderr.log` (the child's own stderr, kept out of the room unless `PI_STDERR=1`).
 
 **Clean lifecycle.** Ctrl-C/SIGTERM stops the inbox poll, stops agents, closes the panes it opened,
 flushes telemetry, writes `state.json`, exits 0. A failed boot rolls back the agents and panes it
@@ -129,9 +129,8 @@ started.
   model's choice is not a check.
 - **`launch_guard` cannot see a launch from a subdirectory** of a repository, and a worktree of the tree
   you care about is indistinguishable from a throwaway one.
-- **Pane text carries noise a clean run should not have** (run #3): a child's stderr is mixed into the
-  room transcript (#50); a lead turn with no text is committed as an empty `agent` message (#49); and a
-  deliberate Ctrl-C can end an agent's pane text with `[error] … exited unexpectedly` (#51).
+- **Pane text carries noise a clean run should not have** (run #3): a lead turn with no text is committed
+  as an empty `agent` message (#49). (#50's child stderr and #51's false `[error]` are fixed.)
 
 ## v1 (superseded 2026-11-20, commit `2cc434a`)
 

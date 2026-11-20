@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentSpec } from "../config";
 import type {
@@ -82,7 +82,13 @@ export class RealPiAgentClient implements PiAgentClient {
   private readonly commandTimeoutMs = 30_000;
   private cmdSeq = 0;
 
-  constructor(private readonly opts: { roomDir: string; piBin?: string }) {}
+  /** One write chain per agent, so two chunks cannot land out of order (#36). */
+  private readonly stderrWrites = new Map<string, Promise<void>>();
+  private readonly stderrSink: { write(s: string): void };
+
+  constructor(private readonly opts: { roomDir: string; piBin?: string; stderr?: { write(s: string): void } }) {
+    this.stderrSink = opts.stderr ?? process.stderr;
+  }
 
   private get piBin(): string {
     return this.opts.piBin ?? "pi";
@@ -209,6 +215,19 @@ export class RealPiAgentClient implements PiAgentClient {
     this.bus.on(event, agentId, fn);
   }
 
+  /** Append the child's stderr to `agents/<id>/stderr.log`, in order. */
+  private logStderr(agentId: string, text: string): void {
+    const previous = this.stderrWrites.get(agentId) ?? Promise.resolve();
+    const next = previous
+      .then(async () => {
+        const dir = join(this.opts.roomDir, "agents", agentId);
+        await mkdir(dir, { recursive: true });
+        await appendFile(join(dir, "stderr.log"), text, "utf8");
+      })
+      .catch(() => undefined);
+    this.stderrWrites.set(agentId, next);
+  }
+
   private register(agent: AgentSpec, child: ChildProcessWithoutNullStreams, info: AgentProcessInfo): void {
     this.agents.set(agent.id, {
       id: agent.id,
@@ -242,8 +261,13 @@ export class RealPiAgentClient implements PiAgentClient {
       }
     });
 
+    // A child's stderr is the agent's, not the room's: the terminal is the conversation,
+    // and pi's runtime warnings used to appear between room messages (#50). Keep them in
+    // the agent's own file; pass them through only when the operator asks (PI_STDERR=1).
     child.stderr.on("data", (chunk: Buffer) => {
-      process.stderr.write(`[pi:${agent.id}] ${chunk.toString("utf8")}`);
+      const text = chunk.toString("utf8");
+      this.logStderr(agent.id, text);
+      if (process.env.PI_STDERR === "1") this.stderrSink.write(`[pi:${agent.id}] ${text}`);
     });
 
     child.on("exit", () => {

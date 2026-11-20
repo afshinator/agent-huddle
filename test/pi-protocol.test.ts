@@ -1,8 +1,9 @@
 import { test, expect, describe } from "bun:test";
-import { chmod, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RealPiAgentClient } from "../src/real/pi-agent-client-real";
+import { waitUntil } from "./helpers";
 import type { AgentSpec } from "../src/config";
 
 /**
@@ -61,5 +62,62 @@ describe("RealPiAgentClient (stub pi, protocol level)", () => {
       await client.shutdown("dev1").catch(() => undefined);
       await rm(dir, { recursive: true, force: true });
     }
+  }, 20_000);
+});
+
+/**
+ * A child's stderr belongs to the agent, not to the room (#50). The room's terminal is
+ * the conversation; pi's runtime warnings go to that agent's own file, and reach the
+ * terminal only when the operator asks for them.
+ */
+const NOISY_STUB = `#!/usr/bin/env bun
+process.stderr.write("Warning: something the model process wants to say\\n");
+import { createInterface } from "node:readline";
+createInterface({ input: process.stdin }).on("line", () => {});
+`;
+
+describe("RealPiAgentClient child stderr", () => {
+  async function withStub(
+    env: string | undefined,
+    fn: (h: { dir: string; client: RealPiAgentClient; said: string[] }) => Promise<void>,
+  ): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), "ah-stderr-"));
+    const stub = join(dir, "fake-pi");
+    await writeFile(stub, NOISY_STUB, "utf8");
+    await chmod(stub, 0o755);
+    const said: string[] = [];
+    const client = new RealPiAgentClient({
+      roomDir: dir,
+      piBin: stub,
+      stderr: { write: (s: string) => said.push(s) },
+    });
+    const previous = process.env.PI_STDERR;
+    if (env === undefined) delete process.env.PI_STDERR;
+    else process.env.PI_STDERR = env;
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      const log = join(dir, "agents", "dev1", "stderr.log");
+      await waitUntil(() => said.length > 0 || Bun.file(log).size > 0, 5000);
+      await fn({ dir, client, said });
+    } finally {
+      if (previous === undefined) delete process.env.PI_STDERR;
+      else process.env.PI_STDERR = previous;
+      await client.shutdown("dev1").catch(() => undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("a warning goes to the agent's own file and not to the room's terminal", async () => {
+    await withStub(undefined, async ({ dir, said }) => {
+      expect(said).toEqual([]);
+      const log = await readFile(join(dir, "agents", "dev1", "stderr.log"), "utf8");
+      expect(log).toContain("Warning: something the model process wants to say");
+    });
+  }, 20_000);
+
+  test("PI_STDERR=1 passes it through, prefixed with the agent", async () => {
+    await withStub("1", async ({ said }) => {
+      expect(said.join("")).toContain("[pi:dev1] Warning: something the model process wants to say");
+    });
   }, 20_000);
 });
