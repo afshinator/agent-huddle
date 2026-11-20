@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadConfig, ConfigError } from "../src/config";
+import { HANDLE_RE, LEAD_TOKEN, RESERVED_HANDLES } from "../src/router";
 
 const LEAD = `
 lead:
@@ -168,6 +169,24 @@ describe("loadConfig", () => {
         'config.agents[1].handle is reserved by the router and would never reach this agent (got "@everyone")',
       );
     });
+  });
+
+  test("config validation follows the router's grammar and reserved set", async () => {
+    const ok = "@dev_1-x";
+    expect(HANDLE_RE.test(ok)).toBe(true);
+    const accepted = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: "${ok}"\n    role: x\n`;
+    await withConfig(accepted, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      expect(loaded.allAgents.map((a) => a.handle)).toContain(ok);
+    });
+
+    for (const token of RESERVED_HANDLES) {
+      if (token === LEAD_TOKEN) continue; // the lead may keep @lead
+      const yaml = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: "${token}"\n    role: x\n`;
+      await withConfig(yaml, async (p, cwd) => {
+        await expect(loadConfig(p, cwd)).rejects.toThrow(/is reserved by the router/);
+      });
+    }
   });
 
   test("accepts handles the router can match", async () => {

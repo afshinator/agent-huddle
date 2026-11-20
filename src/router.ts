@@ -1,7 +1,15 @@
 import type { LoadedConfig } from "./config";
 
-const MENTION_RE = /@[A-Za-z0-9_-]+/g;
-const BROADCAST_TOKENS = new Set(["@all", "@everyone"]);
+/** Handle grammar: `@` plus word characters. Config validation uses it too. */
+const HANDLE_CHARS = "[A-Za-z0-9_-]+";
+export const HANDLE_RE = new RegExp(`^@${HANDLE_CHARS}$`);
+const MENTION_RE = new RegExp(`@${HANDLE_CHARS}`, "g");
+/** Tokens the router expands to the whole roster. */
+export const BROADCAST_TOKENS = new Set(["@all", "@everyone"]);
+/** Token the router resolves to the lead. */
+export const LEAD_TOKEN = "@lead";
+/** Intercepted before the handle map, so no agent may hold one (the lead keeps `@lead`). */
+export const RESERVED_HANDLES = new Set([...BROADCAST_TOKENS, LEAD_TOKEN]);
 
 /**
  * Extract explicit `@mentions` as ordered, deduplicated agent ids.
@@ -43,7 +51,7 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
       for (const id of allIds) add(id);
       continue;
     }
-    if (token === "@lead") {
+    if (token === LEAD_TOKEN) {
       add(leadId);
       continue;
     }

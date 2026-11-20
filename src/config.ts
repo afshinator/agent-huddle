@@ -47,10 +47,7 @@ const AGENT_KEYS = new Set<string>([
   "provider", "model", "thinking", "tools",
 ]);
 
-/** Must match the router's mention token (`src/router.ts` `MENTION_RE`). */
-const HANDLE_RE = /^@[A-Za-z0-9_-]+$/;
-/** Tokens the router intercepts before the handle map, so an agent using one is unreachable. */
-const RESERVED_HANDLES = new Set<string>(["@all", "@everyone", "@lead"]);
+import { HANDLE_RE, LEAD_TOKEN, RESERVED_HANDLES } from "./router";
 
 export class ConfigError extends Error {}
 
@@ -221,7 +218,7 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
   // The lead keeps `@lead`, which the router resolves to it. Duplicate ids were
   // rejected above, so `a.id === lead.id` identifies the lead.
   for (const a of allAgents) {
-    const allowedReserved = a.id === lead.id && a.handle === "@lead";
+    const allowedReserved = a.id === lead.id && a.handle === LEAD_TOKEN;
     if (RESERVED_HANDLES.has(a.handle) && !allowedReserved) {
       const field =
         a.id === lead.id ? "config.lead.handle" : `config.agents[${agents.indexOf(a)}].handle`;
