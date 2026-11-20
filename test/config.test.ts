@@ -106,6 +106,21 @@ describe("loadConfig", () => {
     });
   });
 
+  test("launch_guard accepts refuse, warn or off", async () => {
+    for (const value of ["refuse", "warn", "off"]) {
+      await withConfig(`name: r\nlaunch_guard: ${value}\n${LEAD}`, async (p, cwd) => {
+        const loaded = await loadConfig(p, cwd);
+        expect(loaded.config.launch_guard).toBe(value as "refuse" | "warn" | "off");
+      });
+    }
+  });
+
+  test("an unknown launch_guard fails load naming the field", async () => {
+    await withConfig(`name: r\nlaunch_guard: ignore\n${LEAD}`, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/launch_guard/);
+    });
+  });
+
   test("pane_writable is optional and accepts a boolean", async () => {
     const yaml = `name: r
 ${LEAD}agents:

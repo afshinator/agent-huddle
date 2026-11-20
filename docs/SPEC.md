@@ -73,6 +73,7 @@ definition_of_done: |      # optional, advisory to lead (D2). omit -> none.
   A README plus one tested module.
 max_hops: 12               # D6. default 12.
 turn_timeout_ms: 300000    # how long one agent turn may take. default 300000.
+launch_guard: warn         # refuse|warn|off. default warn. (#38, §10)
 
 lead:                      # D5. required.
   id: lead
@@ -141,6 +142,7 @@ export interface RoomConfig {
   definition_of_done?: string;   // D2 optional
   max_hops: number;              // default 12
   turn_timeout_ms: number;       // default 300000
+  launch_guard?: "refuse" | "warn" | "off";  // default warn
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -541,6 +543,7 @@ export interface Telemetry {
 - **RPC parse error** (`success:false` with no id): log to the agent pane, do not count as a hop.
 - **Timeout:** `waitForSettled` enforces a per-turn timeout, `turn_timeout_ms` (default 300000). On timeout, send `abort`, then treat as a failed hop (counted, chain halts). The notice is `agent <id>: settle timeout after <ms>ms` — a slow turn is reported as a timeout, never as `failed`.
 - **Context push failure (`pushContext`, §6.6 / Q3):** best-effort. A failed push is logged and appended as a `notice`, then routing continues; it never halts the chain and never aborts boot.
+- **Boot guard (`launch_guard`, default `warn`):** before the first `spawn`, if the coordinator's cwd is the root of a git repository, log one `warn` naming the directory and branch, and — with `refuse` — stop boot with `LaunchGuardError` before any agent spawns or pane opens. `off` skips the check. Agents inherit that directory and write real files into it, including test files that the repo's own test command then picks up; a subdirectory of a repository is not flagged, and a missing `git` binary reads as "not a repository".
 - **Boot:** on start, if `state.json` exists and `status != "halted"`, the coordinator may resume: re-open each agent session (`--session-id`) and continue. v1 minimum: resume is optional; a fresh boot starting `idle` is acceptable, and `state.json` rebuild is always possible from `messages.jsonl`.
 - **Damaged files:** a line of `messages.jsonl` that is not readable JSON (a crash mid-append) is skipped on read and counted in one `warn` log; a damaged `state.json` is treated as absent and rebuilt. Neither aborts boot.
 - **Telemetry write failure:** the `telemetry.jsonl` write chain is best-effort. The first failed write is reported once on stderr (`[telemetry] write failed, records are being dropped: …`), later records keep being attempted, and records produced while writes fail are lost (no buffering, no retry). `flush()` resolves and never rejects, so shutdown always completes.

@@ -12,6 +12,7 @@ import { paneScript } from "./pane-command";
 import type { HerdrPaneManager } from "./seams/herdr-pane-manager";
 import type { Telemetry } from "./telemetry";
 import { errorMessage } from "./errors";
+import { inspectLaunchDir, guardMessage, LaunchGuardError } from "./launch-guard";
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 
@@ -81,6 +82,9 @@ export class Coordinator {
   }
 
   async boot(): Promise<SubmitResult | null> {
+    // Before anything that writes: a refusal must not create room files in the
+    // directory it refuses to write into (abortBoot would, via its state write).
+    await this.checkLaunchDir();
     try {
       return await this.bootRoom();
     } catch (e) {
@@ -258,6 +262,25 @@ export class Coordinator {
     });
     this.persistQueue = persist.catch(() => undefined);
     return persist;
+  }
+
+  /**
+   * Refuse or warn when the room is about to write into a git working tree (#38).
+   * Runs before the first spawn, so a refusal costs nothing.
+   */
+  private async checkLaunchDir(): Promise<void> {
+    const mode = this.config.config.launch_guard ?? "warn";
+    if (mode === "off") return;
+    const launch = await inspectLaunchDir(this.cwd);
+    if (!launch.isRepoRoot) return;
+
+    // A refusal is reported by the CLI, not in a telemetry file: writing that file
+    // would mean creating room files in the tree we just refused to write into.
+    if (mode === "refuse") throw new LaunchGuardError(guardMessage(launch));
+    this.telemetry.log("warn", "launch guard: agents will write into a git repository root", {
+      dir: launch.dir,
+      branch: launch.branch,
+    });
   }
 
   private async loadOrCreateState(): Promise<RoomState> {

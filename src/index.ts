@@ -8,6 +8,7 @@ import { RealPiAgentClient } from "./real/pi-agent-client-real";
 import { HerdrPaneManagerReal } from "./real/herdr-pane-manager-real";
 import { Coordinator } from "./coordinator";
 import { createShutdown } from "./shutdown";
+import { LaunchGuardError } from "./launch-guard";
 
 async function main(): Promise<void> {
   const yamlPath = process.argv[2];
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  console.error(e);
+  // A guard refusal is a decision, not a crash: one line, no stack trace.
+  console.error(e instanceof LaunchGuardError ? e.message : e);
   process.exit(1);
 });

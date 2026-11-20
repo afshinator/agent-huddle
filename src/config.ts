@@ -26,6 +26,7 @@ export interface RoomConfig {
   definition_of_done?: string;   // D2 optional
   max_hops: number;              // default 12
   turn_timeout_ms: number;       // default 300000: how long one agent turn may take
+  launch_guard?: "refuse" | "warn" | "off";  // default warn: git-root boot guard (#38)
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -42,8 +43,11 @@ const THINKING_LEVELS = new Set<string>([
 ]);
 
 const ROOM_KEYS = new Set<string>([
-  "name", "room_dir", "task", "definition_of_done", "max_hops", "turn_timeout_ms", "lead", "agents",
+  "name", "room_dir", "task", "definition_of_done", "max_hops", "turn_timeout_ms",
+  "launch_guard", "lead", "agents",
 ]);
+
+const LAUNCH_GUARDS = new Set(["refuse", "warn", "off"]);
 
 const AGENT_KEYS = new Set<string>([
   "id", "handle", "role", "system_prompt", "system_prompt_file",
@@ -196,6 +200,11 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
     turn_timeout_ms = turnTimeoutRaw;
   }
 
+  const launchGuardRaw = obj.launch_guard;
+  if (launchGuardRaw !== undefined && (typeof launchGuardRaw !== "string" || !LAUNCH_GUARDS.has(launchGuardRaw))) {
+    fail(`config.launch_guard must be one of ${[...LAUNCH_GUARDS].join(", ")}`);
+  }
+
   if (obj.lead === undefined) fail("config.lead is required");
   const lead = parseAgent(obj.lead, "config.lead");
 
@@ -252,6 +261,7 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
       ...(definition_of_done !== undefined ? { definition_of_done: definition_of_done as string } : {}),
       max_hops,
       turn_timeout_ms,
+      ...(launchGuardRaw !== undefined ? { launch_guard: launchGuardRaw as "refuse" | "warn" | "off" } : {}),
       lead,
       agents,
     },

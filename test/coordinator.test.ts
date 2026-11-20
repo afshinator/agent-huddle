@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
-import { appendFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Coordinator } from "../src/coordinator";
@@ -13,7 +14,10 @@ import type { AgentSpec, LoadedConfig } from "../src/config";
 const lead: AgentSpec = { id: "lead", handle: "@lead", role: "lead" };
 const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 
-function makeConfig(roomDir: string, opts?: { maxHops?: number; task?: string; dev1Writable?: boolean }): LoadedConfig {
+function makeConfig(
+  roomDir: string,
+  opts?: { maxHops?: number; task?: string; dev1Writable?: boolean; launchGuard?: "refuse" | "warn" | "off" },
+): LoadedConfig {
   const agent: AgentSpec = opts?.dev1Writable === false ? { ...dev1, pane_writable: false } : dev1;
   const allAgents = [lead, agent];
   return {
@@ -24,6 +28,7 @@ function makeConfig(roomDir: string, opts?: { maxHops?: number; task?: string; d
       definition_of_done: "done",
       max_hops: opts?.maxHops ?? 12,
       turn_timeout_ms: 300_000,
+      ...(opts?.launchGuard ? { launch_guard: opts.launchGuard } : {}),
       lead,
       agents: [agent],
     },
@@ -41,6 +46,15 @@ interface Harness {
   panes: FakeHerdrPaneManager;
   telemetry: RecordingTelemetry;
   out: string[];
+}
+
+/** A temporary git repository root, for the launch guard. */
+async function gitRepoRoot(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "ah-repo-"));
+  await new Promise<void>((resolve, reject) => {
+    execFile("git", ["init", "-q"], { cwd: dir }, (err) => (err ? reject(err) : resolve()));
+  });
+  return dir;
 }
 
 /** Poll the room log for a message that matches. */
@@ -69,7 +83,14 @@ async function waitForText(path: string, needle: string, timeoutMs = 2000): Prom
 }
 
 async function harness(
-  opts: { maxHops?: number; task?: string; now?: () => string; dev1Writable?: boolean },
+  opts: {
+    maxHops?: number;
+    task?: string;
+    now?: () => string;
+    dev1Writable?: boolean;
+    cwd?: string;
+    launchGuard?: "refuse" | "warn" | "off";
+  },
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-coord-"));
@@ -88,6 +109,7 @@ async function harness(
       panes,
       stdout: { write: (s) => out.push(s) },
       ...(opts.now ? { now: opts.now } : {}),
+      ...(opts.cwd ? { cwd: opts.cwd } : { cwd: dir }),
       inboxPollMs: 5,
     });
     await fn({ dir, coordinator, store, pi, panes, telemetry, out });
@@ -234,6 +256,57 @@ describe("Coordinator (fakes)", () => {
       const messages = (await store.readMessages()).messages;
       expect(messages.filter((message) => message.kind === "user").map((message) => message.text)).toEqual(["@lead first", "@lead second"]);
       expect(messages.filter((message) => message.kind === "agent").map((message) => message.text)).toEqual(["first\nDONE", "second\nDONE"]);
+    });
+  });
+
+  test("launch_guard: refuse stops boot before any agent spawns or pane opens", async () => {
+    const repo = await gitRepoRoot();
+    try {
+      await harness({ task: undefined, cwd: repo, launchGuard: "refuse" }, async ({ dir, coordinator, pi, panes }) => {
+        await expect(coordinator.boot()).rejects.toThrow(/is the git repository root \(branch \w+\)/);
+        expect(pi.calls.filter((c) => c.op === "spawn")).toEqual([]);
+        expect(panes.calls).toEqual([]);
+        // A refusal leaves no room files behind either: nothing is written before the check.
+        expect(await readFile(join(dir, "state.json"), "utf8").catch(() => null)).toBeNull();
+        expect(await readFile(join(dir, "telemetry.jsonl"), "utf8").catch(() => null)).toBeNull();
+      });
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("the default launch_guard warns once, names the directory, and starts", async () => {
+    const repo = await gitRepoRoot();
+    try {
+      await harness({ task: undefined, cwd: repo }, async ({ coordinator, pi, telemetry }) => {
+        await coordinator.boot();
+
+        const guardWarns = telemetry.warns.filter((w) => w.msg.includes("git repository root"));
+        expect(guardWarns).toHaveLength(1);
+        expect(guardWarns[0].attrs?.dir).toBe(await realpath(repo));
+        expect(pi.calls.filter((c) => c.op === "spawn")).toHaveLength(2);
+      });
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("launch_guard: off starts in a repo root with no record", async () => {
+    const repo = await gitRepoRoot();
+    try {
+      await harness({ task: undefined, cwd: repo, launchGuard: "off" }, async ({ coordinator, telemetry }) => {
+        await coordinator.boot();
+        expect(telemetry.warns.filter((w) => w.msg.includes("git repository root"))).toEqual([]);
+      });
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("boot outside a git repository is silent", async () => {
+    await harness({ task: undefined }, async ({ coordinator, telemetry }) => {
+      await coordinator.boot();
+      expect(telemetry.warns.filter((w) => w.msg.includes("git repository root"))).toEqual([]);
     });
   });
 

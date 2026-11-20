@@ -85,8 +85,8 @@ test("Coordinator boots after a truncated log line and warns once", async () => 
 
     const state = await store.readState();
     expect(state!.lastMessageId).toBe("m1");
-    expect(telemetry.warns).toHaveLength(1);
-    expect(telemetry.warns[0].msg).toContain("skipped");
-    expect(telemetry.warns[0].attrs?.count).toBe(1);
+    const skipped = telemetry.warns.filter((w) => w.msg.includes("skipped"));
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].attrs?.count).toBe(1);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
