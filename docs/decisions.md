@@ -176,3 +176,30 @@ still reported even though it cannot dispatch.
 **Cost, accepted:** `mentions[]` can list an agent that was not dispatched. It records the text, not the
 routing, and §6.4 now says so. `Coordinator.submit` and `TurnLoop.submit` gain an optional parameter,
 which every existing caller ignores.
+
+---
+
+## D10 — the boot guard runs before anything writes (#38)
+
+**Decision:** `launch_guard` (`refuse | warn | off`, default `warn`) is enforced in `boot()`, before its
+`try` block and before the first spawn, pane or room file. `refuse` throws `LaunchGuardError`, which the
+CLI prints as one line and exits 1.
+
+**Rejected:**
+
+- *Check inside `bootRoom`, after the state load.* Measured the failure: `boot()`'s catch calls
+  `abortBoot`, whose `persistState` lazily rebuilds state, so a refusal left `state.json` and
+  `telemetry.jsonl` inside the very tree it refused to write into.
+- *Check only in `src/index.ts`.* Any other entry point — tests, a future CLI, an embedder — bypasses it,
+  and the coordinator is the only place that holds the `cwd` the agents inherit.
+- *Default `refuse`.* It would stop every existing room launched from a repository root, including a room
+  run from a worktree of a room repo, with no way to accept the risk without editing YAML first.
+
+**Why:** the guard exists to stop a room writing into someone else's working tree. A guard that writes
+there first fails its own purpose, and the ordering is invisible in the code — `boot()` looks like it
+could do the check anywhere.
+
+**Cost, accepted:** a refusal writes nothing at all, so its only evidence is stderr, not telemetry. The
+check flags a repository **root** only: a launch from a subdirectory of a repository is not caught. The
+entry is later than the code it describes (#38), which breaks the "same commit" rule above; #45 exists
+because that was missed.
