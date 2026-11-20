@@ -2,6 +2,7 @@
 
 Depends: T1
 Spec: `../SPEC.md` §6.2, §6.4
+Status: done
 
 ## Goal
 

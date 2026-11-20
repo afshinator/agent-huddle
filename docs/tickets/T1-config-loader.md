@@ -2,6 +2,7 @@
 
 Depends: none
 Spec: `../SPEC.md` §3
+Status: done
 
 ## Goal
 
