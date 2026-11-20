@@ -482,10 +482,10 @@ export interface HerdrPaneManager {
 
 | Method | Rejects when | Notes |
 |---|---|---|
-| `openAgentPane` | `herdr` fails, or its output is not the expected JSON | the pane id is returned by `herdr`, not invented by the caller |
-| `tailLog` | the pane is unknown to this manager, or `herdr` fails | pane presence is tracked, so a call on a closed pane is caught here rather than in `herdr` |
-| `readOutput` | the pane is unknown | the only read-back; a closed pane is still readable |
-| `close` | the pane is unknown, or `herdr` refuses | hides the pane; the agent's `pi` process keeps running because it is a coordinator child, not a pane process |
+| `openAgentPane` | `herdr` fails, or its output is not the expected JSON | the pane id is returned by `herdr`, not invented by the caller; a pane already split is closed again if the run/rename step fails |
+| `tailLog` | `herdr` fails | the real manager does not track panes; the fakes reject an unknown pane id |
+| `readOutput` | `herdr` fails | the only read-back; the real manager does not track panes, so reading a closed pane is up to `herdr` and the fakes reject an unknown id |
+| `close` | `herdr` fails | hides the pane; the agent's `pi` process keeps running because it is a coordinator child, not a pane process. The fakes reject an unknown id |
 
 The room pane is the coordinator's own terminal (the human launches the coordinator in it); it is **not** managed by this seam. Only agent panes are.
 
@@ -519,7 +519,7 @@ export interface Telemetry {
 - Metrics: `room.hops_total` (counter), `agent.settle_latency_ms` (histogram), `room.active_chains` (updown). `agent.tokens_total` from `get_session_stats` is deferred until the PiAgentClient seam exposes session statistics; v1 emits no token metric.
 - Logs: notices, errors, agent lifecycle — each carrying `trace_id`/`span_id`.
 
-**Failure semantics:** `log`, `counter`, `histogram` and `upDownCounter` never throw; a failed write is reported once on stderr and the record is dropped (§10). `flush()` resolves and never rejects. `span(fn)` runs `fn` and ends the span with `status: error` plus the message if `fn` throws, then rethrows — a span never swallows a failure.
+**Failure semantics:** `log`, `counter`, `histogram` and `upDownCounter` never throw on a failed write: the first failure is reported once on stderr and later records are still attempted (§10). They can still throw synchronously if a caller passes attributes `JSON.stringify` cannot serialise. `flush()` resolves and never rejects. `span(fn)` runs `fn` and ends the span with `status: error` plus the message if `fn` throws, then rethrows — a span never swallows a failure.
 
 ---
 
