@@ -111,6 +111,31 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
+  test("preserves one startedAt and live agent runtime across submit and shutdown", async () => {
+    await harness({ task: undefined }, async ({ coordinator, store, pi, panes }) => {
+      await coordinator.boot();
+      const bootState = await store.readState();
+      const startedAt = bootState!.startedAt;
+      const bootPid = bootState!.agents.lead.pid;
+      const bootPaneId = bootState!.agents.lead.paneId;
+      expect(bootPid).toBeGreaterThan(0);
+      expect(bootPaneId).toBe("agent-lead");
+
+      pi.script("lead", [{ lastText: "ack\nDONE" }]);
+      await coordinator.submit("status");
+      const submittedState = await store.readState();
+      expect(submittedState!.startedAt).toBe(startedAt);
+      expect(submittedState!.agents.lead.pid).toBe(bootPid);
+      expect(submittedState!.agents.lead.paneId).toBe(bootPaneId);
+
+      await coordinator.shutdown();
+      const shutdownState = await store.readState();
+      expect(shutdownState!.startedAt).toBe(startedAt);
+      expect(shutdownState!.agents.lead.pid).toBe(bootPid);
+      expect(panes.panes.has("agent-lead")).toBe(true);
+    });
+  });
+
   test("hop-cap halt persists halted state", async () => {
     await harness({ task: "do the work", maxHops: 2 }, async ({ coordinator, store, pi }) => {
       pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "@dev1 wrap" }]);

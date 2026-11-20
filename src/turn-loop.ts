@@ -41,6 +41,7 @@ export interface TurnLoopDeps {
   turnTimeoutMs?: number;
   now?: () => string;
   newId?: () => string;
+  onChainState?: (state: ChainState | null) => Promise<void> | void;
 }
 
 /**
@@ -59,6 +60,7 @@ export class TurnLoop {
   private readonly now: () => string;
   private readonly newId: () => string;
   private readonly handleById: Map<string, string>;
+  private readonly onChainState?: (state: ChainState | null) => Promise<void> | void;
 
   constructor(deps: TurnLoopDeps) {
     this.cfg = deps.config;
@@ -69,6 +71,7 @@ export class TurnLoop {
     this.now = deps.now ?? (() => new Date().toISOString());
     this.newId = deps.newId ?? (() => randomUUID());
     this.handleById = new Map(deps.config.allAgents.map((a) => [a.id, a.handle]));
+    this.onChainState = deps.onChainState;
   }
 
   async submit(text: string, kind: SubmitKind = "user"): Promise<SubmitResult> {
@@ -80,6 +83,7 @@ export class TurnLoop {
       status: "active",
       dispatchedAgentIds: [],
     };
+    await this.notifyChainState(chain);
 
     return this.telemetry.span(
       "chain",
@@ -118,6 +122,7 @@ export class TurnLoop {
   private async wrapUp(chain: ChainState): Promise<SubmitResult> {
     chain.nudgeIssued = true;
     chain.status = "wrap_up";
+    await this.notifyChainState(chain);
     this.telemetry.log("warn", "max_hops reached; issuing wrap-up nudge", {
       chainId: chain.chainId,
       maxHops: this.cfg.config.max_hops,
@@ -147,6 +152,7 @@ export class TurnLoop {
     if (countHop) chain.hopCount += 1;
     const hop = chain.hopCount;
     if (!chain.dispatchedAgentIds.includes(agentId)) chain.dispatchedAgentIds.push(agentId);
+    await this.notifyChainState(chain);
 
     return this.telemetry.span("agent.turn", { agentId, hop, chainId: chain.chainId }, async (span) => {
       this.telemetry.counter("room.hops_total", { agentId, chainId: chain.chainId });
@@ -192,9 +198,14 @@ export class TurnLoop {
     return this.finish(chain, "halted");
   }
 
-  private finish(chain: ChainState, status: ChainOutcome): SubmitResult {
+  private async finish(chain: ChainState, status: ChainOutcome): Promise<SubmitResult> {
     if (status === "halted") chain.status = "halted";
+    await this.notifyChainState(status === "completed" ? null : chain);
     return { chainId: chain.chainId, status, hopCount: chain.hopCount };
+  }
+
+  private async notifyChainState(state: ChainState | null): Promise<void> {
+    if (this.onChainState) await this.onChainState(state);
   }
 
   private async append(
