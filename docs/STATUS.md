@@ -1,6 +1,6 @@
 # Status — v1.1
 
-Version: **v1.1** · 2026-11-20 · commit `b59d62f` · spec: [`SPEC.md`](SPEC.md) · decisions:
+Version: **v1.1** · 2026-11-20 · commit `3fc31f5` · spec: [`SPEC.md`](SPEC.md) · decisions:
 [`decisions.md`](decisions.md) · evidence: [`runs/`](runs/), [`rca/`](rca/)
 
 Capabilities listed here are backed by a test or a live run. Each claim names its evidence: a run note
@@ -67,6 +67,9 @@ started.
 | Telemetry spans, latencies, balanced `active_chains` | #1, #2 |
 | Ctrl-C mid-turn → exit 0, telemetry flushed | #2 |
 | Killed `pi` child → notice, agent `error`, chain halted | #2 |
+| Readable prose and one `[tool] …` line per call in real `herdr` panes | #3 |
+| A line typed into an agent's pane during an active chain becomes a public `@that agent` message and dispatches it | #3 |
+| `launch_guard: warn` records the repo root and branch at boot | #3 (record only — see #48) |
 
 ## Proven against the real thing (`test:live`, and probes)
 
@@ -94,17 +97,16 @@ started.
 
 ## Not proven
 
-- **No manned run of v1.1.** Every v1.1 behaviour above is proven by test or by a live adapter test,
-  not by a supervised room.
-- A `[tool]` line, or readable prose, seen in a real `herdr` pane during a live room run. The three
-  pieces (stream file, pane tail, client mapping) are tested separately, never together.
-- Typing into an agent pane **during an active chain**. The line queues behind the chain via `submit()`,
-  which is tested with fakes; the felt behaviour is unverified.
-- The `warn` record in a real room: the CLI refusal was run, the warning was not.
+- **Nothing beyond two agents.** Run #3 used one lead, one specialist, one provider and a two-turn task.
+  `@all`, three or more agents, a lead that refuses to emit `DONE`, and a chain that reaches `max_hops`
+  are unproven in a manned room.
 - A provider other than `commandcode` (deepseek-v4-pro, deepseek-v4.1-flash); one provider is measured.
-- Behaviour with more than two agents, or with `@all` in a manned room.
 - Crash (SIGKILL) of the coordinator: panes from that run are not tracked and will leak.
 - `definition_of_done` is never checked; `DONE` is the lead's self-certification.
+- The `launch_guard` **refusal** path was run through the CLI (#38) but not in a real room: nobody has
+  watched `refuse` stop a boot at the terminal.
+- A pane line typed while **no** chain is active, and a pane line typed into a `pane_writable: false`
+  pane, are proven by test only.
 
 ## Known limits
 
@@ -123,6 +125,11 @@ started.
 - **Panes from a previous crashed run are unidentifiable** — pane ids are not recorded across runs.
 - **A model that declines to use a tool produces no `tool` line**, and no test asserts otherwise: a
   model's choice is not a check.
+- **`launch_guard: warn` is silent to the human.** The record goes to `telemetry.jsonl`; nothing is
+  printed in the room, so a supervisor does not learn they are running in a repository root (#48).
+- **Pane text carries noise a clean run should not have** (run #3): a child's stderr is mixed into the
+  room transcript (#50); a lead turn with no text is committed as an empty `agent` message (#49); and a
+  deliberate Ctrl-C can end an agent's pane text with `[error] … exited unexpectedly` (#51).
 
 ## v1 (superseded 2026-11-20, commit `2cc434a`)
 
