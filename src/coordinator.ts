@@ -68,6 +68,15 @@ export class Coordinator {
   }
 
   async boot(): Promise<SubmitResult | null> {
+    try {
+      return await this.bootRoom();
+    } catch (e) {
+      await this.abortBoot(e);
+      throw e;
+    }
+  }
+
+  private async bootRoom(): Promise<SubmitResult | null> {
     const roomDir = this.config.config.room_dir;
     await mkdir(roomDir, { recursive: true });
     this.roomState = await this.loadOrCreateState();
@@ -113,8 +122,7 @@ export class Coordinator {
     return result;
   }
 
-  submit(text: string): Promise<SubmitResult> {
-    const run = this.submitQueue.then(async () => {
+  submit(text: string): Promise<SubmitResult> {    const run = this.submitQueue.then(async () => {
       this.roomStatus = "active";
       for (const agent of Object.values(this.roomState?.agents ?? {})) agent.status = "busy";
       await this.persistState();
@@ -142,6 +150,38 @@ export class Coordinator {
       }
     }
     await this.persistState();
+  }
+
+  /** Undo a partial boot: close panes, stop started agents, record the failure. */
+  private async abortBoot(error: unknown): Promise<void> {
+    const msg = error instanceof Error ? error.message : String(error);
+    this.telemetry.log("error", "boot failed; rolling back", { error: msg });
+    for (const agent of this.config.allAgents) {
+      const runtime = this.roomState?.agents[agent.id];
+      if (!runtime) continue;
+      if (runtime.paneId && this.panes) {
+        try {
+          await this.panes.close(runtime.paneId);
+        } catch {
+          // best effort: the pane may already be gone
+        }
+      }
+      if (runtime.pid !== undefined) {
+        try {
+          await this.pi.shutdown(agent.id);
+        } catch {
+          // best effort: the process may already be gone
+        }
+        runtime.status = "exited";
+      } else {
+        runtime.status = "error";
+      }
+    }
+    try {
+      await this.persistState();
+    } catch {
+      // the failure that caused the rollback wins over a state write error
+    }
   }
 
   private async updateChainState(chain: RoomState["chain"]): Promise<void> {

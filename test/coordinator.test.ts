@@ -198,8 +198,30 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
-  test("persisting state does not re-read the message log", async () => {
-    await harness({ task: undefined }, async ({ coordinator, store, pi }) => {
+  test("a failed boot shuts down started agents and closes their panes", async () => {
+    await harness({ task: undefined }, async ({ coordinator, store, pi, panes }) => {
+      const realSpawn = pi.spawn.bind(pi);
+      let spawned = 0;
+      pi.spawn = async (agent, opts) => {
+        if (++spawned === 2) throw new Error("spawn boom");
+        return realSpawn(agent, opts);
+      };
+
+      await expect(coordinator.boot()).rejects.toThrow("spawn boom");
+
+      // The agent that did start is shut down, and its pane is closed.
+      expect(pi.calls.filter((c) => c.op === "shutdown").map((c) => c.agentId)).toEqual(["lead"]);
+      expect(panes.calls.filter((c) => c.op === "close").map((c) => c.paneId)).toEqual(["agent-lead"]);
+      expect(panes.isClosed("agent-lead")).toBe(true);
+
+      // The failure is visible in the persisted state, not hidden.
+      const state = await store.readState();
+      expect(state!.agents.lead.status).toBe("exited");
+      expect(state!.agents.dev1.status).toBe("error");
+    });
+  });
+
+  test("persisting state does not re-read the message log", async () => {    await harness({ task: undefined }, async ({ coordinator, store, pi }) => {
       await coordinator.boot();
       pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "done\nDONE" }]);
       pi.script("dev1", [{ lastText: "@lead ok" }]);
