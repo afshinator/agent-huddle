@@ -162,6 +162,17 @@ export class Coordinator {
         this.roomState.agents[agent.id].lastActivityAt = this.now();
       }
     }
+    // Close what boot opened: a pane whose agent is gone is a dead terminal. Best-effort,
+    // so one bad close cannot cost the flush or the exit code.
+    for (const agent of this.config.allAgents) {
+      const paneId = this.roomState?.agents[agent.id]?.paneId;
+      if (!paneId || !this.panes) continue;
+      try {
+        await this.panes.close(paneId);
+      } catch (error: unknown) {
+        this.telemetry.log("warn", "pane close failed", { agentId: agent.id, error: errorMessage(error) });
+      }
+    }
     await this.persistState();
   }
 

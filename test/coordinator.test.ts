@@ -7,6 +7,7 @@ import { RoomStore } from "../src/store";
 import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
+import { createShutdown } from "../src/shutdown";
 import type { AgentSpec, LoadedConfig } from "../src/config";
 
 const lead: AgentSpec = { id: "lead", handle: "@lead", role: "lead" };
@@ -217,6 +218,39 @@ describe("Coordinator (fakes)", () => {
       const shutdownCalls = pi.calls.filter((c) => c.op === "shutdown").map((c) => c.agentId);
       expect(shutdownCalls.sort()).toEqual(["dev1", "lead"]);
       expect((await store.readState())!.status).toBe("idle");
+    });
+  });
+
+  test("shutdown closes the panes it opened", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, panes }) => {
+      pi.script("lead", [{ lastText: "done\nDONE" }]);
+      await coordinator.boot();
+      expect(panes.calls.filter((c) => c.op === "open")).toHaveLength(2);
+
+      await coordinator.shutdown();
+
+      const closed = panes.calls.filter((c) => c.op === "close").map((c) => c.paneId).sort();
+      expect(closed).toEqual(["agent-dev1", "agent-lead"]);
+    });
+  });
+
+  test("a pane close that throws still flushes telemetry and exits 0", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, panes }) => {
+      pi.script("lead", [{ lastText: "done\nDONE" }]);
+      await coordinator.boot();
+      panes.failOn("close", new Error("close boom"), 2);
+
+      const order: string[] = [];
+      const shutdown = createShutdown({
+        shutdown: () => coordinator.shutdown(),
+        flush: async () => {
+          order.push("flush");
+        },
+        exit: (code) => order.push(`exit:${code}`),
+      });
+      await shutdown();
+
+      expect(order).toEqual(["flush", "exit:0"]);
     });
   });
 
