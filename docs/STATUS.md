@@ -40,9 +40,11 @@ streamed prose, one blank line per turn, one `[tool] <name> <args>` line per too
 no pane reads it. `pane_writable: false` gives a tail-only pane behind a read-only banner.
 
 **A boot guard against writing into someone's tree.** Agents inherit the coordinator's cwd and write
-real files there. Before the first spawn, if that cwd is a git repository root, `launch_guard: warn`
-logs one record naming the directory and branch; `refuse` stops boot with one line and exit 1, before
-any agent spawns, pane opens, or room file is written; `off` skips the check.
+real files there. Before the first spawn, if that cwd is a git repository root *and not a linked
+worktree*, `launch_guard: warn` logs one record naming the directory and branch and prints one line;
+`refuse` stops boot with one line and exit 1, before any agent spawns, pane opens, or room file is
+written; `off` skips the check. A linked worktree is a repository root but a throwaway one, and it is
+where a supervised room belongs, so the guard leaves it alone (#48).
 
 **Durable, damage-tolerant state.** `messages.jsonl` (append-only; a truncated final line is skipped
 and counted), `state.json` (recoverable cache, atomic write, terminal status on shutdown),
@@ -125,8 +127,8 @@ started.
 - **Panes from a previous crashed run are unidentifiable** — pane ids are not recorded across runs.
 - **A model that declines to use a tool produces no `tool` line**, and no test asserts otherwise: a
   model's choice is not a check.
-- **`launch_guard: warn` is silent to the human.** The record goes to `telemetry.jsonl`; nothing is
-  printed in the room, so a supervisor does not learn they are running in a repository root (#48).
+- **`launch_guard` cannot see a launch from a subdirectory** of a repository, and a worktree of the tree
+  you care about is indistinguishable from a throwaway one.
 - **Pane text carries noise a clean run should not have** (run #3): a child's stderr is mixed into the
   room transcript (#50); a lead turn with no text is committed as an empty `agent` message (#49); and a
   deliberate Ctrl-C can end an agent's pane text with `[error] … exited unexpectedly` (#51).

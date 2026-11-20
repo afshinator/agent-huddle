@@ -12,7 +12,7 @@ import { paneScript } from "./pane-command";
 import type { HerdrPaneManager } from "./seams/herdr-pane-manager";
 import type { Telemetry } from "./telemetry";
 import { errorMessage } from "./errors";
-import { inspectLaunchDir, guardMessage, LaunchGuardError } from "./launch-guard";
+import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "./launch-guard";
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 
@@ -24,6 +24,7 @@ export interface CoordinatorDeps {
   panes?: HerdrPaneManager | null;
   cwd?: string;
   stdout?: { write(s: string): void };
+  stderr?: { write(s: string): void };
   now?: () => string;
   inboxPollMs?: number;
   agentStream?: AgentStream;
@@ -46,6 +47,7 @@ export class Coordinator {
   private readonly panes: HerdrPaneManager | null;
   private readonly cwd: string;
   private readonly stdout: { write(s: string): void };
+  private readonly stderr: { write(s: string): void };
   private readonly now: () => string;
   private persistQueue: Promise<void> = Promise.resolve();
   private submitQueue: Promise<unknown> = Promise.resolve();
@@ -68,12 +70,19 @@ export class Coordinator {
     this.panes = deps.panes ?? null;
     this.cwd = deps.cwd ?? process.cwd();
     this.stdout = deps.stdout ?? process.stdout;
+    this.stderr = deps.stderr ?? process.stderr;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.agentStream = deps.agentStream ?? new AgentStream();
     this.inbox = new PaneInbox({
       pollMs: deps.inboxPollMs,
       onLine: (agentId, line) => this.submitFromPane(agentId, line),
-      onError: (agentId, error) => this.reportFailure("pane inbox read", agentId, error),
+      // Same rule as the launch guard: a warn that only a telemetry file sees is nearly
+      // silence, so the first record of a dead inbox also prints one line (#46, #48).
+      onError: (agentId, error) => {
+        if (this.reportFailure("pane inbox read", agentId, error)) {
+          this.stderr.write(`warning: cannot read ${agentId}'s pane inbox: ${errorMessage(error)}\n`);
+        }
+      },
       ...(deps.inboxRead ? { read: deps.inboxRead } : {}),
     });
     this.loop = new TurnLoop({
@@ -301,7 +310,9 @@ export class Coordinator {
     const mode = this.config.config.launch_guard ?? "warn";
     if (mode === "off") return;
     const launch = await inspectLaunchDir(this.cwd);
-    if (!launch.isRepoRoot) return;
+    // A linked worktree is a repository root but a throwaway one: it is where AGENTS.md
+    // says to run a supervised room, so warning there would fire on the correct launch (#48).
+    if (!launch.isRepoRoot || launch.worktree) return;
 
     // A refusal is reported by the CLI, not in a telemetry file: writing that file
     // would mean creating room files in the tree we just refused to write into.
@@ -310,6 +321,7 @@ export class Coordinator {
       dir: launch.dir,
       branch: launch.branch,
     });
+    this.stderr.write(`${guardWarning(launch)}\n`);
   }
 
   private async loadOrCreateState(): Promise<RoomState> {
@@ -365,14 +377,15 @@ export class Coordinator {
    * `warn`: the inbox is an input channel, so a failed read degrades a feature
    * without losing anything already committed — unlike a failed log write.
    */
-  private reportFailure(op: string, agentId: string, e: unknown): void {
+  private reportFailure(op: string, agentId: string, e: unknown): boolean {
     const key = `${op}:${agentId}`;
-    if (this.reportedFailures.has(key)) return;
+    if (this.reportedFailures.has(key)) return false;
     this.reportedFailures.add(key);
     this.telemetry.log(op === "pane inbox read" ? "warn" : "error", `${op} failed`, {
       agentId,
       error: errorMessage(e),
     });
+    return true;
   }
 
   /** A line typed in an agent's pane is a public message to that agent (D7). */

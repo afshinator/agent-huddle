@@ -237,3 +237,29 @@ during boot was reachable all along: `index.ts` installs the signal handlers bef
 **Cost, accepted:** a genuine crash that happens to land in the few milliseconds after shutdown began is
 recorded as a cancellation. The pane still shows `[exited]`, and the room writes nothing to the transcript
 to say a chain was interrupted, so `messages.jsonl` can end mid-chain with no explanation.
+
+## D12 — The launch guard ignores a linked worktree, and warns out loud
+
+**Context.** Run #3 tripped `launch_guard: warn` while being launched from a worktree — the placement
+`AGENTS.md` mandates for supervised runs — because `git rev-parse --show-toplevel` returns the worktree
+root, which is a repository root by every measure the guard used (#48). A guard that fires on the correct
+launch and on the dangerous one distinguishes neither, and its record went only to `telemetry.jsonl`, so
+an operator never saw it either.
+
+**Decision.** A linked worktree root is not a guarded situation: `inspectLaunchDir` reports
+`worktree: true` (from `rev-parse --git-dir` ≠ `--git-common-dir`), and both `warn` and `refuse` stay
+silent there. In a main checkout, `warn` logs the record **and** prints one line to stderr.
+
+**Rejected alternatives.**
+- *Print the line and keep the predicate.* It would nag on every correct worktree launch, which is how a
+  warning becomes noise and then becomes ignored.
+- *`test -f .git` to detect a worktree.* Cheaper, but it also matches a `--separate-git-dir` clone, where
+  `.git` is a file and the checkout is not a worktree.
+- *Refuse in a worktree too.* It would make the documented safe workflow unreachable with `refuse`.
+
+**Why:** the guard's question is not "is this a repository" but "is this a tree someone would miss". The
+predicate is invisible in the code — `isRepoRoot` reads like the whole test.
+
+**Cost, accepted:** a worktree of a repository you care about is not flagged, and neither is a
+subdirectory launch. The record still names the directory and branch, so a `warn` in a log is readable
+after the fact.

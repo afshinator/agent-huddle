@@ -42,6 +42,7 @@ function makeConfig(
 
 interface Harness {
   dir: string;
+  err: string[];
   coordinator: Coordinator;
   store: RoomStore;
   pi: FakePiAgentClient;
@@ -70,6 +71,7 @@ async function harness(
     const pi = new FakePiAgentClient();
     const panes = new FakeHerdrPaneManager();
     const out: string[] = [];
+    const err: string[] = [];
     const telemetry = new RecordingTelemetry();
     const coordinator = new Coordinator({
       config,
@@ -78,13 +80,14 @@ async function harness(
       telemetry,
       panes,
       stdout: { write: (s) => out.push(s) },
+      stderr: { write: (s) => err.push(s) },
       ...(opts.now ? { now: opts.now } : {}),
       ...(opts.cwd ? { cwd: opts.cwd } : { cwd: dir }),
       inboxPollMs: 5,
       ...(opts.agentStream ? { agentStream: opts.agentStream } : {}),
       ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
     });
-    await fn({ dir, coordinator, store, pi, panes, telemetry, out });
+    await fn({ dir, err, coordinator, store, pi, panes, telemetry, out });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -314,15 +317,40 @@ describe("Coordinator (fakes)", () => {
   test("the default launch_guard warns once, names the directory, and starts", async () => {
     const repo = await gitRepo();
     try {
-      await harness({ task: undefined, cwd: repo }, async ({ coordinator, pi, telemetry }) => {
+      await harness({ task: undefined, cwd: repo }, async ({ coordinator, pi, telemetry, err }) => {
         await coordinator.boot();
 
         const guardWarns = telemetry.warns.filter((w) => w.msg.includes("git repository root"));
         expect(guardWarns).toHaveLength(1);
+        // A warning only a JSONL file sees is one step from silence (#48).
+        expect(err.filter((l) => l.includes("warning: agents will write real files"))).toHaveLength(1);
         expect(guardWarns[0].attrs?.dir).toBe(await realpath(repo));
         expect(guardWarns[0].attrs?.branch).toMatch(/^(main|master)$/);
         expect(pi.calls.filter((c) => c.op === "spawn")).toHaveLength(2);
       });
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a linked worktree root is not warned about, and refuse still starts there", async () => {
+    // A worktree root is a git repository root, so the guard used to fire on exactly the
+    // launch AGENTS.md recommends, making it useless as a warning (#48).
+    const repo = await gitRepo();
+    try {
+      const wt = join(await mkdtemp(join(tmpdir(), "ah-wt-")), "wt");
+      await execFile("git", ["-C", repo, "worktree", "add", wt, "-b", "throwaway"]);
+      try {
+        for (const launchGuard of ["warn", "refuse"] as const) {
+          await harness({ task: undefined, cwd: wt, launchGuard }, async ({ coordinator, telemetry, err }) => {
+            await coordinator.boot();
+            expect(telemetry.warns.filter((w) => w.msg.includes("git repository root"))).toEqual([]);
+            expect(err.filter((l) => l.includes("git repository root"))).toEqual([]);
+          });
+        }
+      } finally {
+        await rm(join(wt, ".."), { recursive: true, force: true });
+      }
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
@@ -621,7 +649,7 @@ describe("Coordinator (fakes)", () => {
       reads += 1;
       throw Object.assign(new Error("no such file"), { code: "ENOENT" });
     };
-    await harness({ task: undefined, inboxRead: read }, async ({ coordinator, telemetry }) => {
+    await harness({ task: undefined, inboxRead: read }, async ({ coordinator, telemetry, err }) => {
       await coordinator.boot();
       // Proof that polls happened, rather than a sleep long enough to hope so.
       await waitUntil(() => reads >= 6);
