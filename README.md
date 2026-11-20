@@ -102,8 +102,10 @@ bun test
 
 Implementation boundaries and test seams are documented in [`docs/SPEC.md`](docs/SPEC.md). The project deliberately excludes the source video's web UI, generative HTML, tracing dashboard, cron daemon, sub-rooms, and autonomous configuration changes.
 
+Two rules earn their own documents: decisions whose reasons are not visible in the code go in [`docs/decisions.md`](docs/decisions.md), and a spec edit made *after* the code exists must say in its commit message which side moved and why.
+
 ## CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `bun install --frozen-lockfile`, `bun run typecheck` and `bun test` on pushes to `main` and on pull requests. CI sets `PI_TEST_INTEGRATION=0`, so the live `pi`/`herdr` tests skip there; run them locally against a real environment.
 
-The post-implementation review and environment retrospective are in [`docs/retro/2026-11-20.md`](docs/retro/2026-11-20.md).
+The post-implementation review and environment retrospective are in [`docs/retro/2026-11-20.md`](docs/retro/2026-11-20.md); the root-cause analysis of why v1 produced 27 findings, and the process changes that came out of it, are in [`docs/rca/2026-11-20-v1-defects.md`](docs/rca/2026-11-20-v1-defects.md).

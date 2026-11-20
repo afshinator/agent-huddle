@@ -445,6 +445,17 @@ Real implementation: spawns `pi --mode rpc`, parses JSONL, correlates by `id`, e
 
 The completed text reaches the caller through `SettledResult.lastText` only. The real client asks `pi` for the authoritative text at settle time (`get_last_assistant_text`) and puts it there, so no seam method exposes the last text separately (removed in v1; #21).
 
+**Failure semantics** (required section: a seam is signatures *plus* this grammar):
+
+| Method | Rejects when | Notes |
+|---|---|---|
+| `spawn` | the binary is missing or the process cannot start | creates `sessionDir` first; spawning an id that is already live replaces the runtime entry **without** killing the previous child, so the coordinator spawns each agent once |
+| `prompt` | the RPC answers `success:false`, or no response arrives within the 30s command timeout | resolves when the prompt is *accepted*, not when the turn settles |
+| `pushContext` | the RPC fails or the child is gone | caller treats every rejection as best-effort and never halts a chain (§10) |
+| `waitForSettled` | `timeoutMs` elapses (it then sends `abort` and re-rejects), the child exits before settling, or the turn failed | a timeout **rejects**; it does not resolve `{aborted:true}`. `aborted:true` means the turn ended aborted on its own |
+| `shutdown` | never after the child has exited | idempotent; stdin close → SIGTERM → SIGKILL after a grace period |
+| `on` | never | listeners run synchronously while records are handled, so a throwing listener breaks that record's dispatch: callers wrap them (the coordinator routes every listener through `watchFailure`) |
+
 ### 9.2 `HerdrPaneManager`
 
 ```ts
@@ -466,6 +477,15 @@ export interface HerdrPaneManager {
 ```
 
 `readOutput` has no coordinator caller and is kept deliberately: it is the only way to assert that a pane received the output it was opened for, so its named consumer is `test/herdr-real.integration.test.ts` plus manual troubleshooting. Nothing in the room flow reads pane contents back (kept in v1; #21).
+
+**Failure semantics:**
+
+| Method | Rejects when | Notes |
+|---|---|---|
+| `openAgentPane` | `herdr` fails, or its output is not the expected JSON | the pane id is returned by `herdr`, not invented by the caller |
+| `tailLog` | the pane is unknown to this manager, or `herdr` fails | pane presence is tracked, so a call on a closed pane is caught here rather than in `herdr` |
+| `readOutput` | the pane is unknown | the only read-back; a closed pane is still readable |
+| `close` | the pane is unknown, or `herdr` refuses | hides the pane; the agent's `pi` process keeps running because it is a coordinator child, not a pane process |
 
 The room pane is the coordinator's own terminal (the human launches the coordinator in it); it is **not** managed by this seam. Only agent panes are.
 
@@ -499,6 +519,8 @@ export interface Telemetry {
 - Metrics: `room.hops_total` (counter), `agent.settle_latency_ms` (histogram), `room.active_chains` (updown). `agent.tokens_total` from `get_session_stats` is deferred until the PiAgentClient seam exposes session statistics; v1 emits no token metric.
 - Logs: notices, errors, agent lifecycle — each carrying `trace_id`/`span_id`.
 
+**Failure semantics:** `log`, `counter`, `histogram` and `upDownCounter` never throw; a failed write is reported once on stderr and the record is dropped (§10). `flush()` resolves and never rejects. `span(fn)` runs `fn` and ends the span with `status: error` plus the message if `fn` throws, then rethrows — a span never swallows a failure.
+
 ---
 
 ## 10. Error handling & process lifecycle
@@ -528,6 +550,14 @@ export interface Telemetry {
 ## 12. `/to-tickets` tracer-bullet slices
 
 Each ticket is one fresh context window, ships a working increment, and depends only on earlier tickets. Tests use the fakes; the final ticket swaps in real `pi`/`herdr`.
+
+**How to write a DoD bullet** (post-RCA rule; a bullet that says "persists state" cannot fail):
+
+- Name the **exit paths and state**, not the capability.
+  - Not: "persist `RoomState`". Instead: "`startedAt` and each agent's `pid`/`sessionDir` are identical across boot, submit, halt, shutdown, and after re-reading the file".
+  - Not: "atomic write". Instead: "a partial final line reads as N complete messages plus one skipped".
+- Every seam method the ticket implements needs its failure case in the DoD (rejects / returns / hangs), because §9's failure table is the contract.
+- Fakes must be able to fail: a DoD that needs a rejection names the fake's failure knob (`failOn`) or the ticket adds one.
 
 | # | Ticket | Deliverable (DoD) | Depends on |
 |---|---|---|---|
