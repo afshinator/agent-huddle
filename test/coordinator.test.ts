@@ -258,7 +258,9 @@ describe("Coordinator (fakes)", () => {
     await harness({ task: "do the work" }, async ({ coordinator, pi, store }) => {
       pi.script("lead", [{ hold: true }]);
       void coordinator.boot();
-      await Bun.sleep(5); // let boot reach the lead's turn, which never settles
+      // Wait for the lead's turn to be in flight; sleeping a fixed time races on a fast machine.
+      for (let i = 0; i < 500 && !pi.calls.some((c) => c.op === "waitForSettled"); i++) await Bun.sleep(1);
+      expect(pi.calls.some((c) => c.op === "waitForSettled")).toBe(true);
 
       await coordinator.shutdown();
 
