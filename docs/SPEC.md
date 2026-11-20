@@ -110,6 +110,7 @@ agents:                    # D4/D5. specialists. v1 default roster: 2 devs + 1 r
 Rules:
 
 - `id` is unique across `lead` + `agents` and becomes the agent's stable `--session-id` (D7).
+- `handle` must match `/^@[A-Za-z0-9_-]+$/` (the router's mention token, §6.2), so it must be quoted in YAML. It is unique across the roster, and `@all` / `@everyone` are rejected everywhere while `@lead` is allowed only on the lead — the router resolves those tokens before the handle map, so any other use would leave that agent unreachable.
 - `system_prompt` and `system_prompt_file` are mutually exclusive; validation rejects a config with both.
 - `tools` is an optional allowlist passed as `--tools`. Omit to inherit `pi` defaults.
 - Unknown keys are rejected at load time (fail fast, do not silently drop).

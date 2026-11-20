@@ -47,6 +47,11 @@ const AGENT_KEYS = new Set<string>([
   "provider", "model", "thinking", "tools",
 ]);
 
+/** Must match the router's mention token (`src/router.ts` `MENTION_RE`). */
+const HANDLE_RE = /^@[A-Za-z0-9_-]+$/;
+/** Tokens the router intercepts before the handle map, so an agent using one is unreachable. */
+const RESERVED_HANDLES = new Set<string>(["@all", "@everyone", "@lead"]);
+
 export class ConfigError extends Error {}
 
 function fail(msg: string): never {
@@ -82,6 +87,10 @@ function parseAgent(v: unknown, what: string): AgentSpec {
   const id = assertString(obj.id, `${what}.id`);
   const handle = assertString(obj.handle, `${what}.handle`);
   const role = assertString(obj.role, `${what}.role`);
+
+  if (!HANDLE_RE.test(handle)) {
+    fail(`${what}.handle must look like "@dev1" (got "${handle}")`);
+  }
 
   const systemPrompt = obj.system_prompt;
   const systemPromptFile = obj.system_prompt_file;
@@ -207,6 +216,14 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
   for (const a of allAgents) {
     if (seenHandles.has(a.handle)) fail(`duplicate agent handle "${a.handle}"`);
     seenHandles.add(a.handle);
+  }
+  // Routed before the handle map ever sees it, so such an agent is unreachable.
+  // The lead keeps `@lead`, which the router resolves to it.
+  for (const a of allAgents) {
+    const allowedReserved = a.id === lead.id && a.handle === "@lead";
+    if (RESERVED_HANDLES.has(a.handle) && !allowedReserved) {
+      fail(`agents: handle "${a.handle}" is reserved by the router and would never reach this agent`);
+    }
   }
 
   return {

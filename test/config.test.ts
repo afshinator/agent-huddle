@@ -116,6 +116,52 @@ describe("loadConfig", () => {
     });
   });
 
+  test("rejects a handle without @", async () => {
+    const yaml = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: dev1\n    role: x\n`;
+    await withConfig(yaml, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/handle must look like/);
+    });
+  });
+
+  test("rejects a handle the router could never match", async () => {
+    for (const handle of ['"@dev 1"', '"@dev.1"', '"@@dev"', '"@"']) {
+      const yaml = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: ${handle}\n    role: x\n`;
+      await withConfig(yaml, async (p, cwd) => {
+        await expect(loadConfig(p, cwd)).rejects.toThrow(/handle must look like/);
+      });
+    }
+  });
+
+  test("rejects reserved broadcast handles", async () => {
+    for (const handle of ['"@all"', '"@everyone"']) {
+      const yaml = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: ${handle}\n    role: x\n`;
+      await withConfig(yaml, async (p, cwd) => {
+        await expect(loadConfig(p, cwd)).rejects.toThrow(/reserved/);
+      });
+    }
+  });
+
+  test("rejects @lead on a specialist but allows it on the lead", async () => {
+    const otherLead = `lead:\n  id: lead\n  handle: "@coordinator"\n  role: r\n`;
+    const reserved = `name: r\n${otherLead}\nagents:\n  - id: dev1\n    handle: "@lead"\n    role: x\n`;
+    await withConfig(reserved, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/reserved/);
+    });
+
+    await withConfig(`name: r\n${LEAD}`, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      expect(loaded.config.lead.handle).toBe("@lead");
+    });
+  });
+
+  test("accepts handles the router can match", async () => {
+    const yaml = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: "@dev_1-x"\n    role: x\n`;
+    await withConfig(yaml, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      expect(loaded.allAgents.map((a) => a.handle)).toEqual(["@lead", "@dev_1-x"]);
+    });
+  });
+
   test("rejects invalid thinking level", async () => {
     const yaml = `name: r\nlead:\n  id: lead\n  handle: "@lead"\n  role: r\n  thinking: banana\n`;
     await withConfig(yaml, async (p, cwd) => {
