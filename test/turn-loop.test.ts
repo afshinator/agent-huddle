@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TurnLoop, wrapUpPrompt, CONCLUDE_PROMPT, hasDoneSignal } from "../src/turn-loop";
 import { RoomStore } from "../src/store";
-import { NoopTelemetry, type Span, type Telemetry } from "../src/telemetry";
+import type { Telemetry } from "../src/telemetry";
+import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import type { AgentSpec, LoadedConfig } from "../src/config";
 
@@ -36,24 +37,6 @@ interface Harness {
   pi: FakePiAgentClient;
   telemetry: RecordingTelemetry;
   msgs: () => Promise<Array<{ kind: string; from: string; text: string; hop: number; mentions: string[] }>>;
-}
-
-/** Records the chain gauge and error logs so the counter can be asserted. */
-class RecordingTelemetry implements Telemetry {
-  chainDeltas: number[] = [];
-  errors: string[] = [];
-
-  span<T>(_name: string, _attrs: Record<string, unknown>, fn: (s: Span) => T): T {
-    return fn({ addEvent() {}, setStatus() {} });
-  }
-  log(level: "info" | "warn" | "error", msg: string): void {
-    if (level === "error") this.errors.push(msg);
-  }
-  counter(): void {}
-  histogram(): void {}
-  upDownCounter(name: string, _attrs?: Record<string, unknown>, delta = 1): void {
-    if (name === "room.active_chains") this.chainDeltas.push(delta);
-  }
 }
 
 async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: number; agents?: AgentSpec[] }): Promise<void> {

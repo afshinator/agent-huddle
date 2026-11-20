@@ -1,10 +1,10 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Coordinator } from "../src/coordinator";
 import { RoomStore } from "../src/store";
-import { NoopTelemetry } from "../src/telemetry";
+import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
 import type { AgentSpec, LoadedConfig } from "../src/config";
@@ -31,10 +31,12 @@ function makeConfig(roomDir: string, opts?: { maxHops?: number; task?: string })
 }
 
 interface Harness {
+  dir: string;
   coordinator: Coordinator;
   store: RoomStore;
   pi: FakePiAgentClient;
   panes: FakeHerdrPaneManager;
+  telemetry: RecordingTelemetry;
   out: string[];
 }
 
@@ -49,15 +51,16 @@ async function harness(
     const pi = new FakePiAgentClient();
     const panes = new FakeHerdrPaneManager();
     const out: string[] = [];
+    const telemetry = new RecordingTelemetry();
     const coordinator = new Coordinator({
       config,
       store,
       pi,
-      telemetry: new NoopTelemetry(),
+      telemetry,
       panes,
       stdout: { write: (s) => out.push(s) },
     });
-    await fn({ coordinator, store, pi, panes, out });
+    await fn({ dir, coordinator, store, pi, panes, telemetry, out });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -218,6 +221,35 @@ describe("Coordinator (fakes)", () => {
       const state = await store.readState();
       expect(state!.agents.lead.status).toBe("exited");
       expect(state!.agents.dev1.status).toBe("error");
+    });
+  });
+
+  test("a failing agent log write is reported once and does not crash the room", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, store, pi, telemetry }) => {
+      await coordinator.boot();
+
+      // Point the agent log at a directory so every append fails.
+      const logPath = join(dir, "agents", "lead", "log.jsonl");
+      await rm(logPath, { force: true });
+      await mkdir(logPath, { recursive: true });
+
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown): void => {
+        unhandled.push(reason);
+      };
+      process.on("unhandledRejection", onUnhandled);
+      try {
+        pi.script("lead", [{ deltas: ["a", "b", "c"], lastText: "done\nDONE" }]);
+        const result = await coordinator.submit("go");
+        expect(result.status).toBe("completed");
+        await coordinator.shutdown();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      } finally {
+        process.off("unhandledRejection", onUnhandled);
+      }
+
+      expect(unhandled).toEqual([]);
+      expect(telemetry.errors.filter((m) => m === "agent log write failed")).toHaveLength(1);
     });
   });
 

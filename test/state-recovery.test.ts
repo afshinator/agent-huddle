@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Coordinator } from "../src/coordinator";
 import { RoomStore } from "../src/store";
-import { NoopTelemetry, type Span, type Telemetry } from "../src/telemetry";
+import { NoopTelemetry } from "../src/telemetry";
+import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
 import type { AgentSpec, LoadedConfig } from "../src/config";
@@ -35,19 +36,6 @@ test("Coordinator repairs a partial state cache before boot", async () => {
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-class RecordingTelemetry implements Telemetry {
-  warnings: Array<{ msg: string; attrs?: Record<string, unknown> }> = [];
-  span<T>(_name: string, _attrs: Record<string, unknown>, fn: (s: Span) => T): T {
-    return fn({ addEvent() {}, setStatus() {} });
-  }
-  log(level: "info" | "warn" | "error", msg: string, attrs?: Record<string, unknown>): void {
-    if (level === "warn") this.warnings.push({ msg, attrs });
-  }
-  counter(): void {}
-  histogram(): void {}
-  upDownCounter(): void {}
-}
-
 test("Coordinator boots after a truncated log line and warns once", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ah-truncated-"));
   try {
@@ -62,8 +50,8 @@ test("Coordinator boots after a truncated log line and warns once", async () => 
 
     const state = await store.readState();
     expect(state!.lastMessageId).toBe("m1");
-    expect(telemetry.warnings).toHaveLength(1);
-    expect(telemetry.warnings[0].msg).toContain("skipped");
-    expect(telemetry.warnings[0].attrs?.count).toBe(1);
+    expect(telemetry.warns).toHaveLength(1);
+    expect(telemetry.warns[0].msg).toContain("skipped");
+    expect(telemetry.warns[0].attrs?.count).toBe(1);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

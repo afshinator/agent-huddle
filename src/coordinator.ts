@@ -42,6 +42,7 @@ export class Coordinator {
   private persistQueue: Promise<void> = Promise.resolve();
   private submitQueue: Promise<unknown> = Promise.resolve();
   private readonly agentLogs = new Map<string, string>();
+  private readonly reportedFailures = new Set<string>();
   private roomState: RoomState | null = null;
   private roomStatus: RoomStatus = "idle";
 
@@ -100,11 +101,16 @@ export class Coordinator {
       const logPath = join(agentDir, "log.jsonl");
       this.agentLogs.set(agent.id, logPath);
 
-      this.pi.on("stream", agent.id, (delta) => void this.appendAgentLog(agent.id, "delta", delta));
-      this.pi.on("settled", agent.id, (r) => void this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
-      this.pi.on("error", agent.id, (e) => void this.handleAgentError(agent.id, e));
-      await this.appendAgentLog(agent.id, "spawned", `pid=${info.pid}`);
-
+      this.pi.on("stream", agent.id, (delta) => {
+        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
+      });
+      this.pi.on("settled", agent.id, (r) => {
+        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
+      });
+      this.pi.on("error", agent.id, (e) => {
+        this.watchFailure("agent error handling", agent.id, this.handleAgentError(agent.id, e));
+      });
+      this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "spawned", `pid=${info.pid}`));
       if (this.panes) {
         const paneId = await this.panes.openAgentPane({
           id: `agent-${agent.id}`,
@@ -142,7 +148,7 @@ export class Coordinator {
 
   async shutdown(): Promise<void> {
     for (const agent of this.config.allAgents) {
-      await this.appendAgentLog(agent.id, "shutdown", "");
+      this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "shutdown", ""));
       await this.pi.shutdown(agent.id);
       if (this.roomState) {
         this.roomState.agents[agent.id].status = "exited";
@@ -240,6 +246,23 @@ export class Coordinator {
       this.roomStatus = "halted";
       await this.persistState();
     }
+  }
+
+  /**
+   * Fire-and-forget listener body. A rejected promise here would be unhandled,
+   * which Bun turns into a process exit, so the failure is reported once per
+   * agent and operation instead.
+   */
+  private watchFailure(op: string, agentId: string, work: Promise<void>): void {
+    void work.catch((e: unknown) => {
+      const key = `${op}:${agentId}`;
+      if (this.reportedFailures.has(key)) return;
+      this.reportedFailures.add(key);
+      this.telemetry.log("error", `${op} failed`, {
+        agentId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
   }
 
   private async appendAgentLog(agentId: string, event: string, text: string): Promise<void> {
