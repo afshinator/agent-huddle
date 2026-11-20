@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomStore, rebuildState } from "../src/store";
@@ -83,6 +83,53 @@ describe("RoomStore", () => {
   test("readState returns null when missing", async () => {
     await withDir(async (dir) => {
       const s = new RoomStore(dir);
+      expect(await s.readState()).toBeNull();
+    });
+  });
+
+  test("readMessages skips a truncated final line and counts it", async () => {
+    await withDir(async (dir) => {
+      const s = new RoomStore(dir);
+      await s.appendMessage(msg("m1"));
+      await s.appendMessage(msg("m2"));
+      const text = await Bun.file(s.messagesPath).text();
+      await writeFile(s.messagesPath, text + '{"id":"m3","ts":"t","kin', "utf8");
+
+      const msgs = await s.readMessages();
+      expect(msgs.map((m) => m.id)).toEqual(["m1", "m2"]);
+      expect(s.skippedLines).toBe(1);
+    });
+  });
+
+  test("readMessages skips a JSON line that is not an object", async () => {
+    await withDir(async (dir) => {
+      const s = new RoomStore(dir);
+      await s.appendMessage(msg("m1"));
+      const text = await Bun.file(s.messagesPath).text();
+      await writeFile(s.messagesPath, text + "5\nnull\n", "utf8");
+
+      const msgs = await s.readMessages();
+      expect(msgs.map((m) => m.id)).toEqual(["m1"]);
+      expect(s.skippedLines).toBe(2);
+    });
+  });
+
+  test("readMessages resets the skipped count on each read", async () => {
+    await withDir(async (dir) => {
+      const s = new RoomStore(dir);
+      await writeFile(s.messagesPath, "not json\n", "utf8");
+      await s.readMessages();
+      expect(s.skippedLines).toBe(1);
+      await writeFile(s.messagesPath, JSON.stringify(msg("m1")) + "\n", "utf8");
+      expect(await s.readMessages()).toHaveLength(1);
+      expect(s.skippedLines).toBe(0);
+    });
+  });
+
+  test("readState returns null for a corrupt cache instead of throwing", async () => {
+    await withDir(async (dir) => {
+      const s = new RoomStore(dir);
+      await writeFile(s.statePath, '{"name":"r","agents":', "utf8");
       expect(await s.readState()).toBeNull();
     });
   });

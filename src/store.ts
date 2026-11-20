@@ -8,6 +8,8 @@ import type { AgentRuntime, RoomState } from "./state";
 export class RoomStore {
   /** Live room-stream hook; the coordinator prints each appended message here. */
   onAppend?: (msg: RoomMessage) => void;
+  /** Lines dropped by the most recent `readMessages()` because they were not readable JSON. */
+  skippedLines = 0;
   private stateWrite: Promise<void> = Promise.resolve();
 
   constructor(private readonly roomDir: string) {}
@@ -27,6 +29,7 @@ export class RoomStore {
   }
 
   async readMessages(): Promise<RoomMessage[]> {
+    this.skippedLines = 0;
     let text: string;
     try {
       text = await readFile(this.messagesPath, "utf8");
@@ -34,10 +37,25 @@ export class RoomStore {
       if ((e as { code?: string }).code === "ENOENT") return [];
       throw e;
     }
-    return text
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .map((line) => JSON.parse(line) as RoomMessage);
+    const messages: RoomMessage[] = [];
+    for (const line of text.split("\n")) {
+      if (line.trim() === "") continue;
+      // A crash mid-append can leave one partial line; it must not make the
+      // log unreadable, so a bad line is dropped and counted.
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        this.skippedLines += 1;
+        continue;
+      }
+      if (typeof parsed !== "object" || parsed === null) {
+        this.skippedLines += 1;
+        continue;
+      }
+      messages.push(parsed as RoomMessage);
+    }
+    return messages;
   }
 
   writeState(state: RoomState): Promise<void> {
@@ -66,7 +84,12 @@ export class RoomStore {
       if ((e as { code?: string }).code === "ENOENT") return null;
       throw e;
     }
-    return JSON.parse(text) as RoomState;
+    try {
+      return JSON.parse(text) as RoomState;
+    } catch {
+      // state.json is a recoverable cache: a damaged file is rebuilt, not fatal.
+      return null;
+    }
   }
 }
 
@@ -79,8 +102,8 @@ export async function reconcileState(
   config: LoadedConfig,
   roomDir: string,
   existing: RoomState | null,
+  messages: RoomMessage[],
 ): Promise<RoomState> {
-  const messages = await new RoomStore(roomDir).readMessages();
   const last = messages.at(-1);
   const agents: Record<string, AgentRuntime> = {};
   for (const spec of config.allAgents) {
@@ -110,5 +133,5 @@ export async function rebuildState(
   config: LoadedConfig,
   roomDir: string,
 ): Promise<RoomState> {
-  return reconcileState(config, roomDir, null);
+  return reconcileState(config, roomDir, null, await new RoomStore(roomDir).readMessages());
 }

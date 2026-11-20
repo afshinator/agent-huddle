@@ -504,6 +504,7 @@ export interface Telemetry {
 - **Timeout:** `waitForSettled` enforces a per-turn timeout (real `PiAgentClient`, T8); on timeout, send `abort`, then treat as a failed hop (counted, chain halts with a notice).
 - **Context push failure (`pushContext`, §6.6 / Q3):** best-effort. A failed push is logged and appended as a `notice`, then routing continues; it never halts the chain and never aborts boot.
 - **Boot:** on start, if `state.json` exists and `status != "halted"`, the coordinator may resume: re-open each agent session (`--session-id`) and continue. v1 minimum: resume is optional; a fresh boot starting `idle` is acceptable, and `state.json` rebuild is always possible from `messages.jsonl`.
+- **Damaged files:** a line of `messages.jsonl` that is not readable JSON (a crash mid-append) is skipped on read and counted in one `warn` log; a damaged `state.json` is treated as absent and rebuilt. Neither aborts boot.
 - **Shutdown:** coordinator closes each agent's stdin, SIGTERM, grace period, SIGKILL; writes final `state.json`.
 
 ---

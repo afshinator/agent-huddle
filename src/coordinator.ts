@@ -160,10 +160,18 @@ export class Coordinator {
   }
 
   private async loadOrCreateState(): Promise<RoomState> {
+    const messages = await this.store.readMessages();
+    if (this.store.skippedLines > 0) {
+      this.telemetry.log("warn", "skipped unparsable room log lines", {
+        path: this.store.messagesPath,
+        count: this.store.skippedLines,
+      });
+    }
     return reconcileState(
       this.config,
       this.config.config.room_dir,
       await this.store.readState(),
+      messages,
     );
   }
 

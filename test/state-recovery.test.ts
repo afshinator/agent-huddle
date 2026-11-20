@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Coordinator } from "../src/coordinator";
 import { RoomStore } from "../src/store";
-import { NoopTelemetry } from "../src/telemetry";
+import { NoopTelemetry, type Span, type Telemetry } from "../src/telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
 import type { AgentSpec, LoadedConfig } from "../src/config";
@@ -32,5 +32,38 @@ test("Coordinator repairs a partial state cache before boot", async () => {
     expect(Object.keys(state!.agents).sort()).toEqual(["dev1", "lead"]);
     expect(state!.agents.dev1.pid).toBeGreaterThan(0);
     expect(state!.agents.lead.status).toBe("idle");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+class RecordingTelemetry implements Telemetry {
+  warnings: Array<{ msg: string; attrs?: Record<string, unknown> }> = [];
+  span<T>(_name: string, _attrs: Record<string, unknown>, fn: (s: Span) => T): T {
+    return fn({ addEvent() {}, setStatus() {} });
+  }
+  log(level: "info" | "warn" | "error", msg: string, attrs?: Record<string, unknown>): void {
+    if (level === "warn") this.warnings.push({ msg, attrs });
+  }
+  counter(): void {}
+  histogram(): void {}
+  upDownCounter(): void {}
+}
+
+test("Coordinator boots after a truncated log line and warns once", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ah-truncated-"));
+  try {
+    const good = JSON.stringify({ id: "m1", ts: "t", kind: "user", from: "supervisor", handle: "supervisor", text: "a", mentions: [], chainId: "c", hop: 0 });
+    await writeFile(join(dir, "messages.jsonl"), good + "\n" + '{"id":"m2","ts":"t","kin', "utf8");
+
+    const telemetry = new RecordingTelemetry();
+    const store = new RoomStore(dir);
+    const coordinator = new Coordinator({ config: config(dir), store, pi: new FakePiAgentClient(), telemetry });
+
+    await expect(coordinator.boot()).resolves.toBeNull();
+
+    const state = await store.readState();
+    expect(state!.lastMessageId).toBe("m1");
+    expect(telemetry.warnings).toHaveLength(1);
+    expect(telemetry.warnings[0].msg).toContain("skipped");
+    expect(telemetry.warnings[0].attrs?.count).toBe(1);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
