@@ -66,9 +66,14 @@ export class HerdrPaneManagerReal implements HerdrPaneManager {
       "--cwd", this.cwd,
       "--no-focus",
     ]);
-    const rec = JSON.parse(stdout);
-    const paneId = rec?.result?.pane?.pane_id;
-    if (!paneId) throw new Error(`herdr pane split: no pane_id in response`);
+    let rec: unknown;
+    try {
+      rec = JSON.parse(stdout);
+    } catch (error: unknown) {
+      throw new Error(`herdr pane split returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const paneId = (rec as { result?: { pane?: { pane_id?: unknown } } })?.result?.pane?.pane_id;
+    if (typeof paneId !== "string" || paneId.length === 0) throw new Error(`herdr pane split: no pane_id in response`);
     return paneId;
   }
 

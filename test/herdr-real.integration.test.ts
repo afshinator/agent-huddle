@@ -56,6 +56,10 @@ describe.skipIf(skip)("HerdrPaneManagerReal (integration)", () => {
       await appendFile(log, "hello t9 marker\n", "utf8");
       await pollFor(() => mgr.readOutput(paneId!), "hello t9 marker");
 
+      await mgr.tailLog(paneId, log);
+      await appendFile(log, "direct tail marker\n", "utf8");
+      await pollFor(() => mgr.readOutput(paneId!), "direct tail marker");
+
       await mgr.close(paneId);
       paneId = null;
 
