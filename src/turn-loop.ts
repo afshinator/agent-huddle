@@ -4,7 +4,7 @@ import type { LoadedConfig } from "./config";
 import type { MessageKind, RoomMessage } from "./messages";
 import type { ChainState } from "./state";
 import type { RoomStore } from "./store";
-import { extractMentions, resolveMentions, resolveTargets } from "./router";
+import { extractMentions, resolveMentions } from "./router";
 import { errorMessage } from "./errors";
 import type { PiAgentClient, SettledResult } from "./seams/pi-agent-client";
 import type { Telemetry } from "./telemetry";
@@ -109,11 +109,27 @@ export class TurnLoop {
     if (initialResolution.unknownHandles.length > 0) {
       await this.append(chain, "notice", "room", `unknown agent mention(s): ${initialResolution.unknownHandles.join(", ")}`, 0);
     }
-    const initialTargets = initialResolution.hadMention
-      ? initialResolution.targets
-      : resolveTargets(text, this.cfg);
+    // D6: no mention activates nobody. The startup task is a boot directive, not a
+    // chat message, so it addresses the lead or the room would boot silent.
+    const initialTargets =
+      initialResolution.targets.length > 0
+        ? initialResolution.targets
+        : kind === "startup_task"
+          ? [this.cfg.config.lead.id]
+          : [];
     const queue: Array<{ agentId: string; text: string }> = initialTargets.map((agentId) => ({ agentId, text }));
     await this.syncContext(chain, text, queue.map((t) => t.agentId));
+
+    if (queue.length === 0) {
+      await this.append(
+        chain,
+        "notice",
+        "room",
+        `no agent addressed; ${this.cfg.allAgents.length} agents have the message as context`,
+        0,
+      );
+      return this.finish(chain, "completed");
+    }
 
     while (queue.length > 0) {
       const { agentId, text: promptText } = queue.shift()!;

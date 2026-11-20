@@ -84,27 +84,58 @@ describe("hasDoneSignal", () => {
 });
 
 describe("TurnLoop", () => {
-  test("no mention routes to lead and completes when lead says DONE", async () => {
+  test("no mention activates nobody; every agent gets the text as context", async () => {
     await harness(async ({ loop, pi, msgs }) => {
-      pi.script("lead", [{ lastText: "all done\nDONE" }]);
-      const result = await loop.submit("please build the thing");
+      const result = await loop.submit("just a status update");
 
       expect(result.status).toBe("completed");
-      expect(result.hopCount).toBe(1);
+      expect(result.hopCount).toBe(0);
+      expect(pi.calls.filter((c) => c.op === "prompt")).toEqual([]);
+      expect(pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId)).toEqual([
+        "lead",
+        "dev1",
+        "dev2",
+        "reviewer",
+      ]);
 
       const m = await msgs();
-      expect(m.map((x) => `${x.kind}:${x.from}`)).toEqual(["user:supervisor", "agent:lead"]);
-      expect(m[1].text).toBe("all done\nDONE");
-      expect(m[1].hop).toBe(1);
+      expect(m.map((x) => `${x.kind}:${x.from}`)).toEqual(["user:supervisor", "notice:room"]);
+      expect(m[1].text).toBe("no agent addressed; 4 agents have the message as context");
+      expect(m[1].hop).toBe(0);
+    });
+  });
+
+  test("a startup task targets the lead even without a mention", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "all done\nDONE" }]);
+      const result = await loop.submit("Design and document a small service.", "startup_task");
+
+      expect(result.hopCount).toBe(1);
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead"]);
       const prompt = pi.calls.find((c) => c.op === "prompt");
       expect((prompt!.payload as { streamingBehavior: string }).streamingBehavior).toBe("followUp");
+      const m = await msgs();
+      expect(m.map((x) => `${x.kind}:${x.from}`)).toEqual(["startup_task:room", "agent:lead"]);
+    });
+  });
+
+  test("a reply with no mention ends the chain idle rather than halting", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "@dev1 take a look" }]);
+      pi.script("dev1", [{ lastText: "looked at it, nothing to report" }]);
+
+      const result = await loop.submit("@lead start", "user");
+
+      expect(result.status).toBe("completed");
+      const kinds = (await msgs()).map((x) => x.kind);
+      expect(kinds).not.toContain("hop_limit_reached");
     });
   });
 
   test("a non-Error rejection still produces a readable notice", async () => {
     await harness(async ({ loop, pi, msgs, telemetry }) => {
       pi.script("lead", [{ error: { code: 42 } as unknown as Error }]);
-      await loop.submit("go");
+      await loop.submit("@lead go");
 
       const notice = (await msgs()).find((x) => x.kind === "notice")!;
       expect(notice.text).toContain('{"code":42}');
@@ -117,7 +148,7 @@ describe("TurnLoop", () => {
       pi.script("lead", [{ lastText: "@dev1 implement it" }, { lastText: "verified\nDONE" }]);
       pi.script("dev1", [{ lastText: "@lead done, please verify" }]);
 
-      const result = await loop.submit("build it");
+      const result = await loop.submit("@lead build it");
       expect(result.status).toBe("completed");
 
       const m = await msgs();
@@ -138,7 +169,7 @@ describe("TurnLoop", () => {
       pi.script("lead", [{ lastText: "@dev1 take it, report to @lead when green" }]);
       pi.script("dev1", [{ lastText: "finished, nothing to add" }]);
 
-      const result = await loop.submit("build it");
+      const result = await loop.submit("@lead build it");
       expect(result.status).toBe("completed");
       // The lead's own handle is in the reply; that must not send the work back to it.
       const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
@@ -150,7 +181,7 @@ describe("TurnLoop", () => {
     await harness(async ({ loop, pi }) => {
       pi.script("lead", [{ lastText: "I will keep @lead posted" }]);
 
-      const result = await loop.submit("go");
+      const result = await loop.submit("@lead go");
       expect(result.status).toBe("completed");
       const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
       expect(prompts).toEqual(["lead"]);
@@ -161,7 +192,7 @@ describe("TurnLoop", () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.failOn("waitForSettled", new Error("settle timeout after 5000ms"));
 
-      const result = await loop.submit("go");
+      const result = await loop.submit("@lead go");
       expect(result.status).toBe("halted");
       const notice = (await msgs()).find((m) => m.kind === "notice")!;
       expect(notice.text).toBe("agent lead: settle timeout after 5000ms");
@@ -173,7 +204,7 @@ describe("TurnLoop", () => {
     await harness(
       async ({ loop, pi }) => {
         pi.script("lead", [{ lastText: "ok\nDONE" }]);
-        await loop.submit("go");
+        await loop.submit("@lead go");
         expect(pi.calls.find((c) => c.op === "waitForSettled")!.payload).toBe(5000);
       },
       { turnTimeoutMs: 5000 },
@@ -219,7 +250,7 @@ describe("TurnLoop", () => {
     await harness(async ({ loop, pi }) => {
       pi.script("lead", [{ lastText: "@dev1 do it" }]);
       pi.script("dev1", [{ lastText: "finished, nothing else to say" }]);
-      const result = await loop.submit("go");
+      const result = await loop.submit("@lead go");
       expect(result.status).toBe("completed");
       expect(result.hopCount).toBe(2);
     });
@@ -231,7 +262,7 @@ describe("TurnLoop", () => {
         pi.script("lead", [{ lastText: "@dev1 work" }, { lastText: "@dev1 wrap up" }]);
         pi.script("dev1", [{ lastText: "@lead check" }, { lastText: "summary of work" }]);
 
-        const result = await loop.submit("start");
+        const result = await loop.submit("@lead start");
 
         expect(result.status).toBe("halted");
         expect(result.hopCount).toBe(2);
@@ -260,7 +291,7 @@ describe("TurnLoop", () => {
       async ({ loop, pi }) => {
         pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "wrap" }]);
         pi.script("dev1", [{ lastText: "@lead ok" }, { lastText: "summary" }]);
-        const result = await loop.submit("start");
+        const result = await loop.submit("@lead start");
         expect(result.hopCount).toBe(2);
       },
       { maxHops: 2 },
@@ -273,7 +304,7 @@ describe("TurnLoop", () => {
         pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "closing\nDONE" }]);
         pi.script("dev1", [{ lastText: "@lead ok" }]);
 
-        const result = await loop.submit("start");
+        const result = await loop.submit("@lead start");
         expect(result.status).toBe("completed");
         const m = await msgs();
         expect(m.find((x) => x.kind === "hop_limit_reached")).toBeUndefined();
@@ -315,8 +346,8 @@ describe("TurnLoop", () => {
   test("human input starts a fresh chain each time", async () => {
     await harness(async ({ loop, pi }) => {
       pi.script("lead", [{ lastText: "one\nDONE" }, { lastText: "two\nDONE" }]);
-      const first = await loop.submit("first");
-      const second = await loop.submit("second");
+      const first = await loop.submit("@lead first");
+      const second = await loop.submit("@lead second");
       expect(first.chainId).not.toBe(second.chainId);
       expect(second.hopCount).toBe(1);
     });
@@ -353,7 +384,7 @@ describe("TurnLoop", () => {
       pi.script("lead", [{ lastText: "@dev1 @dev2 split the work" }]);
       pi.script("dev1", [{ lastText: "part A done" }]);
       pi.script("dev2", [{ lastText: "part B done" }]);
-      const result = await loop.submit("build it");
+      const result = await loop.submit("@lead build it");
       expect(result.status).toBe("completed");
       expect(result.hopCount).toBe(3);
       const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
@@ -374,7 +405,7 @@ describe("TurnLoop", () => {
   test("a failing agent halts the chain with a notice", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ error: new Error("pi exploded") }]);
-      const result = await loop.submit("go");
+      const result = await loop.submit("@lead go");
       expect(result.status).toBe("halted");
       const m = await msgs();
       const notice = m.find((x) => x.kind === "notice");
@@ -389,7 +420,7 @@ describe("TurnLoop", () => {
       pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "verified\nDONE" }]);
       pi.script("dev1", [{ lastText: "@lead ok" }]);
 
-      const result = await loop.submit("build it");
+      const result = await loop.submit("@lead build it");
 
       expect(result.status).toBe("completed");
       const m = await msgs();
@@ -411,7 +442,7 @@ describe("TurnLoop", () => {
       store.appendMessage = async () => {
         throw new Error("disk full");
       };
-      await expect(loop.submit("go")).rejects.toThrow("disk full");
+      await expect(loop.submit("@lead go")).rejects.toThrow("disk full");
       expect(telemetry.chainDeltas).toEqual([1, -1]);
     });
   });

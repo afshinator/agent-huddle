@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { resolveMentions, resolveTargets } from "../src/router";
+import { resolveMentions, extractMentions } from "../src/router";
 import type { LoadedConfig } from "../src/config";
 
 function makeConfig(leadHandle = "@lead"): LoadedConfig {
@@ -23,40 +23,41 @@ function makeConfig(leadHandle = "@lead"): LoadedConfig {
   };
 }
 
-describe("resolveTargets", () => {
+describe("extractMentions", () => {
   const cfg = makeConfig();
 
   test("single @handle resolves to that agent id", () => {
-    expect(resolveTargets("@dev1 fix this", cfg)).toEqual(["dev1"]);
+    expect(extractMentions("@dev1 fix this", cfg)).toEqual(["dev1"]);
   });
 
   test("multiple mentions: deduped, first-occurrence order", () => {
-    expect(resolveTargets("@dev2 @dev1 @dev2", cfg)).toEqual(["dev2", "dev1"]);
+    expect(extractMentions("@dev2 @dev1 @dev2", cfg)).toEqual(["dev2", "dev1"]);
   });
 
   test("@lead resolves to lead id", () => {
-    expect(resolveTargets("@lead status", cfg)).toEqual(["lead"]);
+    expect(extractMentions("@lead status", cfg)).toEqual(["lead"]);
   });
 
   test("lead's custom handle and @lead both resolve to lead", () => {
     const cfg2 = makeConfig("@coordinator");
-    expect(resolveTargets("@coordinator go", cfg2)).toEqual(["lead"]);
-    expect(resolveTargets("@lead go", cfg2)).toEqual(["lead"]);
+    expect(extractMentions("@coordinator go", cfg2)).toEqual(["lead"]);
+    expect(extractMentions("@lead go", cfg2)).toEqual(["lead"]);
   });
 
   test("@all and @everyone target every agent", () => {
     const expected = ["lead", "dev1", "dev2", "reviewer"];
-    expect(resolveTargets("@all go", cfg)).toEqual(expected);
-    expect(resolveTargets("@everyone go", cfg)).toEqual(expected);
+    expect(extractMentions("@all go", cfg)).toEqual(expected);
+    expect(extractMentions("@everyone go", cfg)).toEqual(expected);
   });
 
-  test("no mention -> lead", () => {
-    expect(resolveTargets("just a status update", cfg)).toEqual(["lead"]);
-    expect(resolveTargets("", cfg)).toEqual(["lead"]);
+  test("no mention targets nobody (D6)", () => {
+    expect(extractMentions("just a status update", cfg)).toEqual([]);
+    expect(extractMentions("", cfg)).toEqual([]);
+    expect(resolveMentions("just a status update", cfg).hadMention).toBe(false);
   });
 
-  test("unknown @handle is reported and does not route to lead", () => {
-    expect(resolveTargets("@nobody do x", cfg)).toEqual([]);
+  test("unknown @handle is reported and targets nobody", () => {
+    expect(extractMentions("@nobody do x", cfg)).toEqual([]);
     expect(resolveMentions("@nobody do x", cfg)).toEqual({
       targets: [],
       unknownHandles: ["@nobody"],
@@ -65,15 +66,15 @@ describe("resolveTargets", () => {
   });
 
   test("known + unknown mention: known kept and unknown reported", () => {
-    expect(resolveTargets("@dev1 @nobody", cfg)).toEqual(["dev1"]);
+    expect(extractMentions("@dev1 @nobody", cfg)).toEqual(["dev1"]);
     expect(resolveMentions("@dev1 @nobody", cfg).unknownHandles).toEqual(["@nobody"]);
   });
 
   test("broadcast + specific mention dedupes", () => {
-    expect(resolveTargets("@all @dev1", cfg)).toEqual(["lead", "dev1", "dev2", "reviewer"]);
+    expect(extractMentions("@all @dev1", cfg)).toEqual(["lead", "dev1", "dev2", "reviewer"]);
   });
 
   test("mention adjacent to punctuation", () => {
-    expect(resolveTargets("@dev1, please check.", cfg)).toEqual(["dev1"]);
+    expect(extractMentions("@dev1, please check.", cfg)).toEqual(["dev1"]);
   });
 });

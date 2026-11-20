@@ -41,7 +41,7 @@ The coordinator's terminal is the shared chat room:
 - **stdout**: formatted room messages
 - `@agent` or multiple handles: target named agents
 - `@all` / `@everyone`: target the whole team
-- no mention: route to the lead
+- no mention: nobody is activated; every agent still receives it as context
 - unknown-only mentions: append a notice and dispatch nobody
 
 When running inside a Herdr-managed pane (`HERDR_ENV=1`), the coordinator opens one read-only log pane per agent. Closing an agent pane hides its log and does not stop that agent's `pi` process.

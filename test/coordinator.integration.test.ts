@@ -101,7 +101,7 @@ describe.skipIf(integrationDisabled())("Coordinator (real pi, headless)", () => 
     try {
       const boot = await coordinator.boot();
       expect(boot).toBeNull();
-      const result = await coordinator.submit("Reply with exactly: OK");
+      const result = await coordinator.submit("@lead Reply with exactly: OK");
       expect(result.status).toBe("completed");
       expect((await store.readMessages()).messages.length).toBeGreaterThanOrEqual(2);
       expect((await store.readState())!.name).toBe("coord-itest");

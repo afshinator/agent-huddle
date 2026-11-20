@@ -83,7 +83,7 @@ the store by construction. `src/store.ts`, `src/coordinator.ts`.
 
 ## D6 — a message with no mention activates nobody (v1.1)
 
-**Decision:** a message whose text mentions no handle targets nobody: `resolveTargets` returns an
+**Decision:** a message whose text mentions no handle targets nobody: `extractMentions` returns an
 empty list, every agent still ingests the text as context (§6.6), and the chain completes immediately
 as `idle`. The startup `task:` is the one exception — it targets the lead, because a boot directive is
 not a chat message.
@@ -97,7 +97,7 @@ decided not to", which is a bad state for a human to debug.
 
 **Cost, accepted:** a silent room is now reachable. A human who forgets the `@handle` sees nothing
 happen, so a message with no targets must produce a room notice saying so rather than nothing.
-`src/router.ts` (`resolveTargets`), `src/turn-loop.ts` (chain start).
+`src/router.ts` (`extractMentions`), `src/turn-loop.ts` (chain start, #35).
 
 ---
 

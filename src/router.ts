@@ -63,12 +63,7 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
   return { targets, unknownHandles, hadMention: found };
 }
 
+/** Routing entry point: explicit mentions, else nothing (§6.1/§6.4, D6). */
 export function extractMentions(text: string, config: LoadedConfig): string[] {
   return resolveMentions(text, config).targets;
-}
-
-/** Routing entry point: explicit mentions, else the lead (§6.1/§6.4). */
-export function resolveTargets(text: string, config: LoadedConfig): string[] {
-  const resolution = resolveMentions(text, config);
-  return resolution.hadMention ? resolution.targets : [config.config.lead.id];
 }

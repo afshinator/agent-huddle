@@ -116,7 +116,7 @@ describe("Coordinator (fakes)", () => {
 
       // No mention: the lead answers alone, dev1 never runs.
       pi.script("lead", [{ lastText: "answered\nDONE" }]);
-      await coordinator.submit("just answer me");
+      await coordinator.submit("@lead just answer me");
 
       const after = (await store.readState())!;
       expect(after.agents.lead.lastActivityAt).not.toBe(before.agents.lead.lastActivityAt);
@@ -145,7 +145,7 @@ describe("Coordinator (fakes)", () => {
       expect(bootPaneId).toBe("agent-lead");
 
       pi.script("lead", [{ lastText: "ack\nDONE" }]);
-      await coordinator.submit("status");
+      await coordinator.submit("@lead status");
       const submittedState = await store.readState();
       expect(submittedState!.startedAt).toBe(startedAt);
       expect(submittedState!.agents.lead.pid).toBe(bootPid);
@@ -178,7 +178,7 @@ describe("Coordinator (fakes)", () => {
       await coordinator.boot();
       pi.script("lead", [{ lastText: "ack\nDONE" }]);
 
-      const result = await coordinator.submit("status please");
+      const result = await coordinator.submit("@lead status please");
       expect(result.status).toBe("completed");
 
       const msgs = (await store.readMessages()).messages;
@@ -197,14 +197,14 @@ describe("Coordinator (fakes)", () => {
       ]);
       await coordinator.boot();
 
-      const first = coordinator.submit("first");
-      const second = coordinator.submit("second");
+      const first = coordinator.submit("@lead first");
+      const second = coordinator.submit("@lead second");
       const results = await Promise.all([first, second]);
 
       expect(results.map((result) => result.status)).toEqual(["completed", "completed"]);
       expect(pi.calls.filter((call) => call.op === "prompt").map((call) => call.agentId)).toEqual(["lead", "lead"]);
       const messages = (await store.readMessages()).messages;
-      expect(messages.filter((message) => message.kind === "user").map((message) => message.text)).toEqual(["first", "second"]);
+      expect(messages.filter((message) => message.kind === "user").map((message) => message.text)).toEqual(["@lead first", "@lead second"]);
       expect(messages.filter((message) => message.kind === "agent").map((message) => message.text)).toEqual(["first\nDONE", "second\nDONE"]);
     });
   });
@@ -315,7 +315,7 @@ describe("Coordinator (fakes)", () => {
       process.on("unhandledRejection", onUnhandled);
       try {
         pi.script("lead", [{ deltas: ["a", "b", "c"], lastText: "done\nDONE" }]);
-        const result = await coordinator.submit("go");
+        const result = await coordinator.submit("@lead go");
         expect(result.status).toBe("completed");
         await coordinator.shutdown();
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -340,7 +340,7 @@ describe("Coordinator (fakes)", () => {
         return realRead();
       };
 
-      await coordinator.submit("build it");
+      await coordinator.submit("@lead build it");
 
       expect(reads).toBe(0);
     });
@@ -352,7 +352,7 @@ describe("Coordinator (fakes)", () => {
       pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "done\nDONE" }]);
       pi.script("dev1", [{ lastText: "@lead ok" }]);
 
-      await coordinator.submit("build it");
+      await coordinator.submit("@lead build it");
       await coordinator.shutdown();
 
       const messages = (await store.readMessages()).messages;

@@ -274,7 +274,7 @@ supervisor input / startup task
 append messages.jsonl (kind user|startup_task, hop 0)
         │
         ▼
-Router.resolveTargets(message)
+Router.extractMentions(message)
         │
         ├─ has @mentions ──► targets = mentioned agent ids (dedup, order preserved)
         │                     (mention of "lead"/lead.handle maps to lead id)
@@ -405,7 +405,7 @@ Layout (agent panes created at boot, via `herdr pane split` / `run` / `rename`; 
 
 Rules:
 
-- **room pane** (the shared chat room): runs the coordinator process. Its stdout prints the room stream (each appended `messages.jsonl` entry, formatted); its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no-mention→lead). Notices/errors print here too. The human can steer at any time (§6.4).
+- **room pane** (the shared chat room): runs the coordinator process. Its stdout prints the room stream (each appended `messages.jsonl` entry, formatted); its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
 - **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/log.jsonl`. The coordinator writes each agent's streamed deltas + lifecycle lines to its log file. Read-only; closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
 
 ### 8.1 Seam (§9) is the only herdr touchpoint
@@ -576,7 +576,7 @@ Each ticket is one fresh context window, ships a working increment, and depends 
 | T1 | **Config loader** | Parse + validate YAML → `LoadedConfig`; resolve `room_dir`/`system_prompt_file`; reject unknown keys, `system_prompt`+`system_prompt_file` together, duplicate ids; unit tests. | — |
 | T2 | **Persistence** | `messages.jsonl` append + `state.json` atomic write; types from §4; append/read/rebuild unit tests. | T1 |
 | T3 | **Seams (interfaces + fakes)** | `PiAgentClient` + `HerdrPaneManager` interfaces and in-memory fakes with scripted agents and a pane registry; tests. | T1 |
-| T4 | **Router** | `resolveTargets`: @mention parse, `@lead`/handle resolution, no-mention → lead, dedup/order; pure unit tests. | T1 |
+| T4 | **Router** | `extractMentions`: @mention parse, `@lead`/handle resolution, dedup/order; pure unit tests. (v1's no-mention → lead fallback was reversed by D6, #35.) | T1 |
 | T5 | **System prompt builder** | Role + social contract + lead DoD prompt from config (§5); golden tests. | T1 |
 | T6 | **Turn loop + hop cap + nudge** | `TurnLoop` over fakes: dispatch, settle, append, chain propagation, `max_hops` nudge, `hop_limit_reached` halt, human reset; state-machine tests. | T2, T3, T4, T5 |
 | T7 | **Startup task / idle modes** | Boot posts `task` + triggers lead when present; idle start otherwise; D2 tests. | T6 |
