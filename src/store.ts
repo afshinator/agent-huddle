@@ -5,11 +5,25 @@ import type { LoadedConfig } from "./config";
 import type { RoomMessage } from "./messages";
 import type { AgentRuntime, RoomState } from "./state";
 
+/** One read of `messages.jsonl`: the readable messages plus the lines dropped. */
+export interface LogRead {
+  messages: RoomMessage[];
+  skipped: number;
+}
+
+/** A line that is not a JSON object is a crash artefact, not a message. */
+function parseLine(line: string): RoomMessage | null {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return typeof parsed === "object" && parsed !== null ? (parsed as RoomMessage) : null;
+  } catch {
+    return null;
+  }
+}
+
 export class RoomStore {
   /** Live room-stream hook; the coordinator prints each appended message here. */
   onAppend?: (msg: RoomMessage) => void;
-  /** Lines dropped by the most recent `readMessages()` because they were not readable JSON. */
-  skippedLines = 0;
   private stateWrite: Promise<void> = Promise.resolve();
 
   constructor(private readonly roomDir: string) {}
@@ -28,34 +42,28 @@ export class RoomStore {
     this.onAppend?.(msg);
   }
 
-  async readMessages(): Promise<RoomMessage[]> {
-    this.skippedLines = 0;
+  async readMessages(): Promise<LogRead> {
     let text: string;
     try {
       text = await readFile(this.messagesPath, "utf8");
     } catch (e) {
-      if ((e as { code?: string }).code === "ENOENT") return [];
+      if ((e as { code?: string }).code === "ENOENT") return { messages: [], skipped: 0 };
       throw e;
     }
     const messages: RoomMessage[] = [];
+    let skipped = 0;
     for (const line of text.split("\n")) {
       if (line.trim() === "") continue;
       // A crash mid-append can leave one partial line; it must not make the
       // log unreadable, so a bad line is dropped and counted.
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(line);
-      } catch {
-        this.skippedLines += 1;
+      const message = parseLine(line);
+      if (message === null) {
+        skipped += 1;
         continue;
       }
-      if (typeof parsed !== "object" || parsed === null) {
-        this.skippedLines += 1;
-        continue;
-      }
-      messages.push(parsed as RoomMessage);
+      messages.push(message);
     }
-    return messages;
+    return { messages, skipped };
   }
 
   writeState(state: RoomState): Promise<void> {
@@ -100,10 +108,10 @@ export class RoomStore {
  */
 export async function reconcileState(
   config: LoadedConfig,
-  roomDir: string,
   existing: RoomState | null,
   messages: RoomMessage[],
 ): Promise<RoomState> {
+  const roomDir = config.config.room_dir;
   const last = messages.at(-1);
   const agents: Record<string, AgentRuntime> = {};
   for (const spec of config.allAgents) {
@@ -127,11 +135,4 @@ export async function reconcileState(
     agents,
     lastMessageId: last?.id ?? null,
   };
-}
-
-export async function rebuildState(
-  config: LoadedConfig,
-  roomDir: string,
-): Promise<RoomState> {
-  return reconcileState(config, roomDir, null, await new RoomStore(roomDir).readMessages());
 }

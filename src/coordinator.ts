@@ -209,19 +209,14 @@ export class Coordinator {
   }
 
   private async loadOrCreateState(): Promise<RoomState> {
-    const messages = await this.store.readMessages();
-    if (this.store.skippedLines > 0) {
+    const { messages, skipped } = await this.store.readMessages();
+    if (skipped > 0) {
       this.telemetry.log("warn", "skipped unparsable room log lines", {
         path: this.store.messagesPath,
-        count: this.store.skippedLines,
+        count: skipped,
       });
     }
-    return reconcileState(
-      this.config,
-      this.config.config.room_dir,
-      await this.store.readState(),
-      messages,
-    );
+    return reconcileState(this.config, await this.store.readState(), messages);
   }
 
   private async handleAgentError(agentId: string, error: Error): Promise<void> {

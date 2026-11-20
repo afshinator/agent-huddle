@@ -2,7 +2,7 @@ import { test, expect, describe } from "bun:test";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RoomStore, rebuildState } from "../src/store";
+import { RoomStore, reconcileState } from "../src/store";
 import type { LoadedConfig } from "../src/config";
 import type { RoomMessage } from "../src/messages";
 import type { RoomState } from "../src/state";
@@ -48,15 +48,16 @@ describe("RoomStore", () => {
       const s = new RoomStore(dir);
       await s.appendMessage(msg("m1"));
       await s.appendMessage(msg("m2"));
-      const msgs = await s.readMessages();
-      expect(msgs.map((m) => m.id)).toEqual(["m1", "m2"]);
+      const { messages, skipped } = await s.readMessages();
+      expect(messages.map((m) => m.id)).toEqual(["m1", "m2"]);
+      expect(skipped).toBe(0);
     });
   });
 
-  test("readMessages returns [] when file missing", async () => {
+  test("readMessages returns nothing when file missing", async () => {
     await withDir(async (dir) => {
       const s = new RoomStore(dir);
-      expect(await s.readMessages()).toEqual([]);
+      expect(await s.readMessages()).toEqual({ messages: [], skipped: 0 });
     });
   });
 
@@ -95,9 +96,9 @@ describe("RoomStore", () => {
       const text = await Bun.file(s.messagesPath).text();
       await writeFile(s.messagesPath, text + '{"id":"m3","ts":"t","kin', "utf8");
 
-      const msgs = await s.readMessages();
-      expect(msgs.map((m) => m.id)).toEqual(["m1", "m2"]);
-      expect(s.skippedLines).toBe(1);
+      const { messages, skipped } = await s.readMessages();
+      expect(messages.map((m) => m.id)).toEqual(["m1", "m2"]);
+      expect(skipped).toBe(1);
     });
   });
 
@@ -108,21 +109,22 @@ describe("RoomStore", () => {
       const text = await Bun.file(s.messagesPath).text();
       await writeFile(s.messagesPath, text + "5\nnull\n", "utf8");
 
-      const msgs = await s.readMessages();
-      expect(msgs.map((m) => m.id)).toEqual(["m1"]);
-      expect(s.skippedLines).toBe(2);
+      const { messages, skipped } = await s.readMessages();
+      expect(messages.map((m) => m.id)).toEqual(["m1"]);
+      expect(skipped).toBe(2);
     });
   });
 
-  test("readMessages resets the skipped count on each read", async () => {
+  test("each read reports its own count, so a throwaway store cannot lose it", async () => {
     await withDir(async (dir) => {
-      const s = new RoomStore(dir);
-      await writeFile(s.messagesPath, "not json\n", "utf8");
-      await s.readMessages();
-      expect(s.skippedLines).toBe(1);
-      await writeFile(s.messagesPath, JSON.stringify(msg("m1")) + "\n", "utf8");
-      expect(await s.readMessages()).toHaveLength(1);
-      expect(s.skippedLines).toBe(0);
+      await writeFile(join(dir, "messages.jsonl"), "not json\n", "utf8");
+      const first = await new RoomStore(dir).readMessages();
+      expect(first).toEqual({ messages: [], skipped: 1 });
+
+      await writeFile(join(dir, "messages.jsonl"), JSON.stringify(msg("m1")) + "\n", "utf8");
+      const second = await new RoomStore(dir).readMessages();
+      expect(second.messages).toHaveLength(1);
+      expect(second.skipped).toBe(0);
     });
   });
 
@@ -134,12 +136,12 @@ describe("RoomStore", () => {
     });
   });
 
-  test("rebuildState derives agents and lastMessageId", async () => {
+  test("reconcileState derives agents and lastMessageId", async () => {
     await withDir(async (dir) => {
       const s = new RoomStore(dir);
       await s.appendMessage(msg("m1"));
       await s.appendMessage(msg("m2"));
-      const state = await rebuildState(makeConfig(dir), dir);
+      const state = await reconcileState(makeConfig(dir), null, (await s.readMessages()).messages);
       expect(state.lastMessageId).toBe("m2");
       expect(state.status).toBe("idle");
       expect(state.chain).toBeNull();

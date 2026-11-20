@@ -52,7 +52,7 @@ describe("startRoom", () => {
       expect(result).not.toBeNull();
       expect(result!.status).toBe("completed");
 
-      const msgs = await store.readMessages();
+      const msgs = (await store.readMessages()).messages;
       expect(msgs[0].kind).toBe("startup_task");
       expect(msgs[0].from).toBe("room");
       expect(msgs[0].text).toBe("build the thing");
@@ -66,7 +66,7 @@ describe("startRoom", () => {
     await harness(async ({ loop, store, pi }) => {
       const result = await startRoom(makeConfig(), loop);
       expect(result).toBeNull();
-      expect(await store.readMessages()).toEqual([]);
+      expect((await store.readMessages()).messages).toEqual([]);
       expect(pi.calls.filter((c) => c.op === "prompt")).toEqual([]);
       expect(pi.calls.filter((c) => c.op === "pushContext")).toEqual([]);
     });

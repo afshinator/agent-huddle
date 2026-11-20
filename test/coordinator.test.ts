@@ -77,7 +77,7 @@ describe("Coordinator (fakes)", () => {
       expect(result!.status).toBe("completed");
       expect(result!.hopCount).toBe(3);
 
-      const msgs = await store.readMessages();
+      const msgs = (await store.readMessages()).messages;
       expect(msgs.map((m) => `${m.kind}:${m.from}`)).toEqual([
         "startup_task:room",
         "agent:lead",
@@ -108,7 +108,7 @@ describe("Coordinator (fakes)", () => {
     await harness({ task: undefined }, async ({ coordinator, store, pi }) => {
       const result = await coordinator.boot();
       expect(result).toBeNull();
-      expect(await store.readMessages()).toEqual([]);
+      expect((await store.readMessages()).messages).toEqual([]);
       expect(pi.calls.filter((c) => c.op === "prompt")).toEqual([]);
       expect((await store.readState())!.status).toBe("idle");
     });
@@ -148,7 +148,7 @@ describe("Coordinator (fakes)", () => {
 
       expect(result!.status).toBe("halted");
       expect((await store.readState())!.status).toBe("halted");
-      const msgs = await store.readMessages();
+      const msgs = (await store.readMessages()).messages;
       expect(msgs.some((m) => m.kind === "hop_limit_reached")).toBe(true);
     });
   });
@@ -161,7 +161,7 @@ describe("Coordinator (fakes)", () => {
       const result = await coordinator.submit("status please");
       expect(result.status).toBe("completed");
 
-      const msgs = await store.readMessages();
+      const msgs = (await store.readMessages()).messages;
       expect(msgs[0].kind).toBe("user");
       expect(msgs[0].from).toBe("supervisor");
       expect(msgs[1].from).toBe("lead");
@@ -183,7 +183,7 @@ describe("Coordinator (fakes)", () => {
 
       expect(results.map((result) => result.status)).toEqual(["completed", "completed"]);
       expect(pi.calls.filter((call) => call.op === "prompt").map((call) => call.agentId)).toEqual(["lead", "lead"]);
-      const messages = await store.readMessages();
+      const messages = (await store.readMessages()).messages;
       expect(messages.filter((message) => message.kind === "user").map((message) => message.text)).toEqual(["first", "second"]);
       expect(messages.filter((message) => message.kind === "agent").map((message) => message.text)).toEqual(["first\nDONE", "second\nDONE"]);
     });
@@ -280,7 +280,7 @@ describe("Coordinator (fakes)", () => {
       await coordinator.submit("build it");
       await coordinator.shutdown();
 
-      const messages = await store.readMessages();
+      const messages = (await store.readMessages()).messages;
       expect(messages.at(-1)!.id).toBe((await store.readState())!.lastMessageId!);
     });
   });

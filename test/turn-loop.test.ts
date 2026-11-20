@@ -57,7 +57,7 @@ async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: num
       pi,
       telemetry,
       msgs: async () =>
-        (await store.readMessages()).map((m) => ({
+        (await store.readMessages()).messages.map((m) => ({
           kind: m.kind,
           from: m.from,
           text: m.text,

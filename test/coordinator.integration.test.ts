@@ -72,7 +72,7 @@ describe.skipIf(integrationDisabled())("Coordinator (controlled real RPC)", () =
       const result = await coordinator.boot();
       expect(result?.status).toBe("completed");
       expect(result?.hopCount).toBe(3);
-      const messages = await store.readMessages();
+      const messages = (await store.readMessages()).messages;
       expect(messages.map((message) => `${message.kind}:${message.from}`)).toEqual([
         "startup_task:room",
         "agent:lead",
@@ -103,7 +103,7 @@ describe.skipIf(integrationDisabled())("Coordinator (real pi, headless)", () => 
       expect(boot).toBeNull();
       const result = await coordinator.submit("Reply with exactly: OK");
       expect(result.status).toBe("completed");
-      expect((await store.readMessages()).length).toBeGreaterThanOrEqual(2);
+      expect((await store.readMessages()).messages.length).toBeGreaterThanOrEqual(2);
       expect((await store.readState())!.name).toBe("coord-itest");
     } finally {
       await coordinator.shutdown();
