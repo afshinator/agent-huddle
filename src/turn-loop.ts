@@ -91,41 +91,50 @@ export class TurnLoop {
       { chainId: chain.chainId, room: this.cfg.config.name, kind },
       async () => {
         this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, 1);
-        await this.append(chain, kind, kind === "user" ? "supervisor" : "room", text, 0);
-
-        const initialResolution = resolveMentions(text, this.cfg);
-        if (initialResolution.unknownHandles.length > 0) {
-          await this.append(chain, "notice", "room", `unknown agent mention(s): ${initialResolution.unknownHandles.join(", ")}`, 0);
+        try {
+          return await this.runChain(chain, text, kind);
+        } finally {
+          this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, -1);
         }
-        const initialTargets = initialResolution.hadMention
-          ? initialResolution.targets
-          : resolveTargets(text, this.cfg);
-        const queue: Array<{ agentId: string; text: string }> = initialTargets.map((agentId) => ({ agentId, text }));
-        await this.syncContext(text, queue.map((t) => t.agentId));
-
-        while (queue.length > 0) {
-          const { agentId, text: promptText } = queue.shift()!;
-          if (chain.hopCount >= this.cfg.config.max_hops) {
-            return this.wrapUp(chain);
-          }
-          const settled = await this.dispatch(chain, agentId, promptText, true);
-          if (settled === null) return this.finish(chain, "halted");
-
-          if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
-
-          const reply = settled.lastText ?? "";
-          const resolution = resolveMentions(reply, this.cfg);
-          if (resolution.unknownHandles.length > 0) {
-            await this.append(chain, "notice", "room", `unknown agent mention(s): ${resolution.unknownHandles.join(", ")}`, chain.hopCount);
-          }
-          const nextIds = resolution.targets;
-          for (const nextId of nextIds) queue.push({ agentId: nextId, text: reply });
-          await this.syncContext(reply, nextIds, agentId);
-        }
-
-        return this.finish(chain, "completed");
       },
     );
+  }
+
+  /** One chain: dispatch the initial targets, then follow every reply's mentions. */
+  private async runChain(chain: ChainState, text: string, kind: SubmitKind): Promise<SubmitResult> {
+    await this.append(chain, kind, kind === "user" ? "supervisor" : "room", text, 0);
+
+    const initialResolution = resolveMentions(text, this.cfg);
+    if (initialResolution.unknownHandles.length > 0) {
+      await this.append(chain, "notice", "room", `unknown agent mention(s): ${initialResolution.unknownHandles.join(", ")}`, 0);
+    }
+    const initialTargets = initialResolution.hadMention
+      ? initialResolution.targets
+      : resolveTargets(text, this.cfg);
+    const queue: Array<{ agentId: string; text: string }> = initialTargets.map((agentId) => ({ agentId, text }));
+    await this.syncContext(chain, text, queue.map((t) => t.agentId));
+
+    while (queue.length > 0) {
+      const { agentId, text: promptText } = queue.shift()!;
+      if (chain.hopCount >= this.cfg.config.max_hops) {
+        return this.wrapUp(chain);
+      }
+      const settled = await this.dispatch(chain, agentId, promptText, true);
+      if (settled === null) return this.finish(chain, "halted");
+
+      if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
+
+      const reply = settled.lastText ?? "";
+      const resolution = resolveMentions(reply, this.cfg);
+      if (resolution.unknownHandles.length > 0) {
+        await this.append(chain, "notice", "room", `unknown agent mention(s): ${resolution.unknownHandles.join(", ")}`, chain.hopCount);
+      }
+      const nextIds = resolution.targets;
+      for (const nextId of nextIds) queue.push({ agentId: nextId, text: reply });
+      await this.syncContext(chain, reply, nextIds, agentId);
+    }
+
+    return this.finish(chain, "completed");
   }
 
   /** Lead wrap-up, then one concluding turn per previously dispatched agent. */
@@ -194,11 +203,24 @@ export class TurnLoop {
   }
 
   /** D8: every agent not targeted by this message still ingests it as context. */
-  private async syncContext(text: string, targets: string[], excludeId?: string): Promise<void> {
+  private async syncContext(
+    chain: ChainState,
+    text: string,
+    targets: string[],
+    excludeId?: string,
+  ): Promise<void> {
     if (text.trim() === "") return;
     for (const agent of this.cfg.allAgents) {
       if (agent.id === excludeId) continue;
-      if (!targets.includes(agent.id)) await this.pi.pushContext(agent.id, text);
+      if (targets.includes(agent.id)) continue;
+      try {
+        await this.pi.pushContext(agent.id, text);
+      } catch (e) {
+        // Context delivery is best-effort: it must never end the chain.
+        const msg = (e as Error).message;
+        this.telemetry.log("error", "context push failed", { agentId: agent.id, error: msg });
+        await this.append(chain, "notice", "room", `agent ${agent.id} context push failed: ${msg}`, chain.hopCount);
+      }
     }
   }
 
@@ -216,7 +238,6 @@ export class TurnLoop {
 
   private async finish(chain: ChainState, status: ChainOutcome): Promise<SubmitResult> {
     if (status === "halted") chain.status = "halted";
-    this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, -1);
     await this.notifyChainState(status === "completed" ? null : chain);
     return { chainId: chain.chainId, status, hopCount: chain.hopCount };
   }

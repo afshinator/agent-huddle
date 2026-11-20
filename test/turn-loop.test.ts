@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TurnLoop, wrapUpPrompt, CONCLUDE_PROMPT, hasDoneSignal } from "../src/turn-loop";
 import { RoomStore } from "../src/store";
-import { NoopTelemetry } from "../src/telemetry";
+import { NoopTelemetry, type Span, type Telemetry } from "../src/telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import type { AgentSpec, LoadedConfig } from "../src/config";
 
@@ -34,7 +34,26 @@ interface Harness {
   loop: TurnLoop;
   store: RoomStore;
   pi: FakePiAgentClient;
+  telemetry: RecordingTelemetry;
   msgs: () => Promise<Array<{ kind: string; from: string; text: string; hop: number; mentions: string[] }>>;
+}
+
+/** Records the chain gauge and error logs so the counter can be asserted. */
+class RecordingTelemetry implements Telemetry {
+  chainDeltas: number[] = [];
+  errors: string[] = [];
+
+  span<T>(_name: string, _attrs: Record<string, unknown>, fn: (s: Span) => T): T {
+    return fn({ addEvent() {}, setStatus() {} });
+  }
+  log(level: "info" | "warn" | "error", msg: string): void {
+    if (level === "error") this.errors.push(msg);
+  }
+  counter(): void {}
+  histogram(): void {}
+  upDownCounter(name: string, _attrs?: Record<string, unknown>, delta = 1): void {
+    if (name === "room.active_chains") this.chainDeltas.push(delta);
+  }
 }
 
 async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: number; agents?: AgentSpec[] }): Promise<void> {
@@ -43,7 +62,8 @@ async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: num
     const config = makeConfig(opts?.maxHops, opts?.agents);
     const store = new RoomStore(dir);
     const pi = new FakePiAgentClient();
-    const loop = new TurnLoop({ config, store, pi, telemetry: new NoopTelemetry() });
+    const telemetry = new RecordingTelemetry();
+    const loop = new TurnLoop({ config, store, pi, telemetry });
 
     for (const a of config.allAgents) await pi.spawn(a, { cwd: dir });
 
@@ -52,6 +72,7 @@ async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: num
       loop,
       store,
       pi,
+      telemetry,
       msgs: async () =>
         (await store.readMessages()).map((m) => ({
           kind: m.kind,
@@ -300,6 +321,41 @@ describe("TurnLoop", () => {
       const notice = m.find((x) => x.kind === "notice");
       expect(notice).toBeDefined();
       expect(notice!.text).toContain("pi exploded");
+    });
+  });
+
+  test("a failed context push is a notice, not a chain failure", async () => {
+    await harness(async ({ loop, pi, msgs, telemetry }) => {
+      pi.pushContext = async () => {
+        throw new Error("bash rpc failed");
+      };
+      pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "verified\nDONE" }]);
+      pi.script("dev1", [{ lastText: "@lead ok" }]);
+
+      const result = await loop.submit("build it");
+
+      expect(result.status).toBe("completed");
+      const m = await msgs();
+      expect(m.map((x) => `${x.kind}:${x.from}`)).toEqual([
+        "user:supervisor",
+        "notice:room",
+        "agent:lead",
+        "agent:dev1",
+        "agent:lead",
+      ]);
+      expect(m[1].text).toContain("dev1");
+      expect(m[1].text).toContain("bash rpc failed");
+      expect(telemetry.errors).toContain("context push failed");
+    }, { agents: [dev1] });
+  });
+
+  test("the active_chains gauge is balanced when a chain throws", async () => {
+    await harness(async ({ loop, store, telemetry }) => {
+      store.appendMessage = async () => {
+        throw new Error("disk full");
+      };
+      await expect(loop.submit("go")).rejects.toThrow("disk full");
+      expect(telemetry.chainDeltas).toEqual([1, -1]);
     });
   });
 });

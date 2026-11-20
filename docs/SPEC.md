@@ -502,6 +502,7 @@ export interface Telemetry {
 - **Agent exit mid-chain:** mark `AgentStatus.error`, append a `notice` to `messages.jsonl`, halt the chain, and wait for human input. Do not spin. (v1: no automatic reroute to the lead.)
 - **RPC parse error** (`success:false` with no id): log to the agent pane, do not count as a hop.
 - **Timeout:** `waitForSettled` enforces a per-turn timeout (real `PiAgentClient`, T8); on timeout, send `abort`, then treat as a failed hop (counted, chain halts with a notice).
+- **Context push failure (`pushContext`, §6.6 / Q3):** best-effort. A failed push is logged and appended as a `notice`, then routing continues; it never halts the chain and never aborts boot.
 - **Boot:** on start, if `state.json` exists and `status != "halted"`, the coordinator may resume: re-open each agent session (`--session-id`) and continue. v1 minimum: resume is optional; a fresh boot starting `idle` is acceptable, and `state.json` rebuild is always possible from `messages.jsonl`.
 - **Shutdown:** coordinator closes each agent's stdin, SIGTERM, grace period, SIGKILL; writes final `state.json`.
 
