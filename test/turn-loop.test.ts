@@ -143,6 +143,15 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("unknown-only mention emits a notice without dispatching", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      const result = await loop.submit("@nobody do this");
+      expect(result.status).toBe("completed");
+      expect(pi.calls.filter((call) => call.op === "prompt")).toEqual([]);
+      expect((await msgs()).some((message) => message.kind === "notice" && message.text.includes("@nobody"))).toBe(true);
+    });
+  });
+
   test("agent reply with no mention ends the chain", async () => {
     await harness(async ({ loop, pi }) => {
       pi.script("lead", [{ lastText: "@dev1 do it" }]);

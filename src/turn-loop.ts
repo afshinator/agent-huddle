@@ -4,7 +4,7 @@ import type { LoadedConfig } from "./config";
 import type { MessageKind, RoomMessage } from "./messages";
 import type { ChainState } from "./state";
 import type { RoomStore } from "./store";
-import { extractMentions, resolveTargets } from "./router";
+import { extractMentions, resolveMentions, resolveTargets } from "./router";
 import type { PiAgentClient, SettledResult } from "./seams/pi-agent-client";
 import type { Telemetry } from "./telemetry";
 
@@ -93,10 +93,14 @@ export class TurnLoop {
         this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, 1);
         await this.append(chain, kind, kind === "user" ? "supervisor" : "room", text, 0);
 
-        const queue: Array<{ agentId: string; text: string }> = resolveTargets(
-          text,
-          this.cfg,
-        ).map((agentId) => ({ agentId, text }));
+        const initialResolution = resolveMentions(text, this.cfg);
+        if (initialResolution.unknownHandles.length > 0) {
+          await this.append(chain, "notice", "room", `unknown agent mention(s): ${initialResolution.unknownHandles.join(", ")}`, 0);
+        }
+        const initialTargets = initialResolution.hadMention
+          ? initialResolution.targets
+          : resolveTargets(text, this.cfg);
+        const queue: Array<{ agentId: string; text: string }> = initialTargets.map((agentId) => ({ agentId, text }));
         await this.syncContext(text, queue.map((t) => t.agentId));
 
         while (queue.length > 0) {
@@ -110,7 +114,11 @@ export class TurnLoop {
           if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
 
           const reply = settled.lastText ?? "";
-          const nextIds = extractMentions(reply, this.cfg);
+          const resolution = resolveMentions(reply, this.cfg);
+          if (resolution.unknownHandles.length > 0) {
+            await this.append(chain, "notice", "room", `unknown agent mention(s): ${resolution.unknownHandles.join(", ")}`, chain.hopCount);
+          }
+          const nextIds = resolution.targets;
           for (const nextId of nextIds) queue.push({ agentId: nextId, text: reply });
           await this.syncContext(reply, nextIds, agentId);
         }

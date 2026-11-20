@@ -12,7 +12,13 @@ const BROADCAST_TOKENS = new Set(["@all", "@everyone"]);
  * - `@all` / `@everyone` → every agent (lead + specialists).
  * - unknown `@handle` → skipped (never throws).
  */
-export function extractMentions(text: string, config: LoadedConfig): string[] {
+export interface MentionResolution {
+  targets: string[];
+  unknownHandles: string[];
+  hadMention: boolean;
+}
+
+export function resolveMentions(text: string, config: LoadedConfig): MentionResolution {
   const handleToId = new Map<string, string>();
   for (const a of config.allAgents) handleToId.set(a.handle, a.id);
 
@@ -29,6 +35,7 @@ export function extractMentions(text: string, config: LoadedConfig): string[] {
   };
 
   let found = false;
+  const unknownHandles: string[] = [];
   for (const m of text.matchAll(MENTION_RE)) {
     found = true;
     const token = m[0];
@@ -42,19 +49,18 @@ export function extractMentions(text: string, config: LoadedConfig): string[] {
     }
     const id = handleToId.get(token);
     if (id !== undefined) add(id);
-    // unknown @handle: skip
+    else if (!BROADCAST_TOKENS.has(token) && !unknownHandles.includes(token)) unknownHandles.push(token);
   }
 
-  if (!found || targets.length === 0) return [];
-  return targets;
+  return { targets, unknownHandles, hadMention: found };
 }
 
-/**
- * Routing entry point: explicit mentions, else the lead (§6.1/§6.4).
- * An unknown-only mention also falls back to the lead so a typo'd directive
- * is not silently dropped.
- */
+export function extractMentions(text: string, config: LoadedConfig): string[] {
+  return resolveMentions(text, config).targets;
+}
+
+/** Routing entry point: explicit mentions, else the lead (§6.1/§6.4). */
 export function resolveTargets(text: string, config: LoadedConfig): string[] {
-  const mentions = extractMentions(text, config);
-  return mentions.length > 0 ? mentions : [config.config.lead.id];
+  const resolution = resolveMentions(text, config);
+  return resolution.hadMention ? resolution.targets : [config.config.lead.id];
 }

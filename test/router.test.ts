@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { resolveTargets } from "../src/router";
+import { resolveMentions, resolveTargets } from "../src/router";
 import type { LoadedConfig } from "../src/config";
 
 function makeConfig(leadHandle = "@lead"): LoadedConfig {
@@ -54,12 +54,18 @@ describe("resolveTargets", () => {
     expect(resolveTargets("", cfg)).toEqual(["lead"]);
   });
 
-  test("unknown @handle is skipped, not fatal", () => {
-    expect(resolveTargets("@nobody do x", cfg)).toEqual(["lead"]);
+  test("unknown @handle is reported and does not route to lead", () => {
+    expect(resolveTargets("@nobody do x", cfg)).toEqual([]);
+    expect(resolveMentions("@nobody do x", cfg)).toEqual({
+      targets: [],
+      unknownHandles: ["@nobody"],
+      hadMention: true,
+    });
   });
 
-  test("known + unknown mention: unknown skipped, known kept", () => {
+  test("known + unknown mention: known kept and unknown reported", () => {
     expect(resolveTargets("@dev1 @nobody", cfg)).toEqual(["dev1"]);
+    expect(resolveMentions("@dev1 @nobody", cfg).unknownHandles).toEqual(["@nobody"]);
   });
 
   test("broadcast + specific mention dedupes", () => {
