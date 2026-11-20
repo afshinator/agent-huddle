@@ -58,6 +58,7 @@ export class JsonlTelemetry implements Telemetry {
   private readonly stack: ActiveSpan[] = [];
   private pending: Promise<void> = Promise.resolve();
   private ensuredDir = false;
+  private writeErrorReported = false;
 
   constructor(private readonly logPath: string) {}
 
@@ -151,12 +152,21 @@ export class JsonlTelemetry implements Telemetry {
 
   private emit(record: unknown): void {
     const line = JSON.stringify(record) + "\n";
-    this.pending = this.pending.then(async () => {
-      if (!this.ensuredDir) {
-        await mkdir(dirname(this.logPath), { recursive: true });
-        this.ensuredDir = true;
-      }
-      await appendFile(this.logPath, line, "utf8");
-    });
+    // The catch keeps the chain alive: one failed write must not drop every
+    // later record, and flush() must never reject (shutdown awaits it).
+    this.pending = this.pending
+      .then(async () => {
+        if (!this.ensuredDir) {
+          await mkdir(dirname(this.logPath), { recursive: true });
+          this.ensuredDir = true;
+        }
+        await appendFile(this.logPath, line, "utf8");
+      })
+      .catch((e: unknown) => {
+        if (this.writeErrorReported) return;
+        this.writeErrorReported = true;
+        const msg = e instanceof Error ? e.message : String(e);
+        process.stderr.write(`[telemetry] write failed, records are being dropped: ${msg}\n`);
+      });
   }
 }

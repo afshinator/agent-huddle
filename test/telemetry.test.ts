@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NoopTelemetry, JsonlTelemetry } from "../src/telemetry";
@@ -127,6 +127,68 @@ describe("JsonlTelemetry", () => {
       expect(s.events).toHaveLength(1);
       expect(s.events[0].name).toBe("dispatch");
       expect(s.events[0].attributes).toEqual({ agentId: "lead" });
+    });
+  });
+
+  describe("write failures", () => {
+    /** A path whose parent is a file, so mkdir fails until the file is removed. */
+    async function blockedPath(dir: string): Promise<{ blocker: string; logPath: string }> {
+      const blocker = join(dir, "sub");
+      await writeFile(blocker, "", "utf8");
+      return { blocker, logPath: join(blocker, "telemetry.jsonl") };
+    }
+
+    test("one failed write does not stop later records", async () => {
+      await withDir(async (dir) => {
+        const { blocker, logPath } = await blockedPath(dir);
+        const t = new JsonlTelemetry(logPath);
+
+        t.counter("first");
+        await expect(t.flush()).resolves.toBeUndefined();
+
+        // The transient problem goes away.
+        await rm(blocker, { force: true });
+        await mkdir(blocker, { recursive: true });
+
+        t.counter("second");
+        await t.flush();
+
+        const lines = await readLines(logPath);
+        expect(lines.map((l) => l.name)).toEqual(["second"]);
+      });
+    });
+
+    test("reports the failure once, on stderr", async () => {
+      await withDir(async (dir) => {
+        const { logPath } = await blockedPath(dir);
+        const t = new JsonlTelemetry(logPath);
+        const written: string[] = [];
+        const original = process.stderr.write;
+        process.stderr.write = ((chunk: string) => {
+          written.push(String(chunk));
+          return true;
+        }) as typeof process.stderr.write;
+        try {
+          t.counter("first");
+          t.counter("second");
+          t.counter("third");
+          await t.flush();
+        } finally {
+          process.stderr.write = original;
+        }
+        expect(written.filter((w) => w.includes("telemetry")).length).toBe(1);
+      });
+    });
+
+    test("flush still resolves when every write fails", async () => {
+      await withDir(async (dir) => {
+        const { logPath } = await blockedPath(dir);
+        const t = new JsonlTelemetry(logPath);
+        t.counter("first");
+        await expect(t.flush()).resolves.toBeUndefined();
+        t.counter("second");
+        await expect(t.flush()).resolves.toBeUndefined();
+      });
     });
   });
 });
