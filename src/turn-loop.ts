@@ -5,6 +5,7 @@ import type { MessageKind, RoomMessage } from "./messages";
 import type { ChainState } from "./state";
 import type { RoomStore } from "./store";
 import { extractMentions, resolveMentions, resolveTargets } from "./router";
+import { errorMessage } from "./errors";
 import type { PiAgentClient, SettledResult } from "./seams/pi-agent-client";
 import type { Telemetry } from "./telemetry";
 
@@ -189,7 +190,7 @@ export class TurnLoop {
         await this.append(chain, "agent", agentId, settled.lastText ?? "", hop);
         return settled;
       } catch (e) {
-        const msg = (e as Error).message;
+        const msg = errorMessage(e);
         this.telemetry.log("error", "agent turn failed", { agentId, error: msg });
         span.setStatus("error", msg);
         await this.append(chain, "notice", "room", `agent ${agentId} failed: ${msg}`, hop);
@@ -217,7 +218,7 @@ export class TurnLoop {
         await this.pi.pushContext(agent.id, text);
       } catch (e) {
         // Context delivery is best-effort: it must never end the chain.
-        const msg = (e as Error).message;
+        const msg = errorMessage(e);
         this.telemetry.log("error", "context push failed", { agentId: agent.id, error: msg });
         await this.append(chain, "notice", "room", `agent ${agent.id} context push failed: ${msg}`, chain.hopCount);
       }

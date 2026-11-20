@@ -1,3 +1,5 @@
+import { errorMessage } from "./errors";
+
 export interface ShutdownParts {
   shutdown: () => Promise<void>;
   flush: () => Promise<void>;
@@ -17,7 +19,7 @@ export function createShutdown({ shutdown, flush, exit }: ShutdownParts): () => 
     try {
       await shutdown();
     } catch (error: unknown) {
-      console.error("shutdown failed:", error instanceof Error ? error.message : String(error));
+      console.error("shutdown failed:", errorMessage(error));
     }
     await flush();
     exit(0);

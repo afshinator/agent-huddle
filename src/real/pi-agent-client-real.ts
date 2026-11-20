@@ -12,6 +12,7 @@ import type {
   SpawnOptions,
 } from "../seams/pi-agent-client";
 import { AgentListeners, requireAgentEntry } from "../seams/pi-agent-client";
+import { errorMessage } from "../errors";
 
 interface PendingSettle {
   promise: Promise<SettledResult>;
@@ -49,7 +50,7 @@ function shellQuote(s: string): string {
 }
 
 function asError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value));
+  return value instanceof Error ? value : new Error(errorMessage(value));
 }
 
 function waitForExit(child: ChildProcessWithoutNullStreams, ms: number): Promise<void> {

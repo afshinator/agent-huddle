@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { AgentSpec, LoadedConfig } from "./config";
+import { errorMessage } from "./errors";
 
 async function readSystemPrompt(agent: AgentSpec): Promise<string | null> {
   if (agent.system_prompt !== undefined) return agent.system_prompt;
@@ -8,7 +9,7 @@ async function readSystemPrompt(agent: AgentSpec): Promise<string | null> {
       return await readFile(agent.system_prompt_file, "utf8");
     } catch (e) {
       throw new Error(
-        `cannot read system_prompt_file for "${agent.id}": ${(e as Error).message}`,
+        `cannot read system_prompt_file for "${agent.id}": ${errorMessage(e)}`,
       );
     }
   }

@@ -100,6 +100,17 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("a non-Error rejection still produces a readable notice", async () => {
+    await harness(async ({ loop, pi, msgs, telemetry }) => {
+      pi.script("lead", [{ error: { code: 42 } as unknown as Error }]);
+      await loop.submit("go");
+
+      const notice = (await msgs()).find((x) => x.kind === "notice")!;
+      expect(notice.text).toContain('{"code":42}');
+      expect(telemetry.errors).toContain("agent turn failed");
+    });
+  });
+
   test("mention propagation: lead hands off, dev replies, lead closes with DONE", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "@dev1 implement it" }, { lastText: "verified\nDONE" }]);

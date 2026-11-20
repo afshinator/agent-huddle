@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { HerdrPaneManager, PaneId, PaneSpec } from "../seams/herdr-pane-manager";
+import { errorMessage } from "../errors";
 
 const execFileP = promisify(execFile);
 
@@ -70,7 +71,7 @@ export class HerdrPaneManagerReal implements HerdrPaneManager {
     try {
       rec = JSON.parse(stdout);
     } catch (error: unknown) {
-      throw new Error(`herdr pane split returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`herdr pane split returned invalid JSON: ${errorMessage(error)}`);
     }
     const paneId = (rec as { result?: { pane?: { pane_id?: unknown } } })?.result?.pane?.pane_id;
     if (typeof paneId !== "string" || paneId.length === 0) throw new Error(`herdr pane split: no pane_id in response`);

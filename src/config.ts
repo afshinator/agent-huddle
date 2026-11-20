@@ -1,4 +1,5 @@
 import { access, readFile } from "node:fs/promises";
+import { errorMessage } from "./errors";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 
@@ -141,14 +142,14 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
   try {
     text = await readFile(sourcePath, "utf8");
   } catch (e) {
-    fail(`cannot read config: ${(e as Error).message}`);
+    fail(`cannot read config: ${errorMessage(e)}`);
   }
 
   let raw: unknown;
   try {
     raw = parseYaml(text);
   } catch (e) {
-    fail(`invalid YAML: ${(e as Error).message}`);
+    fail(`invalid YAML: ${errorMessage(e)}`);
   }
 
   const obj = assertPlainObject(raw, "config");
@@ -197,7 +198,7 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
       try {
         await access(agent.system_prompt_file);
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = errorMessage(error);
         fail(`${agent.id}.system_prompt_file is not readable: ${agent.system_prompt_file} (${message})`);
       }
     }

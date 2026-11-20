@@ -1,4 +1,5 @@
 import { appendFile, mkdir } from "node:fs/promises";
+import { errorMessage } from "./errors";
 import { randomBytes } from "node:crypto";
 import { dirname } from "node:path";
 
@@ -92,7 +93,7 @@ export class JsonlTelemetry implements Telemetry {
     try {
       result = fn(js);
     } catch (e) {
-      if (js.status === null) js.status = { code: "error", description: (e as Error).message };
+      if (js.status === null) js.status = { code: "error", description: errorMessage(e) };
       finish();
       throw e;
     }
@@ -165,7 +166,7 @@ export class JsonlTelemetry implements Telemetry {
       .catch((e: unknown) => {
         if (this.writeErrorReported) return;
         this.writeErrorReported = true;
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = errorMessage(e);
         process.stderr.write(`[telemetry] write failed, records are being dropped: ${msg}\n`);
       });
   }

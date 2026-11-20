@@ -8,6 +8,7 @@ import { startRoom } from "./startup";
 import type { PiAgentClient } from "./seams/pi-agent-client";
 import type { HerdrPaneManager } from "./seams/herdr-pane-manager";
 import type { Telemetry } from "./telemetry";
+import { errorMessage } from "./errors";
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 
@@ -160,7 +161,7 @@ export class Coordinator {
 
   /** Undo a partial boot: close panes, stop started agents, record the failure. */
   private async abortBoot(error: unknown): Promise<void> {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = errorMessage(error);
     this.telemetry.log("error", "boot failed; rolling back", { error: msg });
     for (const agent of this.config.allAgents) {
       const runtime = this.roomState?.agents[agent.id];
@@ -260,7 +261,7 @@ export class Coordinator {
       this.reportedFailures.add(key);
       this.telemetry.log("error", `${op} failed`, {
         agentId,
-        error: e instanceof Error ? e.message : String(e),
+        error: errorMessage(e),
       });
     });
   }
