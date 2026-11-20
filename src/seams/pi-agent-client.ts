@@ -110,7 +110,7 @@ interface FakeAgent {
   shutdown: boolean;
   script: ScriptedTurn[];
   lastText: string | null;
-  settle: { promise: Promise<SettledResult>; resolve: (r: SettledResult) => void } | null;
+  settle: { promise: Promise<SettledResult>; resolve: (r: SettledResult) => void; reject: (e: Error) => void } | null;
 }
 
 export type FakePiOp = "spawn" | "prompt" | "pushContext" | "waitForSettled" | "shutdown";
@@ -170,7 +170,7 @@ export class FakePiAgentClient implements PiAgentClient {
       rejectSettle = rej;
     });
     promise.catch(() => {}); // a rejected turn is observed via waitForSettled
-    a.settle = { promise, resolve: resolveSettle };
+    a.settle = { promise, resolve: resolveSettle, reject: rejectSettle };
 
     queueMicrotask(() => {
       if (turn.hold) return;
@@ -217,6 +217,11 @@ export class FakePiAgentClient implements PiAgentClient {
     const a = this.requireAgent(agentId);
     a.shutdown = true;
     this.record("shutdown", agentId, undefined);
+    // The real client rejects a pending settle when its child exits; without this the
+    // fake let a held turn outlive shutdown, hiding what a stop mid-turn really does.
+    const settle = a.settle;
+    a.settle = null;
+    settle?.reject(new Error(`pi process for ${agentId} exited`));
   }
 
   on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {

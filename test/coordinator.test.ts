@@ -359,6 +359,33 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
+  test("shutdown starts every agent's stop before it waits for any of them", async () => {
+    // Ctrl-C reaches the children as SIGINT too, and the coordinator's handler runs
+    // first (measured: probes/sigint-order). A stop that is only flagged once the
+    // previous agent finished leaves the later child to be reported as a crash (#51).
+    await harness({ task: "do the work" }, async ({ coordinator, pi }) => {
+      const started: string[] = [];
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const stop = pi.shutdown.bind(pi);
+      pi.shutdown = async (agentId: string) => {
+        started.push(agentId);
+        if (started.length === 1) await gate;
+        return stop(agentId);
+      };
+
+      await coordinator.boot();
+      const shuttingDown = coordinator.shutdown();
+      await waitUntil(() => started.length === 2);
+      release();
+      await shuttingDown;
+
+      expect(started.sort()).toEqual(["dev1", "lead"]);
+    });
+  });
+
   test("shutdown closes the panes it opened", async () => {
     await harness({ task: "do the work" }, async ({ coordinator, pi, panes }) => {
       pi.script("lead", [{ lastText: "done\nDONE" }]);
@@ -405,6 +432,23 @@ describe("Coordinator (fakes)", () => {
       const state = await store.readState();
       expect(state!.status).not.toBe("active");
       expect(state!.status).toBe("idle");
+    });
+  });
+
+  test("a stop during a turn cancels it instead of reporting a failure", async () => {
+    await harness({ task: undefined }, async ({ coordinator, pi, store }) => {
+      pi.script("lead", [{ hold: true }]);
+      await coordinator.boot();
+      const running = coordinator.submit("@lead start the work");
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt"));
+
+      await coordinator.shutdown();
+      await running;
+
+      expect((await store.readMessages()).messages.filter((m) => m.text.includes("pi process for lead"))).toEqual([]);
+      const state = await store.readState();
+      expect(state!.status).toBe("idle");
+      expect(state!.chain).toBeNull();
     });
   });
 

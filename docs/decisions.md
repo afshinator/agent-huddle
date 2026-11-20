@@ -203,3 +203,32 @@ could do the check anywhere.
 check flags a repository **root** only: a launch from a subdirectory of a repository is not caught. The
 entry is later than the code it describes (#38), which breaks the "same commit" rule above; #45 exists
 because that was missed.
+
+## D11 — A turn that dies during shutdown is `cancelled`, not `halted`
+
+**Context.** Ctrl-C in the room pane signals the whole foreground process group: the coordinator and
+every `pi` child. A turn in flight therefore dies, and the coordinator recorded that as a failed hop —
+a `notice` in the transcript and `status: "halted"` in `state.json`, for a stop the operator asked for.
+
+**Decision.** `Coordinator.shutdown()` sets `stopping` as its first statement, before any `await`. The
+turn loop asks (`isStopping`) before judging a failed dispatch: while stopping it logs
+`agent turn cancelled by shutdown` at `info`, appends no notice, and finishes the chain `cancelled`,
+which clears the chain and leaves the room `idle`.
+
+**Rejected alternatives.**
+- *Set each agent's shutdown flag in one tick and rely on the flag in the client's exit handler.* This
+  is also in place (all stops start before the first `await`), but on its own it is not enough: the
+  child can die before the coordinator's signal handler runs, and a turn in flight then still fails.
+  Measured twice in a real room: no `[error]`, but the notice and the halt remained.
+- *Ignore a child exit whose `signal` is `SIGINT`.* It silences the real symptom too (an agent that
+  crashed mid-turn and a stop would read the same), and it puts the judgement in the transport, which
+  cannot know whether the room is stopping.
+- *Report the cancellation as a `notice` and keep `halted`.* The transcript needs no entry for a turn
+  the operator killed, and `halted` describes a chain the room gave up on, not one that was stopped.
+
+**Why:** the flag is the only place that knows the operator's intent, and it is set before any code that
+could yield. The ordering is invisible in the code — `shutdown()` looks like it could set the flag later.
+
+**Cost, accepted:** a genuine crash that happens to land in the few milliseconds after shutdown began is
+recorded as a cancellation. The pane still shows `[exited]`, and the room writes nothing to the transcript
+to say a chain was interrupted, so `messages.jsonl` can end mid-chain with no explanation.

@@ -55,6 +55,8 @@ export class Coordinator {
   private readonly reportedFailures = new Set<string>();
   private roomState: RoomState | null = null;
   private roomStatus: RoomStatus = "idle";
+  /** Set the moment shutdown begins: a turn that dies after this was stopped, not failed. */
+  private stopping = false;
 
   constructor(deps: CoordinatorDeps) {
     this.config = deps.config;
@@ -79,6 +81,7 @@ export class Coordinator {
       telemetry: deps.telemetry,
       turnTimeoutMs: deps.config.config.turn_timeout_ms,
       onChainState: (chain) => this.updateChainState(chain),
+      isStopping: () => this.stopping,
     });
     deps.store.onAppend = (msg) => {
       if (this.roomState) this.roomState.lastMessageId = msg.id;
@@ -200,10 +203,16 @@ export class Coordinator {
   }
 
   async shutdown(): Promise<void> {
+    this.stopping = true;
     this.inbox.stop();
+    // Start every stop in one tick, then wait: Ctrl-C sends SIGINT to the children in
+    // this process group as well, and the coordinator's handler runs first (measured:
+    // probes/sigint-order). Flagging an agent only after the previous one finished leaves
+    // the later child dead-but-unflagged, so its pane reports a crash (#51).
+    const stops = this.config.allAgents.map((agent) => this.pi.shutdown(agent.id));
+    await Promise.all(stops);
     for (const agent of this.config.allAgents) {
       this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "shutdown", ""));
-      await this.pi.shutdown(agent.id);
       this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, "[exited]"));
       if (this.roomState) {
         this.roomState.agents[agent.id].status = "exited";

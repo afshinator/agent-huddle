@@ -27,7 +27,11 @@ export function hasDoneSignal(text: string | null): boolean {
 }
 
 export type SubmitKind = "user" | "startup_task";
-export type ChainOutcome = "completed" | "halted";
+/**
+ * `cancelled`: the operator stopped the room with a turn in flight. Not a failure —
+ * the turn died because we asked it to — so it must not halt the room (#51).
+ */
+export type ChainOutcome = "completed" | "halted" | "cancelled";
 
 export interface SubmitResult {
   chainId: string;
@@ -44,6 +48,8 @@ export interface TurnLoopDeps {
   now?: () => string;
   newId?: () => string;
   onChainState?: (state: ChainState | null) => Promise<void> | void;
+  /** True once the room is stopping, so a dying turn reads as cancelled, not failed. */
+  isStopping?: () => boolean;
 }
 
 /**
@@ -63,6 +69,7 @@ export class TurnLoop {
   private readonly newId: () => string;
   private readonly handleById: Map<string, string>;
   private readonly onChainState?: (state: ChainState | null) => Promise<void> | void;
+  private readonly isStoppingHook?: () => boolean;
 
   constructor(deps: TurnLoopDeps) {
     this.cfg = deps.config;
@@ -74,6 +81,7 @@ export class TurnLoop {
     this.newId = deps.newId ?? (() => randomUUID());
     this.handleById = new Map(deps.config.allAgents.map((a) => [a.id, a.handle]));
     this.onChainState = deps.onChainState;
+    this.isStoppingHook = deps.isStopping;
   }
 
   /**
@@ -149,7 +157,7 @@ export class TurnLoop {
         return this.wrapUp(chain);
       }
       const settled = await this.dispatch(chain, agentId, promptText, true);
-      if (settled === null) return this.finish(chain, "halted");
+      if (settled === null) return this.finish(chain, this.isStopping() ? "cancelled" : "halted");
 
       if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
 
@@ -179,13 +187,13 @@ export class TurnLoop {
 
     const leadId = this.cfg.config.lead.id;
     const nudge = await this.dispatch(chain, leadId, wrapUpPrompt(this.cfg.config.max_hops), false);
-    if (nudge === null) return this.finish(chain, "halted");
+    if (nudge === null) return this.finish(chain, this.isStopping() ? "cancelled" : "halted");
     if (this.isDone(leadId, nudge.lastText)) return this.finish(chain, "completed");
 
     const others = chain.dispatchedAgentIds.filter((id) => id !== leadId);
     for (const agentId of others) {
       const settled = await this.dispatch(chain, agentId, CONCLUDE_PROMPT, false);
-      if (settled === null) return this.finish(chain, "halted");
+      if (settled === null) return this.finish(chain, this.isStopping() ? "cancelled" : "halted");
       if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
     }
 
@@ -220,12 +228,23 @@ export class TurnLoop {
         return settled;
       } catch (e) {
         const msg = errorMessage(e);
+        // Ctrl-C kills the children in this process group too, so a turn in flight dies.
+        // Reporting that as a failure would make a deliberate stop look like a crash.
+        if (this.isStopping()) {
+          this.telemetry.log("info", "agent turn cancelled by shutdown", { agentId, chainId: chain.chainId });
+          span.setStatus("ok", "cancelled");
+          return null;
+        }
         this.telemetry.log("error", "agent turn failed", { agentId, error: msg });
         span.setStatus("error", msg);
         await this.append(chain, "notice", "room", `agent ${agentId}: ${msg}`, hop);
         return null;
       }
     });
+  }
+
+  private isStopping(): boolean {
+    return this.isStoppingHook?.() ?? false;
   }
 
   private isDone(agentId: string, text: string | null): boolean {
@@ -271,7 +290,7 @@ export class TurnLoop {
 
   private async finish(chain: ChainState, status: ChainOutcome): Promise<SubmitResult> {
     if (status === "halted") chain.status = "halted";
-    await this.notifyChainState(status === "completed" ? null : chain);
+    await this.notifyChainState(status === "halted" ? chain : null);
     return { chainId: chain.chainId, status, hopCount: chain.hopCount };
   }
 
