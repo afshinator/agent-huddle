@@ -1,6 +1,9 @@
 # agent-huddle
 
-Config-driven multi-agent chat room for [`pi`](https://github.com/earendil-works/pi) sessions managed from a shared terminal room and optional [`herdr`](https://herdr.dev/) panes.
+Software engineers team up and pair to tackle their work; why not use the same approach with agents and see what happens.
+
+Config-driven multi-agent chat room for [`pi`](https://github.com/earendil-works/pi) sessions managed from a shared terminal room and optional [`herdr`](https://herdr.dev/) panes.  
+ 
 
 ## Status
 
@@ -96,9 +99,11 @@ The coordinator routes only explicit targets. Every agent receives unmentioned r
 ## Development
 
 ```bash
-bun run typecheck
-bun test
+bun run check        # typecheck, then tests — the same two commands CI runs
+bun run test:live    # adds the live pi/herdr adapter tests (skipped by default)
 ```
+
+Behaviour that the code cannot show is recorded in [`docs/decisions.md`](docs/decisions.md). Agent-facing pointers — gate, ticket loop, probe convention — are in [`AGENTS.md`](AGENTS.md).
 
 Implementation boundaries and test seams are documented in [`docs/SPEC.md`](docs/SPEC.md). The project deliberately excludes the source video's web UI, generative HTML, tracing dashboard, cron daemon, sub-rooms, and autonomous configuration changes.
 

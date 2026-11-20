@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun test",
+    "test:live": "PI_TEST_INTEGRATION=1 bun test"
   },
   "dependencies": {
     "yaml": "^2.9.1"
