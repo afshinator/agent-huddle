@@ -154,6 +154,22 @@ describe("loadConfig", () => {
     });
   });
 
+  test("reserved-handle error names the field that holds the offender", async () => {
+    const leadOffender = `name: r\nlead:\n  id: lead\n  handle: "@all"\n  role: r\n`;
+    await withConfig(leadOffender, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(
+        'config.lead.handle is reserved by the router and would never reach this agent (got "@all")',
+      );
+    });
+
+    const secondAgent = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: "@dev1"\n    role: x\n  - id: dev2\n    handle: "@everyone"\n    role: x\n`;
+    await withConfig(secondAgent, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(
+        'config.agents[1].handle is reserved by the router and would never reach this agent (got "@everyone")',
+      );
+    });
+  });
+
   test("accepts handles the router can match", async () => {
     const yaml = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: "@dev_1-x"\n    role: x\n`;
     await withConfig(yaml, async (p, cwd) => {

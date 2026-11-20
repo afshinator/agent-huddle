@@ -218,11 +218,14 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
     seenHandles.add(a.handle);
   }
   // Routed before the handle map ever sees it, so such an agent is unreachable.
-  // The lead keeps `@lead`, which the router resolves to it.
+  // The lead keeps `@lead`, which the router resolves to it. Duplicate ids were
+  // rejected above, so `a.id === lead.id` identifies the lead.
   for (const a of allAgents) {
     const allowedReserved = a.id === lead.id && a.handle === "@lead";
     if (RESERVED_HANDLES.has(a.handle) && !allowedReserved) {
-      fail(`agents: handle "${a.handle}" is reserved by the router and would never reach this agent`);
+      const field =
+        a.id === lead.id ? "config.lead.handle" : `config.agents[${agents.indexOf(a)}].handle`;
+      fail(`${field} is reserved by the router and would never reach this agent (got "${a.handle}")`);
     }
   }
 
