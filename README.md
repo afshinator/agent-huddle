@@ -102,6 +102,8 @@ bun test
 
 Implementation boundaries and test seams are documented in [`docs/SPEC.md`](docs/SPEC.md). The project deliberately excludes the source video's web UI, generative HTML, tracing dashboard, cron daemon, sub-rooms, and autonomous configuration changes.
 
-## CI and follow-up
+## CI
 
-CI setup is tracked in [GitHub issue #10](https://github.com/afshinator/agent-huddle/issues/10). The post-implementation review and environment retrospective are in [`docs/retro/2026-11-20.md`](docs/retro/2026-11-20.md).
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `bun install --frozen-lockfile`, `bun run typecheck` and `bun test` on pushes to `main` and on pull requests. CI sets `PI_TEST_INTEGRATION=0`, so the live `pi`/`herdr` tests skip there; run them locally against a real environment.
+
+The post-implementation review and environment retrospective are in [`docs/retro/2026-11-20.md`](docs/retro/2026-11-20.md).
