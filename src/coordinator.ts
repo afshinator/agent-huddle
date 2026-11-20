@@ -61,7 +61,10 @@ export class Coordinator {
       telemetry: deps.telemetry,
       onChainState: (chain) => this.updateChainState(chain),
     });
-    deps.store.onAppend = (msg) => this.printMessage(msg);
+    deps.store.onAppend = (msg) => {
+      if (this.roomState) this.roomState.lastMessageId = msg.id;
+      this.printMessage(msg);
+    };
   }
 
   async boot(): Promise<SubmitResult | null> {
@@ -152,7 +155,6 @@ export class Coordinator {
     const persist = this.persistQueue.then(async () => {
       if (!this.roomState) this.roomState = await this.loadOrCreateState();
       this.roomState.status = this.roomStatus;
-      this.roomState.lastMessageId = (await this.store.readMessages()).at(-1)?.id ?? null;
       await this.store.writeState(this.roomState);
     });
     this.persistQueue = persist.catch(() => undefined);

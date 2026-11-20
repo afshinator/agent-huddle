@@ -197,4 +197,37 @@ describe("Coordinator (fakes)", () => {
       expect((await store.readState())!.status).toBe("idle");
     });
   });
+
+  test("persisting state does not re-read the message log", async () => {
+    await harness({ task: undefined }, async ({ coordinator, store, pi }) => {
+      await coordinator.boot();
+      pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "done\nDONE" }]);
+      pi.script("dev1", [{ lastText: "@lead ok" }]);
+
+      let reads = 0;
+      const realRead = store.readMessages.bind(store);
+      store.readMessages = async () => {
+        reads += 1;
+        return realRead();
+      };
+
+      await coordinator.submit("build it");
+
+      expect(reads).toBe(0);
+    });
+  });
+
+  test("lastMessageId tracks the newest appended message", async () => {
+    await harness({ task: undefined }, async ({ coordinator, store, pi }) => {
+      await coordinator.boot();
+      pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "done\nDONE" }]);
+      pi.script("dev1", [{ lastText: "@lead ok" }]);
+
+      await coordinator.submit("build it");
+      await coordinator.shutdown();
+
+      const messages = await store.readMessages();
+      expect(messages.at(-1)!.id).toBe((await store.readState())!.lastMessageId!);
+    });
+  });
 });
