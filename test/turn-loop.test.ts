@@ -105,6 +105,20 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("explicit targets win over the text's mentions", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("dev1", [{ lastText: "handled" }]);
+
+      // A pane line: the text keeps the handle the supervisor typed, routing ignores it.
+      await loop.submit("@lead @dev1 please look", "user", ["dev1"]);
+
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
+      const m = await msgs();
+      expect(m[0].text).toBe("@lead @dev1 please look");
+      expect(m[0].mentions).toEqual(["lead", "dev1"]);
+    });
+  });
+
   test("a startup task targets the lead even without a mention", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "all done\nDONE" }]);

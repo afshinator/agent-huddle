@@ -9,6 +9,7 @@ import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
 import { createShutdown } from "../src/shutdown";
+import type { RoomMessage } from "../src/messages";
 import type { AgentSpec, LoadedConfig } from "../src/config";
 
 const lead: AgentSpec = { id: "lead", handle: "@lead", role: "lead" };
@@ -69,13 +70,13 @@ async function waitUntil(ok: () => boolean, timeoutMs = 2000): Promise<void> {
 /** Poll the room log for a message that matches. */
 async function waitForMessage(
   store: RoomStore,
-  match: (m: { text: string }) => boolean,
+  match: (m: RoomMessage) => boolean,
   timeoutMs = 2000,
-): Promise<{ kind: string; from: string; text: string; mentions: string[] }> {
+): Promise<RoomMessage> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const found = (await store.readMessages()).messages.find((m) => match(m));
-    if (found) return found as never;
+    if (found) return found;
     if (Date.now() > deadline) throw new Error("message never appeared");
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
@@ -455,6 +456,40 @@ describe("Coordinator (fakes)", () => {
       await waitUntil(() => pi.calls.some((c) => c.op === "pushContext"));
       const pushed = pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId);
       expect(new Set(pushed)).toEqual(new Set(["lead"]));
+    });
+  });
+
+  test("a handle typed into a pane does not dispatch that agent", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, store, pi }) => {
+      await coordinator.boot();
+      const inbox = join(dir, "agents", "dev1", "inbox");
+
+      pi.script("dev1", [{ lastText: "on it" }]);
+      // @lead exists in this room and is not the pane's agent: without the pin it runs.
+      await appendFile(inbox, "@lead look at this\n", "utf8");
+
+      // The text is recorded as typed, after the implied handle (#40).
+      const msg = await waitForMessage(store, (m) => m.text === "@dev1 @lead look at this");
+      expect(msg.from).toBe("supervisor");
+      expect(msg.mentions).toEqual(["dev1", "lead"]);
+
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt"));
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
+
+      // Everyone else still sees it, as context: the lead is pushed before the turn runs.
+      const pushes = (): string[] => pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId);
+      expect(pushes()[0]).toBe("lead");
+    });
+  });
+
+  test("an unknown handle typed into a pane is still reported", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, store, pi }) => {
+      await coordinator.boot();
+      pi.script("dev1", [{ lastText: "ok" }]);
+      await appendFile(join(dir, "agents", "dev1", "inbox"), "@nobody hi\n", "utf8");
+
+      await waitForMessage(store, (m) => m.kind === "notice" && m.text.includes("@nobody"));
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
     });
   });
 

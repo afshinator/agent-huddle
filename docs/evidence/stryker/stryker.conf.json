@@ -1,0 +1,27 @@
+{
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.mutation.full.config.ts"
+  },
+  "mutate": [
+    "src/router.ts",
+    "src/errors.ts",
+    "src/store.ts",
+    "src/config.ts"
+  ],
+  "coverageAnalysis": "perTest",
+  "reporters": [
+    "clear-text",
+    "json",
+    "html"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation.json"
+  },
+  "htmlReporter": {
+    "fileName": "reports/mutation.html"
+  },
+  "concurrency": 4,
+  "tempDirName": ".stryker-tmp",
+  "timeoutMS": 20000
+}

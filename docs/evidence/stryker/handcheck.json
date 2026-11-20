@@ -1,0 +1,89 @@
+[
+ [
+  "config:42 one thinking level blanked",
+  "SURVIVES",
+  []
+ ],
+ [
+  "config:66 plain-object guard disabled",
+  "SURVIVES",
+  []
+ ],
+ [
+  "config:104 system_prompt type check disabled",
+  "SURVIVES",
+  []
+ ],
+ [
+  "config:135 system_prompt assignment dropped",
+  "SURVIVES",
+  []
+ ],
+ [
+  "config:137 provider assignment always runs",
+  "SURVIVES",
+  []
+ ],
+ [
+  "config:140 tools assignment dropped",
+  "SURVIVES",
+  []
+ ],
+ [
+  "store:18 non-object log line accepted",
+  "KILLED",
+  [
+   "RoomStore > readMessages skips a JSON line that is not "
+  ]
+ ],
+ [
+  "store:35 ensureDir guard disabled",
+  "SURVIVES",
+  []
+ ],
+ [
+  "store:59 ENOENT fallback disabled",
+  "KILLED",
+  [
+   "Coordinator (controlled real RPC) > startup task \u2192 lead",
+   "Coordinator (fakes) > a failed boot shuts down started "
+  ]
+ ],
+ [
+  "store:87 fd never closed (finally emptied)",
+  "KILLED",
+  [
+   "Coordinator (fakes) > a failing agent log write is repo",
+   "Coordinator (fakes) > an agent error reaches the pane a"
+  ]
+ ],
+ [
+  "store:127 optional chain on agents removed",
+  "SURVIVES",
+  []
+ ],
+ [
+  "store:132 agent status starting -> empty",
+  "SURVIVES",
+  []
+ ],
+ [
+  "router:60 duplicate unknown mention not deduped",
+  "SURVIVES",
+  []
+ ],
+ [
+  "errors:8 object guard always true",
+  "KILLED",
+  [
+   "errorMessage reads anything thrown without reading unde"
+  ]
+ ],
+ [
+  "errors:11 JSON.stringify catch emptied",
+  "KILLED",
+  [
+   "errorMessage survives a value JSON cannot serialise"
+  ]
+ ]
+]

@@ -335,6 +335,7 @@ Human input always resets the chain (`hopCount = 0`, `nudgeIssued = false`, new 
 - Human message `@lead` → lead only.
 - Human may type in the room pane at any time; input is queued and delivered at the next settle boundary (never interrupts an in-flight turn mid-stream).
 - **Typing in an agent's pane** (v1.1, D7) posts a public room message with that agent's handle implied: text typed in `@dev1`'s pane becomes `@dev1 <text>` in `messages.jsonl`, with `from: supervisor`. It is visible to everyone and activates only that agent — there is no private channel in v1.
+- **A pane line routes by its pane, not by its words** (#40). Dispatch targets are pinned to that agent, so a handle the supervisor types into the line stays a word in the message: typing `@lead look` in `@dev1`'s pane activates dev1 and the lead ingests the text as context. `mentions[]` still records every handle the text contains, because it records the text. The unknown-handle notice still fires for `@nobody`.
 
 ### 6.5 Definition of Done (v1 boundary)
 

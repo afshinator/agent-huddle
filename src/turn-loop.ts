@@ -76,7 +76,13 @@ export class TurnLoop {
     this.onChainState = deps.onChainState;
   }
 
-  async submit(text: string, kind: SubmitKind = "user"): Promise<SubmitResult> {
+  /**
+   * `targets` pins the first dispatch, for input whose text must stay as typed:
+   * a pane line keeps the handles the supervisor wrote, but routes to that pane's
+   * agent only (#40). Mentions in the text are still recorded and still produce
+   * the unknown-handle notice.
+   */
+  async submit(text: string, kind: SubmitKind = "user", targets?: readonly string[]): Promise<SubmitResult> {
     const chain: ChainState = {
       chainId: this.newId(),
       startedBy: kind === "startup_task" ? "startup" : "supervisor",
@@ -93,7 +99,7 @@ export class TurnLoop {
       async () => {
         this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, 1);
         try {
-          return await this.runChain(chain, text, kind);
+          return await this.runChain(chain, text, kind, targets);
         } finally {
           this.telemetry.upDownCounter("room.active_chains", { room: this.cfg.config.name }, -1);
         }
@@ -102,7 +108,12 @@ export class TurnLoop {
   }
 
   /** One chain: dispatch the initial targets, then follow every reply's mentions. */
-  private async runChain(chain: ChainState, text: string, kind: SubmitKind): Promise<SubmitResult> {
+  private async runChain(
+    chain: ChainState,
+    text: string,
+    kind: SubmitKind,
+    pinnedTargets?: readonly string[],
+  ): Promise<SubmitResult> {
     await this.append(chain, kind, kind === "user" ? "supervisor" : "room", text, 0);
 
     const initialResolution = resolveMentions(text, this.cfg);
@@ -112,11 +123,12 @@ export class TurnLoop {
     // D6: no mention activates nobody. The startup task is a boot directive, not a
     // chat message, so it addresses the lead or the room would boot silent.
     const initialTargets =
-      initialResolution.targets.length > 0
+      pinnedTargets ??
+      (initialResolution.targets.length > 0
         ? initialResolution.targets
         : kind === "startup_task"
           ? [this.cfg.config.lead.id]
-          : [];
+          : []);
     const queue: Array<{ agentId: string; text: string }> = initialTargets.map((agentId) => ({ agentId, text }));
     await this.syncContext(chain, text, queue.map((t) => t.agentId));
 

@@ -173,12 +173,13 @@ export class Coordinator {
     return result;
   }
 
-  submit(text: string): Promise<SubmitResult> {    const run = this.submitQueue.then(async () => {
+  /** `targets` pins the first dispatch (pane input, #40); the chat pane leaves it unset. */
+  submit(text: string, targets?: readonly string[]): Promise<SubmitResult> {    const run = this.submitQueue.then(async () => {
       this.roomStatus = "active";
       for (const agent of Object.values(this.roomState?.agents ?? {})) agent.status = "busy";
       await this.persistState();
 
-      const result = await this.loop.submit(text, "user");
+      const result = await this.loop.submit(text, "user", targets);
       this.roomStatus = result.status === "halted" ? "halted" : "idle";
       for (const agent of Object.values(this.roomState?.agents ?? {})) {
         if (agent.status === "busy") agent.status = "idle";
@@ -345,7 +346,9 @@ export class Coordinator {
     const agent = this.config.agentById.get(agentId);
     if (!agent) return;
     this.telemetry.log("info", "pane.input", { agentId, chars: line.length });
-    void this.submit(`${agent.handle} ${line}`).catch((e: unknown) => {
+    // Pinned: a handle in the typed line is a word the supervisor wrote, not a
+    // dispatch (#40). The text keeps it so the room reads what was typed.
+    void this.submit(`${agent.handle} ${line}`, [agentId]).catch((e: unknown) => {
       // The submit path reports its own failures; this only stops an unhandled rejection.
       this.telemetry.log("error", "pane input failed", { agentId, error: errorMessage(e) });
     });

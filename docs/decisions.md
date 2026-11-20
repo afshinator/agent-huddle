@@ -153,3 +153,26 @@ was not "no seam change", it was "protocol knowledge in the wrong layer".
 **Cost, accepted:** one more event to keep wired in three places (interface overload, listener lists,
 fake), and the pane prints arguments verbatim — which can be large or sensitive, hence the 200-char cut.
 `docs/json.md` in the `pi` package is the only source for the record shape.
+
+---
+
+## D9 — pane input pins its target instead of escaping the text (#40)
+
+**Decision:** `TurnLoop.submit` takes an optional explicit target list; pane input passes
+`[paneAgentId]`, and the message text keeps every handle the supervisor typed.
+
+**Rejected:**
+
+- *Escape the handles in the typed text.* `MENTION_RE` (`src/router.ts:12`) has no word-boundary guard,
+  so `\@dev2` still parses as `@dev2` — measured. Stripping the `@` works but changes what the room
+  records, against #40's own criterion that the text is recorded intact.
+- *Change the spec so a pane line is ordinary supervisor text.* Then a line typed next to dev1 can
+  start dev2, which is the surprise #40 exists to remove.
+
+**Why:** routing and wording are different concerns. The supervisor's words belong in the record as
+written; the pane decides who runs. Pinning also keeps the unknown-handle notice honest — `@nobody` is
+still reported even though it cannot dispatch.
+
+**Cost, accepted:** `mentions[]` can list an agent that was not dispatched. It records the text, not the
+routing, and §6.4 now says so. `Coordinator.submit` and `TurnLoop.submit` gain an optional parameter,
+which every existing caller ignores.
