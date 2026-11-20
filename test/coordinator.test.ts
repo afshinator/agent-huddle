@@ -57,6 +57,15 @@ async function gitRepoRoot(): Promise<string> {
   return dir;
 }
 
+/** Poll a condition; the coordinator dispatches after the message is appended. */
+async function waitUntil(ok: () => boolean, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!ok()) {
+    if (Date.now() > deadline) throw new Error("condition never became true");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 /** Poll the room log for a message that matches. */
 async function waitForMessage(
   store: RoomStore,
@@ -438,9 +447,12 @@ describe("Coordinator (fakes)", () => {
       expect(msg.from).toBe("supervisor");
       expect(msg.mentions).toEqual(["dev1"]);
 
-      // Public and activating only dev1: the lead ingests it, nobody else runs.
+      // The message is appended before dispatch, so wait for the turn it starts.
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt"));
       expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
+
       // Only the lead ingests it, and dev1's reply is pushed to the lead in turn.
+      await waitUntil(() => pi.calls.some((c) => c.op === "pushContext"));
       const pushed = pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId);
       expect(new Set(pushed)).toEqual(new Set(["lead"]));
     });
