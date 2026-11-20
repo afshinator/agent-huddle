@@ -35,6 +35,8 @@ Run the coordinator from the terminal that should act as the shared room:
 bun src/index.ts rooms/example-2.yaml
 ```
 
+Each agent gets a pane showing that agent's work as prose. The pane tails `rooms/<room>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.
+
 The coordinator's terminal is the shared chat room:
 
 - **stdin**: supervisor messages
@@ -54,7 +56,8 @@ A room's `room_dir` contains:
 - `state.json` — live/recoverable room state
 - `telemetry.jsonl` — JSONL traces, logs, counters, histograms, and up/down counters
 - `agents/<id>/sessions/` — persistent isolated pi session storage
-- `agents/<id>/log.jsonl` — streamed agent lifecycle/output log
+- `agents/<id>/output.log` — the agent's pane text: prose plus one-line lifecycle events
+- `agents/<id>/log.jsonl` — the same activity as JSON records, for analysis
 
 ## Team YAML
 

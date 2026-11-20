@@ -6,6 +6,7 @@ import { buildRolePrompt, buildSocialContract } from "./prompts";
 import { TurnLoop, type SubmitResult } from "./turn-loop";
 import { startRoom } from "./startup";
 import type { PiAgentClient } from "./seams/pi-agent-client";
+import { AgentStream } from "./agent-stream";
 import type { HerdrPaneManager } from "./seams/herdr-pane-manager";
 import type { Telemetry } from "./telemetry";
 import { errorMessage } from "./errors";
@@ -43,6 +44,7 @@ export class Coordinator {
   private persistQueue: Promise<void> = Promise.resolve();
   private submitQueue: Promise<unknown> = Promise.resolve();
   private readonly agentLogs = new Map<string, string>();
+  private readonly agentStream = new AgentStream();
   private readonly reportedFailures = new Set<string>();
   private roomState: RoomState | null = null;
   private roomStatus: RoomStatus = "idle";
@@ -102,9 +104,14 @@ export class Coordinator {
       await mkdir(agentDir, { recursive: true });
       const logPath = join(agentDir, "log.jsonl");
       this.agentLogs.set(agent.id, logPath);
+      // The pane tails this file (D7); `log.jsonl` stays the machine record.
+      const streamPath = join(agentDir, "output.log");
+      this.agentStream.open(agent.id, streamPath);
+      this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `[started] pid=${info.pid}`));
 
       this.pi.on("stream", agent.id, (delta) => {
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
+        this.watchFailure("agent pane write", agent.id, this.agentStream.delta(agent.id, delta));
       });
       this.pi.on("settled", agent.id, (r) => {
         // Only an agent that actually ran a turn moves its activity stamp.
@@ -114,6 +121,7 @@ export class Coordinator {
           runtime.lastActivityAt = this.now();
         }
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
+        this.watchFailure("agent pane write", agent.id, this.agentStream.settle(agent.id, r.lastText));
       });
       this.pi.on("error", agent.id, (e) => {
         this.watchFailure("agent error handling", agent.id, this.handleAgentError(agent.id, e));
@@ -123,7 +131,7 @@ export class Coordinator {
         const paneId = await this.panes.openAgentPane({
           id: `agent-${agent.id}`,
           title: agent.handle,
-          command: ["tail", "-f", logPath],
+          command: ["tail", "-f", streamPath],
         });
         if (this.roomState) this.roomState.agents[agent.id].paneId = paneId;
       }
@@ -157,6 +165,7 @@ export class Coordinator {
     for (const agent of this.config.allAgents) {
       this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "shutdown", ""));
       await this.pi.shutdown(agent.id);
+      this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, "[exited]"));
       if (this.roomState) {
         this.roomState.agents[agent.id].status = "exited";
         this.roomState.agents[agent.id].lastActivityAt = this.now();
@@ -241,6 +250,7 @@ export class Coordinator {
 
   private async handleAgentError(agentId: string, error: Error): Promise<void> {
     await this.appendAgentLog(agentId, "error", error.message);
+    this.watchFailure("agent pane write", agentId, this.agentStream.line(agentId, `[error] ${error.message}`));
     if (this.roomState?.agents[agentId]) {
       this.roomState.agents[agentId].status = "error";
       this.roomState.agents[agentId].lastActivityAt = this.now();

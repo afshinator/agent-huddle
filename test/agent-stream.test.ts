@@ -1,0 +1,79 @@
+import { test, expect, describe } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AgentStream } from "../src/agent-stream";
+
+async function harness(fn: (stream: AgentStream, path: string, read: () => Promise<string>) => Promise<void>): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "ah-stream-"));
+  const path = join(dir, "output.log");
+  try {
+    const stream = new AgentStream();
+    stream.open("dev1", path);
+    await fn(stream, path, async () => readFile(path, "utf8").catch(() => ""));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+describe("AgentStream", () => {
+  test("deltas become one paragraph, not one line per fragment", async () => {
+    await harness(async (stream, _path, read) => {
+      for (const delta of ["The ", "quick ", "brown ", "fox"]) await stream.delta("dev1", delta);
+      await stream.settle("dev1", "The quick brown fox");
+
+      const out = await read();
+      expect(out).toBe("The quick brown fox\n\n");
+      expect(out).not.toContain("{");
+    });
+  });
+
+  test("a turn that streams nothing writes its settled text", async () => {
+    await harness(async (stream, _path, read) => {
+      await stream.settle("dev1", "answered without streaming");
+      expect(await read()).toBe("answered without streaming\n\n");
+    });
+  });
+
+  test("a settled text does not repeat prose that already streamed", async () => {
+    await harness(async (stream, _path, read) => {
+      await stream.delta("dev1", "streamed once");
+      await stream.settle("dev1", "streamed once");
+      expect(await read()).toBe("streamed once\n\n");
+    });
+  });
+
+  test("a lifecycle line closes an open paragraph and starts its own line", async () => {
+    await harness(async (stream, _path, read) => {
+      await stream.delta("dev1", "half a sentence");
+      await stream.line("dev1", "[error] pi process for dev1 exited");
+      await stream.line("dev1", "[exited]");
+
+      expect(await read()).toBe("half a sentence\n[error] pi process for dev1 exited\n[exited]\n");
+    });
+  });
+
+  test("concurrent deltas keep their order", async () => {
+    // The writers race: three `appendFile` calls in flight completed out of order
+    // ("Answered prose.\nin ") before the stream serialized them.
+    await harness(async (stream, _path, read) => {
+      void stream.delta("dev1", "Answered ");
+      void stream.delta("dev1", "in ");
+      void stream.delta("dev1", "prose.");
+      await stream.settle("dev1", "Answered in prose.");
+
+      expect(await read()).toBe("Answered in prose.\n\n");
+    });
+  });
+
+  test("turns stay separate: two turns separated by a blank line", async () => {
+    await harness(async (stream, _path, read) => {
+      await stream.delta("dev1", "first");
+      await stream.settle("dev1", "first");
+      await stream.delta("dev1", "second");
+      await stream.settle("dev1", "second");
+
+      expect(await read()).toBe("first\n\nsecond\n\n");
+    });
+  });
+});

@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Coordinator } from "../src/coordinator";
@@ -40,6 +40,16 @@ interface Harness {
   panes: FakeHerdrPaneManager;
   telemetry: RecordingTelemetry;
   out: string[];
+}
+
+/** Poll a file until it contains `needle`; the coordinator does not await pane writes. */
+async function waitForText(path: string, needle: string, timeoutMs = 2000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const text = await readFile(path, "utf8").catch(() => "");
+    if (text.includes(needle) || Date.now() > deadline) return text;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 }
 
 async function harness(
@@ -296,6 +306,38 @@ describe("Coordinator (fakes)", () => {
       const state = await store.readState();
       expect(state!.agents.lead.status).toBe("exited");
       expect(state!.agents.dev1.status).toBe("error");
+    });
+  });
+
+  test("the agent pane tails readable prose, while log.jsonl keeps the JSON records", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, pi, panes }) => {
+      await coordinator.boot();
+      // The pane must tail the readable file, not the JSON log.
+      const opened = panes.calls.find((c) => c.op === "open");
+      expect((opened!.payload as { command: string[] }).command.join(" ")).toContain("output.log");
+      pi.script("lead", [{ deltas: ["Answered ", "in ", "prose."], lastText: "Answered in prose.\nDONE" }]);
+      await coordinator.submit("@lead go");
+
+      // The coordinator does not await the pane write, so poll rather than sleep.
+      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "Answered in prose.");
+      expect(stream).toContain("Answered in prose.");
+      expect(stream).not.toContain("{");
+      expect(stream).not.toContain("delta");
+      // The machine record is unchanged: one JSON line per event.
+      const log = await readFile(join(dir, "agents", "lead", "log.jsonl"), "utf8");
+      expect(log.trim().split("\n")[0]).toStartWith('{"ts":');
+      expect(log).toContain('"event":"delta"');
+    });
+  });
+
+  test("an agent error reaches the pane as one line, not a JSON record", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, pi }) => {
+      await coordinator.boot();
+      pi.script("lead", [{ error: new Error("provider exploded") }]);
+      await coordinator.submit("@lead go");
+
+      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "[error] provider exploded");
+      expect(stream).toContain("[error] provider exploded\n");
     });
   });
 

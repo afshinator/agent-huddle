@@ -406,7 +406,7 @@ Layout (agent panes created at boot, via `herdr pane split` / `run` / `rename`; 
 Rules:
 
 - **room pane** (the shared chat room): runs the coordinator process. Its stdout prints the room stream (each appended `messages.jsonl` entry, formatted); its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
-- **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/log.jsonl`. The coordinator writes each agent's streamed deltas + lifecycle lines to its log file. Read-only; closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
+- **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes that agent's streamed prose + one-line lifecycle events to it; `log.jsonl` holds the JSON records for machines and no pane reads it. Read-only in v1; closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
 
 ### 8.1 Seam (§9) is the only herdr touchpoint
 
@@ -497,7 +497,7 @@ export interface HerdrPaneManager {
 
 The room pane is the coordinator's own terminal (the human launches the coordinator in it); it is **not** managed by this seam. Only agent panes are.
 
-**Pane content (v1.1, D7).** An agent pane shows that agent's **readable output stream**, not `log.jsonl`: its messages as prose, its tool calls as one line each, its deltas coalesced. `log.jsonl` remains on disk as the machine-readable record; no pane tails raw JSON.
+**Pane content (v1.1, D7).** An agent pane shows that agent's **readable output stream** (`agents/<id>/output.log`), not `log.jsonl`: its deltas written as prose, one blank line between turns, lifecycle events as one prefixed line each (`[started]`, `[error] …`, `[exited]`). A turn that streamed no deltas writes its settled text, because a provider may send `text_end` without `text_delta`. `log.jsonl` remains on disk as the machine record and no pane tails raw JSON. Tool calls are not in this list: the seam reports no tool event yet (#39).
 
 **Pane input (v1.1, D7).** A writable pane (`pane_writable: true`, the default) runs two processes: the tail, plus a reader that appends typed lines to a per-agent inbox file. The coordinator watches each inbox and turns every line into a public room message from the supervisor, addressed to that agent (§6.4). A pane cannot both `tail` and read a keyboard, so the inbox file is what carries the input; it is also why a typed line survives an app restart. A read-only pane runs the tail alone behind a `read-only — type in the chat pane` banner, because otherwise swallowed keystrokes give no feedback.
 
