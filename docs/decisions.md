@@ -127,3 +127,29 @@ debugger wants JSON events. Serving both from one file made the pane a log dump 
 **Cost, accepted:** a second per-agent output file to keep coherent with `log.jsonl`, and a
 two-process pane command (tail plus reader) for writable panes, because a pane cannot tail a file and
 read a keyboard at the same time.
+
+---
+
+## D8 — the pane shows tool calls through a new `tool` seam event (v1.1)
+
+**Decision:** `AgentEventMap` gains `tool: { name: string; args: unknown }`. The real client emits it on
+`tool_execution_start` and ignores `tool_execution_update` and `tool_execution_end`. The coordinator
+renders one line, `[tool] <name> <args on one line, cut at 200 chars>`.
+
+**Rejected:**
+
+- *Parse `agents/<id>/log.jsonl` in the pane stream writer.* It puts the `pi` protocol shape into the
+  presentation layer, gives the same fact two sources, and would break on the next record rename
+  without any test noticing.
+- *Emit on `tool_execution_end` instead of start.* A long `bash` would stay invisible until it
+  finished, which is exactly the wait where the pane is the only thing to watch.
+- *Carry `isError` and `durationMs` now.* No consumer reads them; adding fields "for later" is how a
+  seam grows a vocabulary nobody chose.
+
+**Why:** a coding agent's work is mostly tool calls. Without them the pane shows a model talking about
+files it may never have opened. The seam already existed for streaming and errors, so the alternative
+was not "no seam change", it was "protocol knowledge in the wrong layer".
+
+**Cost, accepted:** one more event to keep wired in three places (interface overload, listener lists,
+fake), and the pane prints arguments verbatim — which can be large or sensitive, hence the 200-char cut.
+`docs/json.md` in the `pi` package is the only source for the record shape.

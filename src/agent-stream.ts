@@ -1,5 +1,11 @@
 import { appendFile } from "node:fs/promises";
 
+/** Tool arguments on one line, short enough to read in a pane. */
+function oneLine(args: unknown): string {
+  const text = JSON.stringify(args) ?? String(args);
+  return text.length <= 200 ? text : `${text.slice(0, 199)}…`;
+}
+
 /**
  * Human-readable per-agent stream (D7): the pane tails this file instead of `log.jsonl`.
  *
@@ -49,9 +55,15 @@ export class AgentStream {
     await this.append(agentId, "\n");
   }
 
+  /** One line per tool call: `[tool] bash {"command":"ls"}`. */
+  async tool(agentId: string, tool: { name: string; args: unknown }): Promise<void> {
+    await this.line(agentId, `[tool] ${tool.name} ${oneLine(tool.args)}`);
+  }
+
   /** One lifecycle line, e.g. `[error] pi process exited` or `[exited]`. */
   async line(agentId: string, text: string): Promise<void> {
-    this.streamed.delete(agentId);
+    // Does not touch `streamed`: a tool line lands mid-turn, and the turn's own
+    // settle must still know whether prose was streamed.
     if (this.midLine.delete(agentId)) await this.append(agentId, "\n");
     await this.append(agentId, `${text}\n`);
   }

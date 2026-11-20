@@ -32,10 +32,12 @@ export interface PiAgentClient {
   on(event: "settled", agentId: string, fn: (r: SettledResult) => void): void;
   on(event: "stream", agentId: string, fn: (delta: string) => void): void;
   on(event: "error", agentId: string, fn: (err: Error) => void): void;
+  on(event: "tool", agentId: string, fn: (t: { name: string; args: unknown }) => void): void;
 }
 
 /** One scripted turn: stream deltas then a settled result (or an error). */
 export interface ScriptedTurn {
+  tools?: Array<{ name: string; args: unknown }>;
   deltas?: string[];
   lastText?: string | null;
   aborted?: boolean;
@@ -55,6 +57,8 @@ export interface AgentEventMap {
   settled: SettledResult;
   stream: string;
   error: Error;
+  /** A tool the agent started running. `args` is whatever the tool received. */
+  tool: { name: string; args: unknown };
 }
 
 export type AgentEvent = keyof AgentEventMap;
@@ -63,6 +67,7 @@ interface AgentListenerLists {
   settled: Array<(r: SettledResult) => void>;
   stream: Array<(delta: string) => void>;
   error: Array<(err: Error) => void>;
+  tool: Array<(t: { name: string; args: unknown }) => void>;
 }
 
 /** Per-agent event fan-out shared by the fake and the real client. */
@@ -85,7 +90,7 @@ export class AgentListeners {
   private lists(agentId: string): AgentListenerLists {
     let lists = this.byAgent.get(agentId);
     if (!lists) {
-      lists = { settled: [], stream: [], error: [] };
+      lists = { settled: [], stream: [], error: [], tool: [] };
       this.byAgent.set(agentId, lists);
     }
     return lists;
@@ -174,6 +179,9 @@ export class FakePiAgentClient implements PiAgentClient {
         a.lastText = null;
         rejectSettle(turn.error);
         return;
+      }
+      for (const tool of turn.tools ?? []) {
+        this.bus.emit(agentId, "tool", tool);
       }
       for (const delta of turn.deltas ?? []) {
         this.bus.emit(agentId, "stream", delta);

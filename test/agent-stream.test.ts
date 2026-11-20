@@ -66,6 +66,25 @@ describe("AgentStream", () => {
     });
   });
 
+  test("a tool call is one line naming the tool and its arguments", async () => {
+    await harness(async (stream, _path, read) => {
+      await stream.delta("dev1", "let me look");
+      await stream.tool("dev1", { name: "bash", args: { command: "ls -la" } });
+      await stream.settle("dev1", "let me look");
+
+      expect(await read()).toBe('let me look\n[tool] bash {"command":"ls -la"}\n\n');
+    });
+  });
+
+  test("long tool arguments are cut to one readable line", async () => {
+    await harness(async (stream, _path, read) => {
+      await stream.tool("dev1", { name: "write", args: { content: "x".repeat(500) } });
+      const out = await read();
+      expect(out.split("\n")[0].length).toBeLessThanOrEqual(220);
+      expect(out.split("\n")[0]).toEndWith("…");
+    });
+  });
+
   test("turns stay separate: two turns separated by a blank line", async () => {
     await harness(async (stream, _path, read) => {
       await stream.delta("dev1", "first");

@@ -37,6 +37,8 @@ bun src/index.ts rooms/example-2.yaml
 
 Each agent gets a pane showing that agent's work as prose. The pane tails `rooms/<room>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.
 
+The pane also shows one `[tool] …` line per tool call, so you see what the agent actually ran.
+
 Type in an agent's pane and the line becomes a public room message addressed to that agent (`@dev1 check the parser`): everyone sees it, only that agent runs. Set `pane_writable: false` on an agent to make its pane read-only behind a banner.
 
 The coordinator's terminal is the shared chat room:

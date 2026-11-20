@@ -385,6 +385,7 @@ pi --mode rpc \
 | `message_update` (`text_delta`) | stream agent output to its herdr pane |
 | `agent_end` | log run end; do **not** treat as turn complete |
 | `agent_settled` | hop complete; read final text, append `messages.jsonl`, advance loop |
+| `tool_execution_start` | one `[tool] <name> <args>` line in the agent's readable stream (D8); `tool_execution_update`/`_end` are ignored |
 | `response` (command responses) | correlate by `id`; log `success:false` as agent error |
 
 ---
@@ -447,6 +448,7 @@ export interface PiAgentClient {
   shutdown(agentId: string): Promise<void>;
   on(event: "settled", agentId: string, fn: (r: SettledResult) => void): void;
   on(event: "stream", agentId: string, fn: (delta: string) => void): void;
+  on(event: "tool", agentId: string, fn: (t: { name: string; args: unknown }) => void): void;
   on(event: "error", agentId: string, fn: (err: Error) => void): void;
 }
 ```
@@ -499,7 +501,7 @@ export interface HerdrPaneManager {
 
 The room pane is the coordinator's own terminal (the human launches the coordinator in it); it is **not** managed by this seam. Only agent panes are.
 
-**Pane content (v1.1, D7).** An agent pane shows that agent's **readable output stream** (`agents/<id>/output.log`), not `log.jsonl`: its deltas written as prose, one blank line between turns, lifecycle events as one prefixed line each (`[started]`, `[error] …`, `[exited]`). A turn that streamed no deltas writes its settled text, because a provider may send `text_end` without `text_delta`. `log.jsonl` remains on disk as the machine record and no pane tails raw JSON. Tool calls are not in this list: the seam reports no tool event yet (#39).
+**Pane content (v1.1, D7).** An agent pane shows that agent's **readable output stream** (`agents/<id>/output.log`), not `log.jsonl`: its deltas written as prose, one blank line between turns, lifecycle events as one prefixed line each (`[started]`, `[error] …`, `[exited]`). A turn that streamed no deltas writes its settled text, because a provider may send `text_end` without `text_delta`. `log.jsonl` remains on disk as the machine record and no pane tails raw JSON. Tool calls appear as one `[tool] <name> <args>` line, cut at 200 characters (D8).
 
 **Pane input (v1.1, D7).** A writable pane (`pane_writable: true`, the default) runs `sh agents/<id>/pane.sh`: the tail in the background, a reader in the foreground that appends each complete typed line to `agents/<id>/inbox`. The coordinator polls each inbox and turns every line into a public room message from the supervisor, addressed to that agent (§6.4). Two measured constraints shape this: a POSIX background job takes its stdin from `/dev/null`, so a backgrounded reader never sees a keystroke, and `herdr pane run` types its arguments into the pane shell one word per argument, so an inline `sh -c '…'` loses its quoting. Hence a script file, and the reader in the foreground. A read-only pane runs the tail alone behind a `read-only - type in the chat pane` banner, because otherwise swallowed keystrokes give no feedback.
 

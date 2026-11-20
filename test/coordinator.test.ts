@@ -473,6 +473,20 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
+  test("a tool call reaches the pane as one [tool] line", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, pi }) => {
+      await coordinator.boot();
+      pi.script("lead", [
+        { tools: [{ name: "bash", args: { command: "ls" } }], deltas: ["looked"], lastText: "looked\nDONE" },
+      ]);
+      await coordinator.submit("@lead go");
+
+      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "[tool] bash");
+      expect(stream).toContain('[tool] bash {"command":"ls"}\n');
+      expect(stream).not.toContain("tool_execution_start");
+    });
+  });
+
   test("an agent error reaches the pane as one line, not a JSON record", async () => {
     await harness({ task: undefined }, async ({ dir, coordinator, pi }) => {
       await coordinator.boot();

@@ -138,6 +138,9 @@ export class Coordinator {
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
         this.watchFailure("agent pane write", agent.id, this.agentStream.delta(agent.id, delta));
       });
+      this.pi.on("tool", agent.id, (tool) => {
+        this.watchFailure("agent pane write", agent.id, this.agentStream.tool(agent.id, tool));
+      });
       this.pi.on("settled", agent.id, (r) => {
         // Only an agent that actually ran a turn moves its activity stamp.
         if (this.roomState) {

@@ -35,6 +35,30 @@ describe("FakePiAgentClient", () => {
     expect(c.calls.filter((x) => x.op === "prompt")).toHaveLength(1);
   });
 
+  test("a scripted turn's tool calls arrive before its deltas, in order", async () => {
+    const c = new FakePiAgentClient();
+    await c.spawn(dev1, { cwd: "/w" });
+
+    const seen: string[] = [];
+    c.on("tool", "dev1", (t) => seen.push(`tool:${t.name}`));
+    c.on("stream", "dev1", (d) => seen.push(`delta:${d}`));
+
+    c.script("dev1", [
+      {
+        tools: [
+          { name: "bash", args: { command: "ls" } },
+          { name: "read", args: { path: "a.ts" } },
+        ],
+        deltas: ["done"],
+        lastText: "done",
+      },
+    ]);
+    await c.prompt("dev1", { message: "look" });
+    await c.waitForSettled("dev1", 1000);
+
+    expect(seen).toEqual(["tool:bash", "tool:read", "delta:done"]);
+  });
+
   test("each event delivers its own payload type", async () => {    const c = new FakePiAgentClient();
     await c.spawn(dev1, { cwd: "/w" });
 

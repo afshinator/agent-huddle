@@ -42,6 +42,8 @@ interface RpcRecord {
   aborted?: boolean;
   data?: unknown;
   assistantMessageEvent?: { type?: string; delta?: string; content?: string };
+  toolName?: string;
+  args?: unknown;
 }
 
 /** POSIX single-quote escaping: `'` → `'\''`; newlines stay literal inside quotes. */
@@ -324,6 +326,16 @@ export class RealPiAgentClient implements PiAgentClient {
           settle.reject(err);
         },
       );
+      return;
+    }
+
+    // Only the start is surfaced: the end record adds isError/durationMs, and no
+    // consumer reads them yet (D8).
+    if (rec.type === "tool_execution_start") {
+      this.bus.emit(agentId, "tool", {
+        name: typeof rec.toolName === "string" ? rec.toolName : "unknown",
+        args: rec.args,
+      });
       return;
     }
 
