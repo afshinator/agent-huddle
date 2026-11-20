@@ -337,7 +337,10 @@ describe("Coordinator (fakes)", () => {
     const repo = await gitRepoRoot();
     try {
       await harness({ task: undefined, cwd: repo, launchGuard: "refuse" }, async ({ dir, coordinator, pi, panes }) => {
-        await expect(coordinator.boot()).rejects.toThrow(/is the git repository root \(branch \w+\)/);
+        const resolved = await realpath(repo);
+        await expect(coordinator.boot()).rejects.toThrow(
+          new RegExp(`${resolved.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} is the git repository root \\(branch (main|master)\\)`),
+        );
         expect(pi.calls.filter((c) => c.op === "spawn")).toEqual([]);
         expect(panes.calls).toEqual([]);
         // A refusal leaves no room files behind either: nothing is written before the check.
@@ -358,6 +361,7 @@ describe("Coordinator (fakes)", () => {
         const guardWarns = telemetry.warns.filter((w) => w.msg.includes("git repository root"));
         expect(guardWarns).toHaveLength(1);
         expect(guardWarns[0].attrs?.dir).toBe(await realpath(repo));
+        expect(guardWarns[0].attrs?.branch).toMatch(/^(main|master)$/);
         expect(pi.calls.filter((c) => c.op === "spawn")).toHaveLength(2);
       });
     } finally {
@@ -523,6 +527,20 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
+  test("a no-mention message leaves the room idle with no chain", async () => {
+    await harness({ task: undefined }, async ({ coordinator, store, pi }) => {
+      await coordinator.boot();
+      const result = await coordinator.submit("just a status update");
+
+      expect(result.status).toBe("completed");
+      expect(result.hopCount).toBe(0);
+      const state = await store.readState();
+      expect(state!.status).toBe("idle");
+      expect(state!.chain).toBeNull();
+      expect(pi.calls.filter((c) => c.op === "prompt")).toEqual([]);
+    });
+  });
+
   test("a handle typed into a pane does not dispatch that agent", async () => {
     await harness({ task: undefined }, async ({ dir, coordinator, store, pi }) => {
       await coordinator.boot();
@@ -552,7 +570,9 @@ describe("Coordinator (fakes)", () => {
       pi.script("dev1", [{ lastText: "ok" }]);
       await appendFile(join(dir, "agents", "dev1", "inbox"), "@nobody hi\n", "utf8");
 
+      // The notice is appended before dispatch, so wait for the turn it starts.
       await waitForMessage(store, (m) => m.kind === "notice" && m.text.includes("@nobody"));
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt"));
       expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
     });
   });
@@ -575,14 +595,17 @@ describe("Coordinator (fakes)", () => {
   test("a tool call reaches the pane as one [tool] line", async () => {
     await harness({ task: undefined }, async ({ dir, coordinator, pi }) => {
       await coordinator.boot();
+      // The settled text is deliberately different from anything streamed, so the
+      // order of tool line and settled text is observable.
       pi.script("lead", [
-        { tools: [{ name: "bash", args: { command: "ls" } }], deltas: ["looked"], lastText: "looked\nDONE" },
+        { tools: [{ name: "bash", args: { command: "ls" } }], lastText: "settled after the tool\nDONE" },
       ]);
       await coordinator.submit("@lead go");
 
-      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "[tool] bash");
+      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "settled after the tool");
       expect(stream).toContain('[tool] bash {"command":"ls"}\n');
       expect(stream).not.toContain("tool_execution_start");
+      expect(stream.indexOf("[tool] bash")).toBeLessThan(stream.indexOf("settled after the tool"));
     });
   });
 

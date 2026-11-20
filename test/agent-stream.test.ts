@@ -76,6 +76,15 @@ describe("AgentStream", () => {
     });
   });
 
+  test("a tool line comes before the settled text even when nothing streamed", async () => {
+    await harness(async (stream, _path, read) => {
+      await stream.tool("dev1", { name: "bash", args: { command: "ls" } });
+      await stream.settle("dev1", "the answer");
+
+      expect(await read()).toBe('[tool] bash {"command":"ls"}\nthe answer\n\n');
+    });
+  });
+
   test("long tool arguments are cut to one readable line", async () => {
     await harness(async (stream, _path, read) => {
       await stream.tool("dev1", { name: "write", args: { content: "x".repeat(500) } });
