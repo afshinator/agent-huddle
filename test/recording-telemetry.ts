@@ -4,6 +4,7 @@ import type { Span, Telemetry } from "../src/telemetry";
 export class RecordingTelemetry implements Telemetry {
   readonly chainDeltas: number[] = [];
   readonly errors: string[] = [];
+  readonly infos: Array<{ msg: string; attrs?: Record<string, unknown> }> = [];
   readonly warns: Array<{ msg: string; attrs?: Record<string, unknown> }> = [];
 
   span<T>(_name: string, _attrs: Record<string, unknown>, fn: (s: Span) => T): T {
@@ -11,6 +12,7 @@ export class RecordingTelemetry implements Telemetry {
   }
 
   log(level: "info" | "warn" | "error", msg: string, attrs?: Record<string, unknown>): void {
+    if (level === "info") this.infos.push({ msg, attrs });
     if (level === "warn") this.warns.push({ msg, attrs });
     if (level === "error") this.errors.push(msg);
   }

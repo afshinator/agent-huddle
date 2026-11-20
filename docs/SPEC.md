@@ -454,7 +454,7 @@ The completed text reaches the caller through `SettledResult.lastText` only. The
 |---|---|---|
 | `spawn` | the binary is missing or the process cannot start | creates `sessionDir` first; spawning an id that is already live replaces the runtime entry **without** killing the previous child, so the coordinator spawns each agent once |
 | `prompt` | the RPC answers `success:false`, or no response arrives within the 30s command timeout | resolves when the prompt is *accepted*, not when the turn settles |
-| `pushContext` | the RPC fails or the child is gone | caller treats every rejection as best-effort and never halts a chain (§10) |
+| `pushContext` | the RPC fails or the child is gone | caller treats every rejection as best-effort and never halts a chain (§10). Each successful push emits one `context.push` telemetry record carrying `agentId` and `chars` — before that, success and failure were both silent |
 | `waitForSettled` | `timeoutMs` elapses (it then sends `abort` and re-rejects), the child exits before settling, or the turn failed | a timeout **rejects**; it does not resolve `{aborted:true}`. `aborted:true` means the turn ended aborted on its own |
 | `shutdown` | never after the child has exited | idempotent; stdin close → SIGTERM → SIGKILL after a grace period |
 | `on` | never | listeners run synchronously while records are handled, so a throwing listener breaks that record's dispatch: callers wrap them (the coordinator routes every listener through `watchFailure`) |

@@ -217,6 +217,9 @@ export class TurnLoop {
       if (targets.includes(agent.id)) continue;
       try {
         await this.pi.pushContext(agent.id, text);
+        // Silence used to mean success and failure alike; one record per push makes the
+        // difference visible without reading the agent's session file.
+        this.telemetry.log("info", "context.push", { agentId: agent.id, chars: text.length });
       } catch (e) {
         // Context delivery is best-effort: it must never end the chain.
         const msg = errorMessage(e);

@@ -295,6 +295,23 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("each context push leaves one trace record with the agent and the length", async () => {
+    const dev1Reply = "no mentions here";
+    await harness(async ({ loop, pi, telemetry }) => {
+      pi.script("dev1", [{ lastText: dev1Reply }]);
+      const text = "@dev1 just this one";
+
+      await loop.submit(text);
+
+      const pushes = pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId);
+      const traces = telemetry.infos.filter((i) => i.msg === "context.push");
+      expect(pushes.length).toBeGreaterThan(0);
+      expect(traces.map((t) => t.attrs?.agentId)).toEqual(pushes);
+      // Two texts get pushed: the user's, then dev1's reply.
+      expect([...new Set(traces.map((t) => t.attrs?.chars))].sort()).toEqual([dev1Reply.length, text.length].sort());
+    });
+  });
+
   test("human input starts a fresh chain each time", async () => {
     await harness(async ({ loop, pi }) => {
       pi.script("lead", [{ lastText: "one\nDONE" }, { lastText: "two\nDONE" }]);
