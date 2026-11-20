@@ -1,3 +1,8 @@
 node_modules/
 .DS_Store
 *.log
+*.bak
+# Scratch probes (see AGENTS.md) and room runtime directories.
+# rooms/*.yaml stay tracked: only directories are ignored here.
+probes/
+rooms/*/
