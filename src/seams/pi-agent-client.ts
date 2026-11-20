@@ -49,7 +49,55 @@ export interface RecordedCall {
   payload: unknown;
 }
 
-type ListenerEvent = "settled" | "stream" | "error";
+
+/** Payload per event on the `PiAgentClient` listener seam. */
+export interface AgentEventMap {
+  settled: SettledResult;
+  stream: string;
+  error: Error;
+}
+
+export type AgentEvent = keyof AgentEventMap;
+
+interface AgentListenerLists {
+  settled: Array<(r: SettledResult) => void>;
+  stream: Array<(delta: string) => void>;
+  error: Array<(err: Error) => void>;
+}
+
+/** Per-agent event fan-out shared by the fake and the real client. */
+export class AgentListeners {
+  private readonly byAgent = new Map<string, AgentListenerLists>();
+
+  on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {
+    (this.lists(agentId)[event] as Array<(arg: AgentEventMap[K]) => void>).push(fn);
+  }
+
+  emit<K extends AgentEvent>(agentId: string, event: K, arg: AgentEventMap[K]): void {
+    for (const fn of this.lists(agentId)[event] as Array<(arg: AgentEventMap[K]) => void>) fn(arg);
+  }
+
+  /** Drop every listener registered for an agent (used when a session restarts). */
+  reset(agentId: string): void {
+    this.byAgent.delete(agentId);
+  }
+
+  private lists(agentId: string): AgentListenerLists {
+    let lists = this.byAgent.get(agentId);
+    if (!lists) {
+      lists = { settled: [], stream: [], error: [] };
+      this.byAgent.set(agentId, lists);
+    }
+    return lists;
+  }
+}
+
+/** Look an agent up, or fail with the client's name in the message. */
+export function requireAgentEntry<T>(agents: Map<string, T>, agentId: string, client: string): T {
+  const entry = agents.get(agentId);
+  if (!entry) throw new Error(`${client}: unknown agent "${agentId}"`);
+  return entry;
+}
 
 interface FakeAgent {
   spec?: AgentSpec;
@@ -63,7 +111,7 @@ interface FakeAgent {
 export class FakePiAgentClient implements PiAgentClient {
   readonly calls: RecordedCall[] = [];
   private readonly agents = new Map<string, FakeAgent>();
-  private readonly listeners = new Map<string, Map<ListenerEvent, Array<(arg: any) => void>>>();
+  private readonly bus = new AgentListeners();
   private nextPid = 1000;
 
   constructor(private readonly baseDir = "/fake/sessions") {}
@@ -98,13 +146,13 @@ export class FakePiAgentClient implements PiAgentClient {
 
     queueMicrotask(() => {
       if (turn.error) {
-        for (const fn of this.ls(agentId, "error")) fn(turn.error);
+        this.bus.emit(agentId, "error", turn.error);
         a.lastText = null;
         rejectSettle(turn.error);
         return;
       }
       for (const delta of turn.deltas ?? []) {
-        for (const fn of this.ls(agentId, "stream")) fn(delta);
+        this.bus.emit(agentId, "stream", delta);
       }
       const result: SettledResult = {
         aborted: turn.aborted ?? false,
@@ -112,7 +160,7 @@ export class FakePiAgentClient implements PiAgentClient {
       };
       a.lastText = result.lastText;
       resolveSettle(result);
-      for (const fn of this.ls(agentId, "settled")) fn(result);
+      this.bus.emit(agentId, "settled", result);
     });
   }
 
@@ -136,14 +184,12 @@ export class FakePiAgentClient implements PiAgentClient {
     this.record("shutdown", agentId, undefined);
   }
 
-  on(event: ListenerEvent, agentId: string, fn: (arg: any) => void): void {
-    this.listeners.get(agentId)!.get(event)!.push(fn);
+  on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {
+    this.bus.on(event, agentId, fn);
   }
 
   private requireAgent(agentId: string): FakeAgent {
-    const a = this.agents.get(agentId);
-    if (!a) throw new Error(`FakePiAgentClient: unknown agent "${agentId}"`);
-    return a;
+    return requireAgentEntry(this.agents, agentId, "FakePiAgentClient");
   }
 
   /** Lazily register an agent so `script()` can queue turns before `spawn()`. */
@@ -152,17 +198,8 @@ export class FakePiAgentClient implements PiAgentClient {
     if (!a) {
       a = { spawned: false, shutdown: false, script: [], lastText: null, settle: null };
       this.agents.set(agentId, a);
-      this.listeners.set(agentId, new Map<ListenerEvent, Array<(arg: any) => void>>([
-        ["settled", []],
-        ["stream", []],
-        ["error", []],
-      ]));
     }
     return a;
-  }
-
-  private ls(agentId: string, event: ListenerEvent): Array<(arg: any) => void> {
-    return this.listeners.get(agentId)!.get(event)!;
   }
 
   private record(op: RecordedCall["op"], agentId: string, payload: unknown): void {

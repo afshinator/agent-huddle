@@ -3,12 +3,15 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentSpec } from "../config";
 import type {
+  AgentEvent,
+  AgentEventMap,
   AgentProcessInfo,
   PiAgentClient,
   PromptRequest,
   SettledResult,
   SpawnOptions,
 } from "../seams/pi-agent-client";
+import { AgentListeners, requireAgentEntry } from "../seams/pi-agent-client";
 
 interface PendingSettle {
   promise: Promise<SettledResult>;
@@ -28,7 +31,17 @@ interface RealAgent {
   shuttingDown: boolean;
 }
 
-type ListenerEvent = "settled" | "stream" | "error";
+/** The fields this client reads off a JSONL record from `pi`. */
+interface RpcRecord {
+  type?: string;
+  id?: string;
+  success?: boolean;
+  command?: string;
+  error?: string;
+  aborted?: boolean;
+  data?: unknown;
+  assistantMessageEvent?: { type?: string; delta?: string; content?: string };
+}
 
 /** POSIX single-quote escaping: `'` → `'\''`; newlines stay literal inside quotes. */
 function shellQuote(s: string): string {
@@ -60,7 +73,7 @@ function waitForExit(child: ChildProcessWithoutNullStreams, ms: number): Promise
  */
 export class RealPiAgentClient implements PiAgentClient {
   private readonly agents = new Map<string, RealAgent>();
-  private readonly listeners = new Map<string, Map<ListenerEvent, Array<(arg: any) => void>>>();
+  private readonly bus = new AgentListeners();
   private readonly pendingCommands = new Map<string, {
     agentId: string;
     resolve: (v: unknown) => void;
@@ -197,8 +210,8 @@ export class RealPiAgentClient implements PiAgentClient {
     agent.child.kill("SIGKILL");
   }
 
-  on(event: ListenerEvent, agentId: string, fn: (arg: any) => void): void {
-    this.listeners.get(agentId)!.get(event)!.push(fn);
+  on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {
+    this.bus.on(event, agentId, fn);
   }
 
   private register(agent: AgentSpec, child: ChildProcessWithoutNullStreams, info: AgentProcessInfo): void {
@@ -213,11 +226,7 @@ export class RealPiAgentClient implements PiAgentClient {
       exited: false,
       shuttingDown: false,
     });
-    this.listeners.set(agent.id, new Map<ListenerEvent, Array<(arg: any) => void>>([
-      ["settled", []],
-      ["stream", []],
-      ["error", []],
-    ]));
+    this.bus.reset(agent.id);
 
     let buf = "";
     child.stdout.on("data", (chunk: Buffer) => {
@@ -227,7 +236,7 @@ export class RealPiAgentClient implements PiAgentClient {
         const line = buf.slice(0, idx).replace(/\r$/, "");
         buf = buf.slice(idx + 1);
         if (line.trim() === "") continue;
-        let rec: Record<string, any>;
+        let rec: RpcRecord;
         try {
           rec = JSON.parse(line);
         } catch (error: unknown) {
@@ -246,7 +255,7 @@ export class RealPiAgentClient implements PiAgentClient {
       const a = this.agents.get(agent.id);
       if (a) a.exited = true;
       if (a && !a.shuttingDown) {
-        this.emit(agent.id, "error", new Error(`pi process for ${agent.id} exited unexpectedly`));
+        this.bus.emit(agent.id, "error", new Error(`pi process for ${agent.id} exited unexpectedly`));
       }
       for (const [id, p] of this.pendingCommands) {
         if (p.agentId === agent.id) {
@@ -263,11 +272,12 @@ export class RealPiAgentClient implements PiAgentClient {
     });
   }
 
-  private handleRecord(agentId: string, rec: Record<string, any>): void {
+  private handleRecord(agentId: string, rec: RpcRecord): void {
     if (rec.type === "response") {
-      const pending = rec.id ? this.pendingCommands.get(rec.id) : undefined;
-      if (pending) {
-        this.pendingCommands.delete(rec.id);
+      const responseId = rec.id;
+      const pending = responseId ? this.pendingCommands.get(responseId) : undefined;
+      if (pending && responseId) {
+        this.pendingCommands.delete(responseId);
         clearTimeout(pending.timer);
         if (rec.success) pending.resolve(rec.data);
         else pending.reject(new Error(rec.error ?? `command ${rec.command} failed`));
@@ -284,7 +294,7 @@ export class RealPiAgentClient implements PiAgentClient {
       const ev = rec.assistantMessageEvent;
       if (ev?.type === "text_delta" && typeof ev.delta === "string") {
         agent.textBuffer += ev.delta;
-        this.emit(agentId, "stream", ev.delta);
+        this.bus.emit(agentId, "stream", ev.delta);
       } else if (ev?.type === "text_end" && typeof ev.content === "string") {
         agent.textBuffer = ev.content;
       }
@@ -306,13 +316,13 @@ export class RealPiAgentClient implements PiAgentClient {
           const result: SettledResult = { aborted: !!rec.aborted, lastText };
           agent.lastText = lastText;
           agent.pendingSettle = null;
-          this.emit(agentId, "settled", result);
+          this.bus.emit(agentId, "settled", result);
           settle.resolve(result);
         },
         (error: unknown) => {
           const err = asError(error);
           agent.pendingSettle = null;
-          this.emit(agentId, "error", err);
+          this.bus.emit(agentId, "error", err);
           settle.reject(err);
         },
       );
@@ -337,7 +347,7 @@ export class RealPiAgentClient implements PiAgentClient {
   }
 
   private reportProtocolError(agentId: string, message: string): void {
-    this.emit(agentId, "error", new Error(`pi RPC protocol error: ${message}`));
+    this.bus.emit(agentId, "error", new Error(`pi RPC protocol error: ${message}`));
   }
 
   private command(
@@ -363,13 +373,7 @@ export class RealPiAgentClient implements PiAgentClient {
     });
   }
 
-  private emit(agentId: string, event: ListenerEvent, arg: any): void {
-    for (const fn of this.listeners.get(agentId)!.get(event)!) fn(arg);
-  }
-
   private requireAgent(agentId: string): RealAgent {
-    const a = this.agents.get(agentId);
-    if (!a) throw new Error(`RealPiAgentClient: unknown agent "${agentId}"`);
-    return a;
+    return requireAgentEntry(this.agents, agentId, "RealPiAgentClient");
   }
 }

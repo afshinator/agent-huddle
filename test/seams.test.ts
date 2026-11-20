@@ -36,6 +36,35 @@ describe("FakePiAgentClient", () => {
     expect(await c.getLastAssistantText("dev1")).toBe("hello");
   });
 
+  test("each event delivers its own payload type", async () => {
+    const c = new FakePiAgentClient();
+    await c.spawn(dev1, { cwd: "/w" });
+
+    const received: { settled?: SettledResult; stream?: string; error?: Error } = {};
+    c.on("settled", "dev1", (r) => {
+      received.settled = r;
+    });
+    c.on("stream", "dev1", (d) => {
+      received.stream = d;
+    });
+    c.on("error", "dev1", (e) => {
+      received.error = e;
+    });
+
+    c.script("dev1", [{ deltas: ["x"], lastText: "x" }]);
+    await c.prompt("dev1", { message: "go" });
+    await c.waitForSettled("dev1", 1000);
+    expect(received.stream).toBe("x");
+    expect(received.settled).toEqual({ aborted: false, lastText: "x" });
+    expect(received.error).toBeUndefined();
+
+    c.script("dev1", [{ error: new Error("boom") }]);
+    await c.prompt("dev1", { message: "go" });
+    await expect(c.waitForSettled("dev1", 1000)).rejects.toThrow("boom");
+    expect(received.error).toBeInstanceOf(Error);
+    expect(received.error!.message).toBe("boom");
+  });
+
   test("pushContext records without starting a turn", async () => {
     const c = new FakePiAgentClient();
     await c.spawn(dev1, { cwd: "/w" });
