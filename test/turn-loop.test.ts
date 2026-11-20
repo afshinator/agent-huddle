@@ -132,6 +132,30 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("a self-mention does not re-queue the author", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("lead", [{ lastText: "@dev1 take it, report to @lead when green" }]);
+      pi.script("dev1", [{ lastText: "finished, nothing to add" }]);
+
+      const result = await loop.submit("build it");
+      expect(result.status).toBe("completed");
+      // The lead's own handle is in the reply; that must not send the work back to it.
+      const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
+      expect(prompts).toEqual(["lead", "dev1"]);
+    });
+  });
+
+  test("a reply that mentions only its own author queues nobody", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("lead", [{ lastText: "I will keep @lead posted" }]);
+
+      const result = await loop.submit("go");
+      expect(result.status).toBe("completed");
+      const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
+      expect(prompts).toEqual(["lead"]);
+    });
+  });
+
   test("DONE from a non-lead agent does not complete the chain", async () => {
     await harness(async ({ loop, pi }) => {
       pi.script("dev1", [{ lastText: "DONE @lead" }]);

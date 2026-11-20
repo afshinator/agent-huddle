@@ -130,7 +130,8 @@ export class TurnLoop {
       if (resolution.unknownHandles.length > 0) {
         await this.append(chain, "notice", "room", `unknown agent mention(s): ${resolution.unknownHandles.join(", ")}`, chain.hopCount);
       }
-      const nextIds = resolution.targets;
+      // A mention of the author is a note to others, not a dispatch to itself.
+      const nextIds = resolution.targets.filter((id) => id !== agentId);
       for (const nextId of nextIds) queue.push({ agentId: nextId, text: reply });
       await this.syncContext(chain, reply, nextIds, agentId);
     }

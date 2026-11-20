@@ -295,6 +295,7 @@ A **hop** = one dispatched agent turn (one `prompt` → `agent_settled`). `chain
 - **Deterministic layer (Router):** only mentioned agents are ever dispatched. An unmentioned agent never receives a `prompt` in this chain. This is enforced in code, independent of the prompt text.
 - **Prompt layer (social contract):** the silence-unless-addressed text (§5) backs the deterministic gate and covers agents that still ingest the message as context (§6.6).
 - Mentions are parsed with `@handle` against the handle map; `@lead` and the lead's `handle` both resolve to the lead.
+- A reply's mention of its **own author** is ignored by routing: "report to @lead" from the lead does not dispatch the lead again. The handle stays in `mentions[]` for the record; the queue drops it.
 - Broadcast: `@all` or `@everyone` targets every agent (lead + all specialists). Each dispatched agent is one hop.
 
 ### 6.3 Hop cap & finish-up nudge (D6)
