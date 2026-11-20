@@ -36,8 +36,23 @@ test("Coordinator repairs a partial state cache before boot", async () => {
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("Coordinator boots from the log when state.json is corrupt", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ah-corrupt-state-"));
+test("a stale active state does not make boot resume a chain", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ah-stale-active-"));
+  try {
+    await writeFile(join(dir, "state.json"), JSON.stringify({ name: "room", startedAt: "s", status: "active", chain: { chainId: "c1", status: "active", hopCount: 3 }, agents: {} }));
+    const c = config(dir);
+    const store = new RoomStore(dir);
+    const coordinator = new Coordinator({ config: c, store, pi: new FakePiAgentClient(), telemetry: new NoopTelemetry(), panes: new FakeHerdrPaneManager() });
+
+    await coordinator.boot();
+
+    const state = await store.readState();
+    expect(state!.status).toBe("idle");
+    expect(state!.chain).toBeNull();
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("Coordinator boots from the log when state.json is corrupt", async () => {  const dir = await mkdtemp(join(tmpdir(), "ah-corrupt-state-"));
   try {
     const good = JSON.stringify({ id: "m1", ts: "t", kind: "user", from: "supervisor", handle: "supervisor", text: "a", mentions: [], chainId: "c", hop: 0 });
     await writeFile(join(dir, "messages.jsonl"), good + "\n", "utf8");

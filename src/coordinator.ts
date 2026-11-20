@@ -173,6 +173,9 @@ export class Coordinator {
         this.telemetry.log("warn", "pane close failed", { agentId: agent.id, error: errorMessage(error) });
       }
     }
+    // A stopped room is idle unless it halted; leaving `active` on disk advertises work
+    // no process is doing.
+    if (this.roomStatus !== "halted") this.roomStatus = "idle";
     await this.persistState();
   }
 

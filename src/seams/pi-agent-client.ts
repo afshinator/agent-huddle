@@ -40,6 +40,7 @@ export interface ScriptedTurn {
   lastText?: string | null;
   aborted?: boolean;
   error?: Error;
+  hold?: boolean; // leave the turn unsettled, so "shutdown mid-turn" is testable
 }
 
 export interface RecordedCall {
@@ -167,6 +168,7 @@ export class FakePiAgentClient implements PiAgentClient {
     a.settle = { promise, resolve: resolveSettle };
 
     queueMicrotask(() => {
+      if (turn.hold) return;
       if (turn.error) {
         this.bus.emit(agentId, "error", turn.error);
         a.lastText = null;

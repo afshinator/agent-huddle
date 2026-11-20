@@ -254,6 +254,31 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
+  test("shutdown during a running turn leaves a terminal status", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, store }) => {
+      pi.script("lead", [{ hold: true }]);
+      void coordinator.boot();
+      await Bun.sleep(5); // let boot reach the lead's turn, which never settles
+
+      await coordinator.shutdown();
+
+      const state = await store.readState();
+      expect(state!.status).not.toBe("active");
+      expect(state!.status).toBe("idle");
+    });
+  });
+
+  test("shutdown keeps a halted room halted", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, store }) => {
+      pi.script("lead", [{ error: new Error("turn boom") }]);
+      await coordinator.boot();
+      expect((await store.readState())!.status).toBe("halted");
+
+      await coordinator.shutdown();
+      expect((await store.readState())!.status).toBe("halted");
+    });
+  });
+
   test("a failed boot shuts down started agents and closes their panes", async () => {
     await harness({ task: undefined }, async ({ coordinator, store, pi, panes }) => {
       // The lead spawns; the second spawn rejects, via the fake's failure knob.
