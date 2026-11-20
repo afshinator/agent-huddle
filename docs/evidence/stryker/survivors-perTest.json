@@ -1,0 +1,744 @@
+[
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 66,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 67,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 73,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 104,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 105,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 107,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 108,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 120,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 121,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 130,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 132,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 156,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 157,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 163,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 164,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 179,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 181,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 182,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 208,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "NoCoverage",
+  "line": 212,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 66,
+  "mutator": "LogicalOperator",
+  "replacement": "(typeof v !== \"object\" || v === null) && Array.isArray(v)"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 66,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 66,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 66,
+  "mutator": "LogicalOperator",
+  "replacement": "typeof v !== \"object\" && v === null"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 66,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 73,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 73,
+  "mutator": "LogicalOperator",
+  "replacement": "typeof v !== \"string\" && v.trim() === \"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 73,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 66,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 73,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 73,
+  "mutator": "MethodExpression",
+  "replacement": "v"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 73,
+  "mutator": "StringLiteral",
+  "replacement": "\"Stryker was here!\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 91,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 92,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 93,
+  "mutator": "StringLiteral",
+  "replacement": "``"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 114,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 116,
+  "mutator": "ArrayDeclaration",
+  "replacement": "[]"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 116,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 120,
+  "mutator": "LogicalOperator",
+  "replacement": "!Array.isArray(tools) && !tools.every(t => typeof t === \"str"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 120,
+  "mutator": "MethodExpression",
+  "replacement": "tools.some(t => typeof t === \"string\")"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 120,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 104,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 120,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 107,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 132,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 130,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 135,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 135,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 135,
+  "mutator": "EqualityOperator",
+  "replacement": "systemPrompt === undefined"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 136,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 137,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 138,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 139,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 139,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 139,
+  "mutator": "EqualityOperator",
+  "replacement": "thinking === undefined"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 140,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 140,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 141,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 167,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 140,
+  "mutator": "EqualityOperator",
+  "replacement": "tools === undefined"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 175,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 168,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 170,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 179,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 181,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 188,
+  "mutator": "LogicalOperator",
+  "replacement": "typeof maxHopsRaw !== \"number\" && !Number.isInteger(maxHopsR"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 188,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 188,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 197,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 197,
+  "mutator": "LogicalOperator",
+  "replacement": "typeof turnTimeoutRaw !== \"number\" && !Number.isInteger(turn"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 197,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 197,
+  "mutator": "EqualityOperator",
+  "replacement": "turnTimeoutRaw <= 1"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 188,
+  "mutator": "EqualityOperator",
+  "replacement": "maxHopsRaw <= 1"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 204,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 205,
+  "mutator": "ArrayDeclaration",
+  "replacement": "[]"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 205,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 208,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 209,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 212,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 260,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 261,
+  "mutator": "ObjectLiteral",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 261,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 261,
+  "mutator": "EqualityOperator",
+  "replacement": "definition_of_done === undefined"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 261,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 264,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 42,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 42,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 42,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 42,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/config.ts",
+  "status": "Survived",
+  "line": 42,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/store.ts",
+  "status": "NoCoverage",
+  "line": 133,
+  "mutator": "ObjectLiteral",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 18,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 35,
+  "mutator": "ConditionalExpression",
+  "replacement": "false"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 59,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 50,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 65,
+  "mutator": "MethodExpression",
+  "replacement": "line"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 85,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 87,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 99,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 100,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 127,
+  "mutator": "OptionalChaining",
+  "replacement": "existing?.agents[spec.id]"
+ },
+ {
+  "file": "src/store.ts",
+  "status": "Survived",
+  "line": 132,
+  "mutator": "StringLiteral",
+  "replacement": "\"\""
+ },
+ {
+  "file": "src/errors.ts",
+  "status": "Survived",
+  "line": 8,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/errors.ts",
+  "status": "Survived",
+  "line": 11,
+  "mutator": "BlockStatement",
+  "replacement": "{}"
+ },
+ {
+  "file": "src/router.ts",
+  "status": "Survived",
+  "line": 60,
+  "mutator": "ConditionalExpression",
+  "replacement": "true"
+ },
+ {
+  "file": "src/router.ts",
+  "status": "Survived",
+  "line": 60,
+  "mutator": "LogicalOperator",
+  "replacement": "!BROADCAST_TOKENS.has(token) || !unknownHandles.includes(tok"
+ }
+]
