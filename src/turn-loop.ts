@@ -158,10 +158,14 @@ export class TurnLoop {
       this.telemetry.counter("room.hops_total", { agentId, chainId: chain.chainId });
       span.addEvent("dispatch", { agentId });
       try {
-        await this.pi.prompt(agentId, { message: text });
+        await this.pi.prompt(agentId, { message: text, streamingBehavior: "followUp" });
         const settled = await this.pi.waitForSettled(agentId, this.turnTimeoutMs);
+        if (settled.aborted) {
+          span.setStatus("error", "aborted");
+          await this.append(chain, "notice", "room", `agent ${agentId} aborted`, hop);
+          return null;
+        }
         await this.append(chain, "agent", agentId, settled.lastText ?? "", hop);
-        if (settled.aborted) span.setStatus("error", "aborted");
         return settled;
       } catch (e) {
         const msg = (e as Error).message;

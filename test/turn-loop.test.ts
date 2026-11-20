@@ -91,6 +91,8 @@ describe("TurnLoop", () => {
       expect(m.map((x) => `${x.kind}:${x.from}`)).toEqual(["user:supervisor", "agent:lead"]);
       expect(m[1].text).toBe("all done\nDONE");
       expect(m[1].hop).toBe(1);
+      const prompt = pi.calls.find((c) => c.op === "prompt");
+      expect((prompt!.payload as { streamingBehavior: string }).streamingBehavior).toBe("followUp");
     });
   });
 
@@ -124,6 +126,20 @@ describe("TurnLoop", () => {
       // dev1's DONE did not end it: lead still ran (2 dispatches)
       const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
       expect(prompts).toEqual(["dev1", "lead"]);
+    });
+  });
+
+  test("aborted turn halts with a notice and does not route partial mentions", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("dev1", [{ lastText: "@lead partial work", aborted: true }]);
+
+      const result = await loop.submit("@dev1 work");
+
+      expect(result.status).toBe("halted");
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
+      const messages = await msgs();
+      expect(messages.some((m) => m.kind === "notice" && m.text.includes("aborted"))).toBe(true);
+      expect(messages.some((m) => m.from === "lead")).toBe(false);
     });
   });
 
