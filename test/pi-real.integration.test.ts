@@ -100,11 +100,9 @@ describe.skipIf(!piAvailable() || integrationDisabled())("RealPiAgentClient (int
         expect(result.lastText).toContain("OK");
         expect(settledEvents).toBe(1);
 
-        const before = await client.getLastAssistantText("itest");
         await client.pushContext("itest", "room context: another agent said hello");
         // pushContext runs a bash echo (no run), so it must not produce a reply.
         expect(settledEvents).toBe(1);
-        expect(await client.getLastAssistantText("itest")).toBe(before);
 
         await client.shutdown("itest");
       } finally {

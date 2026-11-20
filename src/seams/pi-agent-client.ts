@@ -28,7 +28,6 @@ export interface PiAgentClient {
   prompt(agentId: string, req: PromptRequest): Promise<void>;      // accepted, not settled
   pushContext(agentId: string, text: string): Promise<void>;       // D8/Q3 (§6.6)
   waitForSettled(agentId: string, timeoutMs: number): Promise<SettledResult>;
-  getLastAssistantText(agentId: string): Promise<string | null>;
   shutdown(agentId: string): Promise<void>;
   on(event: "settled", agentId: string, fn: (r: SettledResult) => void): void;
   on(event: "stream", agentId: string, fn: (delta: string) => void): void;
@@ -172,10 +171,6 @@ export class FakePiAgentClient implements PiAgentClient {
   async waitForSettled(agentId: string, _timeoutMs: number): Promise<SettledResult> {
     const a = this.requireAgent(agentId);
     return a.settle ? a.settle.promise : { aborted: false, lastText: a.lastText };
-  }
-
-  async getLastAssistantText(agentId: string): Promise<string | null> {
-    return this.requireAgent(agentId).lastText;
   }
 
   async shutdown(agentId: string): Promise<void> {

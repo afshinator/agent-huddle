@@ -191,10 +191,6 @@ export class RealPiAgentClient implements PiAgentClient {
     }
   }
 
-  async getLastAssistantText(agentId: string): Promise<string | null> {
-    return this.requireAgent(agentId).lastText;
-  }
-
   async shutdown(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     if (agent.exited) return;

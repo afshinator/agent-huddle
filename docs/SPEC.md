@@ -434,7 +434,6 @@ export interface PiAgentClient {
   prompt(agentId: string, req: PromptRequest): Promise<void>;      // accepted, not settled
   pushContext(agentId: string, text: string): Promise<void>;       // D8/Q3 (§6.6)
   waitForSettled(agentId: string, timeoutMs: number): Promise<SettledResult>;
-  getLastAssistantText(agentId: string): Promise<string | null>;
   shutdown(agentId: string): Promise<void>;
   on(event: "settled", agentId: string, fn: (r: SettledResult) => void): void;
   on(event: "stream", agentId: string, fn: (delta: string) => void): void;
@@ -443,6 +442,8 @@ export interface PiAgentClient {
 ```
 
 Real implementation: spawns `pi --mode rpc`, parses JSONL, correlates by `id`, emits `stream` on `text_delta`, `settled` on `agent_settled`. Fake: in-memory map of `agentId → {messages, replayScript}`, returns scripted responses, records all calls for assertions.
+
+The completed text reaches the caller through `SettledResult.lastText` only. The real client asks `pi` for the authoritative text at settle time (`get_last_assistant_text`) and puts it there, so no seam method exposes the last text separately (removed in v1; #21).
 
 ### 9.2 `HerdrPaneManager`
 
@@ -459,10 +460,12 @@ export interface PaneSpec {
 export interface HerdrPaneManager {
   openAgentPane(spec: PaneSpec): Promise<PaneId>;       // one per agent
   tailLog(paneId: PaneId, logFile: string): Promise<void>;
-  readOutput(paneId: PaneId): Promise<string>;          // herdr pane read; tests assert
+  readOutput(paneId: PaneId): Promise<string>;          // consumer: herdr integration test (§9.2)
   close(paneId: PaneId): Promise<void>;                 // herdr pane close; hides pane, pi keeps running
 }
 ```
+
+`readOutput` has no coordinator caller and is kept deliberately: it is the only way to assert that a pane received the output it was opened for, so its named consumer is `test/herdr-real.integration.test.ts` plus manual troubleshooting. Nothing in the room flow reads pane contents back (kept in v1; #21).
 
 The room pane is the coordinator's own terminal (the human launches the coordinator in it); it is **not** managed by this seam. Only agent panes are.
 

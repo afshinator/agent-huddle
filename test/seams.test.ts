@@ -33,7 +33,6 @@ describe("FakePiAgentClient", () => {
     expect(settled).toEqual([{ aborted: false, lastText: "hello" }]);
     expect(result).toEqual({ aborted: false, lastText: "hello" });
     expect(c.calls.filter((x) => x.op === "prompt")).toHaveLength(1);
-    expect(await c.getLastAssistantText("dev1")).toBe("hello");
   });
 
   test("each event delivers its own payload type", async () => {
