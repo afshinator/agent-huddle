@@ -41,7 +41,7 @@ interface Harness {
 }
 
 async function harness(
-  opts: { maxHops?: number; task?: string },
+  opts: { maxHops?: number; task?: string; now?: () => string },
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-coord-"));
@@ -59,6 +59,7 @@ async function harness(
       telemetry,
       panes,
       stdout: { write: (s) => out.push(s) },
+      ...(opts.now ? { now: opts.now } : {}),
     });
     await fn({ dir, coordinator, store, pi, panes, telemetry, out });
   } finally {
@@ -101,6 +102,23 @@ describe("Coordinator (fakes)", () => {
       expect(stream).toContain("[room] do the work");
       expect(stream).toContain("[@lead]");
       expect(stream).toContain("[@dev1]");
+    });
+  });
+
+  test("lastActivityAt moves only for agents that ran a turn", async () => {
+    let tick = 0;
+    const now = (): string => new Date(1_700_000_000_000 + tick++ * 1000).toISOString();
+    await harness({ now }, async ({ coordinator, store, pi }) => {
+      await coordinator.boot();
+      const before = (await store.readState())!;
+
+      // No mention: the lead answers alone, dev1 never runs.
+      pi.script("lead", [{ lastText: "answered\nDONE" }]);
+      await coordinator.submit("just answer me");
+
+      const after = (await store.readState())!;
+      expect(after.agents.lead.lastActivityAt).not.toBe(before.agents.lead.lastActivityAt);
+      expect(after.agents.dev1.lastActivityAt).toBe(before.agents.dev1.lastActivityAt);
     });
   });
 

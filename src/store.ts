@@ -25,8 +25,17 @@ export class RoomStore {
   /** Live room-stream hook; the coordinator prints each appended message here. */
   onAppend?: (msg: RoomMessage) => void;
   private stateWrite: Promise<void> = Promise.resolve();
+  private ensuredDir = false;
 
   constructor(private readonly roomDir: string) {}
+
+  // One mkdir per store instance, not per message: the room directory outlives
+  // every append once it exists.
+  private async ensureDir(): Promise<void> {
+    if (this.ensuredDir) return;
+    await mkdir(this.roomDir, { recursive: true });
+    this.ensuredDir = true;
+  }
 
   get messagesPath(): string {
     return join(this.roomDir, "messages.jsonl");
@@ -37,7 +46,7 @@ export class RoomStore {
   }
 
   async appendMessage(msg: RoomMessage): Promise<void> {
-    await mkdir(this.roomDir, { recursive: true });
+    await this.ensureDir();
     await appendFile(this.messagesPath, JSON.stringify(msg) + "\n", "utf8");
     this.onAppend?.(msg);
   }
@@ -69,7 +78,7 @@ export class RoomStore {
   writeState(state: RoomState): Promise<void> {
     const serialized = JSON.stringify(state, null, 2) + "\n";
     const write = this.stateWrite.then(async () => {
-      await mkdir(this.roomDir, { recursive: true });
+      await this.ensureDir();
       const tmp = `${this.statePath}.${randomUUID()}.tmp`;
       const fh = await open(tmp, "w");
       try {

@@ -106,6 +106,12 @@ export class Coordinator {
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
       });
       this.pi.on("settled", agent.id, (r) => {
+        // Only an agent that actually ran a turn moves its activity stamp.
+        if (this.roomState) {
+          const runtime = this.roomState.agents[agent.id];
+          runtime.status = "idle";
+          runtime.lastActivityAt = this.now();
+        }
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
       });
       this.pi.on("error", agent.id, (e) => {
@@ -138,7 +144,6 @@ export class Coordinator {
       this.roomStatus = result.status === "halted" ? "halted" : "idle";
       for (const agent of Object.values(this.roomState?.agents ?? {})) {
         if (agent.status === "busy") agent.status = "idle";
-        agent.lastActivityAt = this.now();
       }
       await this.persistState();
       return result;
