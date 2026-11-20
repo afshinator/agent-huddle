@@ -1,6 +1,6 @@
 # Status — v1.1
 
-Version: **v1.1** · 2026-11-20 · commit `93737d8` · spec: [`SPEC.md`](SPEC.md) · decisions:
+Version: **v1.1** · 2026-11-20 · commit `b59d62f` · spec: [`SPEC.md`](SPEC.md) · decisions:
 [`decisions.md`](decisions.md) · evidence: [`runs/`](runs/), [`rca/`](rca/)
 
 Capabilities listed here are backed by a test or a live run. Each claim names its evidence: a run note

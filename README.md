@@ -7,7 +7,7 @@ Config-driven multi-agent chat room for [`pi`](https://github.com/earendil-works
 
 ## Status
 
-v1 implementation is complete. The specification is in [`docs/SPEC.md`](docs/SPEC.md), with the implementation slices in [`docs/tickets/`](docs/tickets/). What the app does today, each capability with the run or test behind it, is in [`docs/STATUS.md`](docs/STATUS.md); the spec has since moved to v1.1 in three places that are **not built yet** (issues #35–#37: no mention activates nobody, readable agent panes, writable pane input).
+v1.1 is implemented. The specification is in [`docs/SPEC.md`](docs/SPEC.md) and the decisions behind it in [`docs/decisions.md`](docs/decisions.md). What the app does today — each capability with the run or test behind it, and an explicit list of what is *not* proven — is in [`docs/STATUS.md`](docs/STATUS.md). For what is built, read that file rather than this one.
 
 **A room's agents write real files into the directory you launch it from.** Run supervised rooms in a worktree or a branch you are willing to throw away, or their output lands in your working tree and their tests in your test run. The coordinator checks at boot ([SPEC §10](docs/SPEC.md#10-error-handling--process-lifecycle)): `launch_guard` is `warn` by default, and `refuse` stops the room before any agent starts.
 
@@ -50,7 +50,7 @@ The coordinator's terminal is the shared chat room:
 - no mention: nobody is activated; every agent still receives it as context
 - unknown-only mentions: append a notice and dispatch nobody
 
-When running inside a Herdr-managed pane (`HERDR_ENV=1`), the coordinator opens one read-only log pane per agent. Closing an agent pane hides its log and does not stop that agent's `pi` process.
+Panes need `HERDR_ENV=1`; without it the coordinator runs headless with the same routing and no panes. Closing an agent pane hides it and does not stop that agent's `pi` process.
 
 ## Room files
 

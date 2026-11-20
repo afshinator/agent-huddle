@@ -410,7 +410,7 @@ Layout (agent panes created at boot, via `herdr pane split` / `run` / `rename`; 
 Rules:
 
 - **room pane** (the shared chat room): runs the coordinator process. Its stdout prints the room stream (each appended `messages.jsonl` entry, formatted); its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
-- **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes that agent's streamed prose + one-line lifecycle events to it; `log.jsonl` holds the JSON records for machines and no pane reads it. Read-only in v1; closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
+- **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes that agent's streamed prose + one-line lifecycle events to it; `log.jsonl` holds the JSON records for machines and no pane reads it. Writable by default (`pane_writable: false` gives a tail-only pane with a banner, §9.2); closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
 
 ### 8.1 Seam (§9) is the only herdr touchpoint
 
