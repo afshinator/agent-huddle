@@ -9,6 +9,7 @@ import { HerdrPaneManagerReal } from "./real/herdr-pane-manager-real";
 import { Coordinator } from "./coordinator";
 import { createShutdown } from "./shutdown";
 import { LaunchGuardError } from "./launch-guard";
+import { createDebug, debugEnabled } from "./debug";
 
 async function main(): Promise<void> {
   const yamlPath = process.argv[2];
@@ -17,22 +18,35 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  // AH_DEBUG=1 traces the room's own lifecycle to stderr: the signal, each stop, each
+  // child's exit. Without it, "did the handler run before the exit callback" was only
+  // answerable by patching source (#55).
+  const debug = createDebug({ enabled: debugEnabled(), write: (s) => process.stderr.write(s) });
+
   const config = await loadConfig(yamlPath);
   const store = new RoomStore(config.config.room_dir);
   const telemetry = new JsonlTelemetry(join(config.config.room_dir, "telemetry.jsonl"));
-  const pi = new RealPiAgentClient({ roomDir: config.config.room_dir });
+  const pi = new RealPiAgentClient({ roomDir: config.config.room_dir, debug });
   const panes = process.env.HERDR_ENV === "1" ? new HerdrPaneManagerReal({ cwd: process.cwd() }) : null;
-  const coordinator = new Coordinator({ config, store, pi, telemetry, panes });
+  const coordinator = new Coordinator({ config, store, pi, telemetry, panes, debug });
 
   const shutdown = createShutdown({
     shutdown: () => coordinator.shutdown(),
     flush: () => telemetry.flush(),
     exit: (code) => process.exit(code),
   });
-  process.once("SIGINT", () => void shutdown());
-  process.once("SIGTERM", () => void shutdown());
+  process.once("SIGINT", () => {
+    debug("signal SIGINT");
+    void shutdown();
+  });
+  process.once("SIGTERM", () => {
+    debug("signal SIGTERM");
+    void shutdown();
+  });
 
+  debug("boot start");
   await coordinator.boot();
+  debug("boot done");
 
   const rl = createInterface({ input: process.stdin });
   for await (const line of rl) {

@@ -14,6 +14,7 @@ import type {
 import { AgentListeners, requireAgentEntry } from "../seams/pi-agent-client";
 import { errorMessage } from "../errors";
 import { shellWord } from "../shell";
+import type { Debug } from "../debug";
 
 interface PendingSettle {
   promise: Promise<SettledResult>;
@@ -86,8 +87,19 @@ export class RealPiAgentClient implements PiAgentClient {
   private readonly stderrWrites = new Map<string, Promise<void>>();
   private readonly stderrSink: { write(s: string): void };
 
-  constructor(private readonly opts: { roomDir: string; piBin?: string; stderr?: { write(s: string): void } }) {
+  private readonly debug: Debug;
+
+  constructor(
+    private readonly opts: {
+      roomDir: string;
+      piBin?: string;
+      stderr?: { write(s: string): void };
+      /** Lifecycle trace; `AH_DEBUG=1` in the CLI wires it (#55). Silent by default. */
+      debug?: Debug;
+    },
+  ) {
     this.stderrSink = opts.stderr ?? process.stderr;
+    this.debug = opts.debug ?? (() => {});
   }
 
   private get piBin(): string {
@@ -229,6 +241,7 @@ export class RealPiAgentClient implements PiAgentClient {
   }
 
   private register(agent: AgentSpec, child: ChildProcessWithoutNullStreams, info: AgentProcessInfo): void {
+    this.debug(`child spawn ${agent.id} pid=${info.pid}`);
     this.agents.set(agent.id, {
       id: agent.id,
       child,
@@ -270,7 +283,8 @@ export class RealPiAgentClient implements PiAgentClient {
       if (process.env.PI_STDERR === "1") this.stderrSink.write(`[pi:${agent.id}] ${text}`);
     });
 
-    child.on("exit", () => {
+    child.on("exit", (code, signal) => {
+      this.debug(`child exit ${agent.id} code=${code} signal=${signal}`);
       const a = this.agents.get(agent.id);
       if (a) a.exited = true;
       if (a && !a.shuttingDown) {

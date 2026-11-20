@@ -76,6 +76,37 @@ import { createInterface } from "node:readline";
 createInterface({ input: process.stdin }).on("line", () => {});
 `;
 
+describe("RealPiAgentClient lifecycle trace", () => {
+  test("a spawn and the child's exit are traced with pid, code and signal", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-trace-"));
+    const stub = join(dir, "fake-pi");
+    await writeFile(stub, STUB, "utf8");
+    await chmod(stub, 0o755);
+
+    const lines: string[] = [];
+    const client = new RealPiAgentClient({
+      roomDir: dir,
+      piBin: stub,
+      stderr: { write: () => {} },
+      debug: (message) => lines.push(message),
+    });
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      await client.shutdown("dev1");
+      await waitUntil(() => lines.some((line) => line.startsWith("child exit")), 5000);
+
+      expect(lines.filter((line) => line.startsWith("child spawn"))).toHaveLength(1);
+      expect(lines.find((line) => line.startsWith("child exit"))).toMatch(/^child exit dev1 code=0 signal=null$/);
+      // the exit is traced after the spawn, never before it
+      expect(lines.findIndex((line) => line.startsWith("child spawn"))).toBeLessThan(
+        lines.findIndex((line) => line.startsWith("child exit")),
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+});
+
 describe("RealPiAgentClient child stderr", () => {
   async function withStub(
     env: string | undefined,

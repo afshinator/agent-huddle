@@ -61,6 +61,7 @@ async function harness(
     launchGuard?: "refuse" | "warn" | "off";
     agentStream?: AgentStream;
     inboxRead?: (path: string) => Promise<string>;
+    debug?: (message: string) => void;
   },
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
@@ -88,6 +89,7 @@ async function harness(
       inboxPollMs: 5,
       ...(opts.agentStream ? { agentStream: opts.agentStream } : {}),
       ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
+      ...(opts.debug ? { debug: opts.debug } : {}),
     });
     await fn({ dir, err, coordinator, store, pi, panes, telemetry, out });
 
@@ -505,6 +507,23 @@ describe("Coordinator (fakes)", () => {
       expect(state!.status).toBe("idle");
       expect(state!.chain).toBeNull();
     });
+  });
+
+  test("a stop traces the room and each agent, so a signal can be placed against it", async () => {
+    const lines: string[] = [];
+    // The harness stops the room in its teardown (#53), so this trace is one shutdown.
+    await harness({ debug: (message) => lines.push(message) }, async ({ coordinator }) => {
+      await coordinator.boot();
+    });
+
+    const starts = lines.filter((line) => line.startsWith("agent stop start"));
+    const ends = lines.filter((line) => line.startsWith("agent stop end"));
+    expect(lines[0]).toBe("room stop start");
+    expect(lines[lines.length - 1]).toBe("room stop end");
+    expect(starts.sort()).toEqual(["agent stop start dev1", "agent stop start lead"]);
+    expect(ends.sort()).toEqual(["agent stop end dev1", "agent stop end lead"]);
+    // every stop is announced before any of them completes: the ordering #51 depended on
+    expect(lines.lastIndexOf("room stop start")).toBeLessThan(lines.indexOf("agent stop end dev1"));
   });
 
   test("the harness fails a test that ends with a chain still running", async () => {

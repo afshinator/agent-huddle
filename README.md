@@ -52,7 +52,7 @@ The coordinator's terminal is the shared chat room:
 
 Panes need `HERDR_ENV=1`; without it the coordinator runs headless with the same routing and no panes.
 
-A `pi` child's stderr is kept out of the room: it goes to `agents/<id>/stderr.log`. Set `PI_STDERR=1` to see it inline (prefixed `[pi:<id>]`) when diagnosing a child that misbehaves. Closing an agent pane hides it and does not stop that agent's `pi` process.
+A `pi` child's stderr is kept out of the room: it goes to `agents/<id>/stderr.log`. Set `PI_STDERR=1` to see it inline (prefixed `[pi:<id>]`) when diagnosing a child that misbehaves. Set `AH_DEBUG=1` to trace the room's own lifecycle to stderr — boot, signal, each agent stop, and each child's exit with code and signal — which is how you tell whether Ctrl-C reached the children before the coordinator's handler. Closing an agent pane hides it and does not stop that agent's `pi` process.
 
 ## Room files
 

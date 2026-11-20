@@ -12,6 +12,7 @@ import { paneScript } from "./pane-command";
 import type { HerdrPaneManager } from "./seams/herdr-pane-manager";
 import type { Telemetry } from "./telemetry";
 import { errorMessage } from "./errors";
+import type { Debug } from "./debug";
 import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "./launch-guard";
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
@@ -29,6 +30,8 @@ export interface CoordinatorDeps {
   inboxPollMs?: number;
   agentStream?: AgentStream;
   inboxRead?: (path: string) => Promise<string>;
+  /** Lifecycle trace; `AH_DEBUG=1` in the CLI wires it (#55). Silent by default. */
+  debug?: Debug;
 }
 
 /**
@@ -63,6 +66,7 @@ export class Coordinator {
   private bootRun: Promise<unknown> = Promise.resolve();
   /** Chains and boot runs currently running, for a test that ends before its room does. */
   private inFlight = 0;
+  private readonly debug: Debug;
 
   constructor(deps: CoordinatorDeps) {
     this.config = deps.config;
@@ -74,6 +78,7 @@ export class Coordinator {
     this.stdout = deps.stdout ?? process.stdout;
     this.stderr = deps.stderr ?? process.stderr;
     this.now = deps.now ?? (() => new Date().toISOString());
+    this.debug = deps.debug ?? (() => {});
     this.agentStream = deps.agentStream ?? new AgentStream();
     this.inbox = new PaneInbox({
       pollMs: deps.inboxPollMs,
@@ -232,13 +237,17 @@ export class Coordinator {
   }
 
   async shutdown(): Promise<void> {
+    this.debug("room stop start");
     this.stopping = true;
     this.inbox.stop();
     // Start every stop in one tick, then wait: Ctrl-C sends SIGINT to the children in
     // this process group as well, and the coordinator's handler runs first (measured:
     // probes/sigint-order). Flagging an agent only after the previous one finished leaves
     // the later child dead-but-unflagged, so its pane reports a crash (#51).
-    const stops = this.config.allAgents.map((agent) => this.pi.shutdown(agent.id));
+    const stops = this.config.allAgents.map((agent) => {
+      this.debug(`agent stop start ${agent.id}`);
+      return this.pi.shutdown(agent.id).then(() => this.debug(`agent stop end ${agent.id}`));
+    });
     await Promise.all(stops);
     // A rejected turn unwinds as cancelled (D11). Wait for the chains that own it — the
     // supervisor's and boot's — or the final state is written while one is still writing.
@@ -267,6 +276,7 @@ export class Coordinator {
     // no process is doing.
     if (this.roomStatus !== "halted") this.roomStatus = "idle";
     await this.persistState();
+    this.debug("room stop end");
   }
 
   /** Undo a partial boot: close panes, stop started agents, record the failure. */
