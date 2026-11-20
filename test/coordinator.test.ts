@@ -10,6 +10,7 @@ import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
 import { createShutdown } from "../src/shutdown";
 import type { RoomMessage } from "../src/messages";
+import { AgentStream } from "../src/agent-stream";
 import type { AgentSpec, LoadedConfig } from "../src/config";
 
 const lead: AgentSpec = { id: "lead", handle: "@lead", role: "lead" };
@@ -100,6 +101,7 @@ async function harness(
     dev1Writable?: boolean;
     cwd?: string;
     launchGuard?: "refuse" | "warn" | "off";
+    agentStream?: AgentStream;
   },
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
@@ -121,6 +123,7 @@ async function harness(
       ...(opts.now ? { now: opts.now } : {}),
       ...(opts.cwd ? { cwd: opts.cwd } : { cwd: dir }),
       inboxPollMs: 5,
+      ...(opts.agentStream ? { agentStream: opts.agentStream } : {}),
     });
     await fn({ dir, coordinator, store, pi, panes, telemetry, out });
   } finally {
@@ -266,6 +269,67 @@ describe("Coordinator (fakes)", () => {
       const messages = (await store.readMessages()).messages;
       expect(messages.filter((message) => message.kind === "user").map((message) => message.text)).toEqual(["@lead first", "@lead second"]);
       expect(messages.filter((message) => message.kind === "agent").map((message) => message.text)).toEqual(["first\nDONE", "second\nDONE"]);
+    });
+  });
+
+  test("a pane is not opened until the stream file exists", async () => {
+    // The [started] line is the first thing that creates output.log. If the pane
+    // starts `tail -f` before it lands, tail exits and the pane is a dead shell.
+    const events: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const stream = new AgentStream(async (path, data) => {
+      if (String(data).includes("[started]")) {
+        events.push("started-pending");
+        await gate;
+        events.push("started-written");
+      }
+      await appendFile(path, String(data), "utf8");
+    });
+
+    await harness({ task: undefined, agentStream: stream }, async ({ dir, coordinator, pi, panes }) => {
+      const open = panes.openAgentPane.bind(panes);
+      panes.openAgentPane = async (spec) => {
+        events.push("pane-open");
+        return open(spec);
+      };
+
+      const booting = coordinator.boot();
+      await waitUntil(() => events.includes("started-pending"));
+      release();
+      await booting;
+
+      // The file must exist before the tail starts, for every agent, not once.
+      expect(events.filter((e) => e === "started-written")).toHaveLength(2);
+      expect(events.filter((e) => e === "pane-open")).toHaveLength(2);
+      for (let i = 0; i < events.length; i += 1) {
+        if (events[i] !== "pane-open") continue;
+        const writtenBefore = events.slice(0, i).filter((e) => e === "started-written").length;
+        expect(writtenBefore).toBeGreaterThan(0);
+      }
+      expect(await readFile(join(dir, "agents", "lead", "output.log"), "utf8")).toContain("[started]");
+      void pi;
+    });
+  });
+
+  test("a failed [started] write still opens the pane and reports once", async () => {
+    const stream = new AgentStream(async (path, data) => {
+      if (String(data).includes("[started]") && String(path).includes("lead")) {
+        throw new Error("disk full");
+      }
+      await appendFile(path, String(data), "utf8");
+    });
+
+    await harness({ task: undefined, agentStream: stream }, async ({ coordinator, pi, panes, telemetry }) => {
+      await coordinator.boot();
+
+      // A missing header is not a reason to refuse the room.
+      expect(pi.calls.filter((c) => c.op === "spawn")).toHaveLength(2);
+      expect(panes.calls.filter((c) => c.op === "open")).toHaveLength(2);
+      const failures = telemetry.errors.filter((e) => e.includes("agent pane write"));
+      expect(failures).toHaveLength(1);
     });
   });
 

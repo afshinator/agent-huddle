@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HerdrPaneManagerReal } from "../src/real/herdr-pane-manager-real";
 import { paneScript } from "../src/pane-command";
+import { AgentStream } from "../src/agent-stream";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
@@ -79,6 +80,31 @@ describe.skipIf(skip)("HerdrPaneManagerReal (integration)", () => {
     } finally {
       if (paneId !== null) await mgr.close(paneId).catch(() => {});
       survivor.kill("SIGKILL");
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("a pane tails a stream file the test never created (#42)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-herdr-header-"));
+    const stream = join(dir, "output.log");
+    const inbox = join(dir, "inbox");
+    const scriptPath = join(dir, "pane.sh");
+    await writeFile(inbox, "", "utf8");
+    await writeFile(scriptPath, paneScript({ stream, inbox }), "utf8");
+
+    // Creation is the coordinator's job: the header write makes the file, then the
+    // pane opens. This asserts tail survives when nothing pre-created the path.
+    const agentStream = new AgentStream();
+    agentStream.open("t42", stream);
+    await agentStream.line("t42", "[started] pid=42");
+
+    const mgr = new HerdrPaneManagerReal({ direction: "down" });
+    let paneId: string | null = null;
+    try {
+      paneId = await mgr.openAgentPane({ id: "t42test", title: "@t42test", command: ["sh", scriptPath] });
+      await pollFor(() => mgr.readOutput(paneId!), "[started] pid=42");
+    } finally {
+      if (paneId !== null) await mgr.close(paneId).catch(() => {});
       await rm(dir, { recursive: true, force: true });
     }
   }, 60_000);

@@ -26,6 +26,7 @@ export interface CoordinatorDeps {
   stdout?: { write(s: string): void };
   now?: () => string;
   inboxPollMs?: number;
+  agentStream?: AgentStream;
 }
 
 /**
@@ -48,7 +49,7 @@ export class Coordinator {
   private persistQueue: Promise<void> = Promise.resolve();
   private submitQueue: Promise<unknown> = Promise.resolve();
   private readonly agentLogs = new Map<string, string>();
-  private readonly agentStream = new AgentStream();
+  private readonly agentStream: AgentStream;
   private readonly inbox: PaneInbox;
   private readonly reportedFailures = new Set<string>();
   private roomState: RoomState | null = null;
@@ -63,6 +64,7 @@ export class Coordinator {
     this.cwd = deps.cwd ?? process.cwd();
     this.stdout = deps.stdout ?? process.stdout;
     this.now = deps.now ?? (() => new Date().toISOString());
+    this.agentStream = deps.agentStream ?? new AgentStream();
     this.inbox = new PaneInbox({
       pollMs: deps.inboxPollMs,
       onLine: (agentId, line) => this.submitFromPane(agentId, line),
@@ -119,7 +121,10 @@ export class Coordinator {
       // The pane tails this file (D7); `log.jsonl` stays the machine record.
       const streamPath = join(agentDir, "output.log");
       this.agentStream.open(agent.id, streamPath);
-      this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `[started] pid=${info.pid}`));
+      // Awaited: this write is what creates output.log, and the pane starts
+      // `tail -f` on that file a few statements later. A failed write still must
+      // not abort boot, which is what watchFailure's never-rejecting promise buys.
+      await this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `[started] pid=${info.pid}`));
 
       // A writable pane carries typed lines through an inbox file (D7): a pane
       // cannot tail and read a keyboard at once.
@@ -329,8 +334,8 @@ export class Coordinator {
    * which Bun turns into a process exit, so the failure is reported once per
    * agent and operation instead.
    */
-  private watchFailure(op: string, agentId: string, work: Promise<void>): void {
-    void work.catch((e: unknown) => {
+  private watchFailure(op: string, agentId: string, work: Promise<void>): Promise<void> {
+    return work.catch((e: unknown) => {
       const key = `${op}:${agentId}`;
       if (this.reportedFailures.has(key)) return;
       this.reportedFailures.add(key);
