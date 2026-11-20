@@ -1,14 +1,12 @@
 import { test, expect, describe } from "bun:test";
-import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, rm, appendFile, writeFile } from "node:fs/promises";
+import { execFile, spawn, spawnSync } from "node:child_process";
+import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HerdrPaneManagerReal } from "../src/real/herdr-pane-manager-real";
 import { paneScript } from "../src/pane-command";
 import { AgentStream } from "../src/agent-stream";
-import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile } from "node:fs/promises";
 
 const execFileP = promisify(execFile);
 

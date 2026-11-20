@@ -9,8 +9,8 @@ import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
 import { createShutdown } from "../src/shutdown";
-import type { RoomMessage } from "../src/messages";
 import { AgentStream } from "../src/agent-stream";
+import { gitRepo, waitForMessage, waitForText, waitUntil } from "./helpers";
 import type { AgentSpec, LoadedConfig } from "../src/config";
 
 const lead: AgentSpec = { id: "lead", handle: "@lead", role: "lead" };
@@ -48,49 +48,6 @@ interface Harness {
   panes: FakeHerdrPaneManager;
   telemetry: RecordingTelemetry;
   out: string[];
-}
-
-/** A temporary git repository root, for the launch guard. */
-async function gitRepoRoot(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "ah-repo-"));
-  await new Promise<void>((resolve, reject) => {
-    execFile("git", ["init", "-q"], { cwd: dir }, (err) => (err ? reject(err) : resolve()));
-  });
-  return dir;
-}
-
-/** Poll a condition; the coordinator dispatches after the message is appended. */
-async function waitUntil(ok: () => boolean, timeoutMs = 2000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!ok()) {
-    if (Date.now() > deadline) throw new Error("condition never became true");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-}
-
-/** Poll the room log for a message that matches. */
-async function waitForMessage(
-  store: RoomStore,
-  match: (m: RoomMessage) => boolean,
-  timeoutMs = 2000,
-): Promise<RoomMessage> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const found = (await store.readMessages()).messages.find((m) => match(m));
-    if (found) return found;
-    if (Date.now() > deadline) throw new Error("message never appeared");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-}
-
-/** Poll a file until it contains `needle`; the coordinator does not await pane writes. */
-async function waitForText(path: string, needle: string, timeoutMs = 2000): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const text = await readFile(path, "utf8").catch(() => "");
-    if (text.includes(needle) || Date.now() > deadline) return text;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
 }
 
 async function harness(
@@ -336,7 +293,7 @@ describe("Coordinator (fakes)", () => {
   });
 
   test("launch_guard: refuse stops boot before any agent spawns or pane opens", async () => {
-    const repo = await gitRepoRoot();
+    const repo = await gitRepo();
     try {
       await harness({ task: undefined, cwd: repo, launchGuard: "refuse" }, async ({ dir, coordinator, pi, panes }) => {
         const resolved = await realpath(repo);
@@ -355,7 +312,7 @@ describe("Coordinator (fakes)", () => {
   });
 
   test("the default launch_guard warns once, names the directory, and starts", async () => {
-    const repo = await gitRepoRoot();
+    const repo = await gitRepo();
     try {
       await harness({ task: undefined, cwd: repo }, async ({ coordinator, pi, telemetry }) => {
         await coordinator.boot();
@@ -372,7 +329,7 @@ describe("Coordinator (fakes)", () => {
   });
 
   test("launch_guard: off starts in a repo root with no record", async () => {
-    const repo = await gitRepoRoot();
+    const repo = await gitRepo();
     try {
       await harness({ task: undefined, cwd: repo, launchGuard: "off" }, async ({ coordinator, telemetry }) => {
         await coordinator.boot();
@@ -608,27 +565,36 @@ describe("Coordinator (fakes)", () => {
   });
 
   test("a missing inbox file produces no record", async () => {
-    const read = async (path: string): Promise<string> => {
-      const err = Object.assign(new Error("no such file"), { code: "ENOENT" });
-      throw err;
+    let reads = 0;
+    const read = async (): Promise<string> => {
+      reads += 1;
+      throw Object.assign(new Error("no such file"), { code: "ENOENT" });
     };
     await harness({ task: undefined, inboxRead: read }, async ({ coordinator, telemetry }) => {
       await coordinator.boot();
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      // Proof that polls happened, rather than a sleep long enough to hope so.
+      await waitUntil(() => reads >= 6);
       expect(telemetry.warns.filter((w) => w.msg.includes("pane inbox read"))).toEqual([]);
     });
   });
 
   test("pane_writable: false gives a read-only pane and ignores the inbox", async () => {
-    await harness({ task: undefined, dev1Writable: false }, async ({ dir, coordinator, store, pi, panes }) => {
+    let reads = 0;
+    const read = async (path: string): Promise<string> => {
+      reads += 1;
+      return readFile(path, "utf8");
+    };
+    await harness({ task: undefined, dev1Writable: false, inboxRead: read }, async ({ dir, coordinator, store, pi, panes }) => {
       await coordinator.boot();
       const opened = panes.calls.filter((c) => c.op === "open");
       const scripts = await Promise.all(opened.map((c) => readFile((c.payload as { command: string[] }).command[1], "utf8")));
       expect(scripts.some((s) => s.includes("read-only - type in the chat pane"))).toBe(true);
 
-      // Even if a line lands in the file, nothing is dispatched.
+      // Even if a line lands in the file, nothing is dispatched: wait for the
+      // inbox to be polled at least once more, which is what a sleep was standing in for.
+      const before = reads;
       await appendFile(join(dir, "agents", "dev1", "inbox"), "should be ignored\n", "utf8");
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await waitUntil(() => reads > before);
       expect((await store.readMessages()).messages.filter((m) => m.kind === "user")).toEqual([]);
       expect(pi.calls.filter((c) => c.op === "prompt")).toEqual([]);
     });
@@ -681,7 +647,7 @@ describe("Coordinator (fakes)", () => {
         const result = await coordinator.submit("@lead go");
         expect(result.status).toBe("completed");
         await coordinator.shutdown();
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await waitUntil(() => telemetry.errors.filter((m) => m === "agent log write failed").length === 1);
       } finally {
         process.off("unhandledRejection", onUnhandled);
       }

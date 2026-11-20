@@ -53,7 +53,6 @@ describe("extractMentions", () => {
   test("no mention targets nobody (D6)", () => {
     expect(extractMentions("just a status update", cfg)).toEqual([]);
     expect(extractMentions("", cfg)).toEqual([]);
-    expect(resolveMentions("just a status update", cfg).hadMention).toBe(false);
   });
 
   test("unknown @handle is reported and targets nobody", () => {
@@ -61,7 +60,6 @@ describe("extractMentions", () => {
     expect(resolveMentions("@nobody do x", cfg)).toEqual({
       targets: [],
       unknownHandles: ["@nobody"],
-      hadMention: true,
     });
   });
 

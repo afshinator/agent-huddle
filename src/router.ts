@@ -23,7 +23,6 @@ export const RESERVED_HANDLES = new Set([...BROADCAST_TOKENS, LEAD_TOKEN]);
 export interface MentionResolution {
   targets: string[];
   unknownHandles: string[];
-  hadMention: boolean;
 }
 
 export function resolveMentions(text: string, config: LoadedConfig): MentionResolution {
@@ -42,10 +41,8 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
     }
   };
 
-  let found = false;
   const unknownHandles: string[] = [];
   for (const m of text.matchAll(MENTION_RE)) {
-    found = true;
     const token = m[0];
     if (BROADCAST_TOKENS.has(token)) {
       for (const id of allIds) add(id);
@@ -60,7 +57,7 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
     else if (!BROADCAST_TOKENS.has(token) && !unknownHandles.includes(token)) unknownHandles.push(token);
   }
 
-  return { targets, unknownHandles, hadMention: found };
+  return { targets, unknownHandles };
 }
 
 /** Routing entry point: explicit mentions, else nothing (§6.1/§6.4, D6). */

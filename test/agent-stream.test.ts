@@ -89,8 +89,11 @@ describe("AgentStream", () => {
     await harness(async (stream, _path, read) => {
       await stream.tool("dev1", { name: "write", args: { content: "x".repeat(500) } });
       const out = await read();
-      expect(out.split("\n")[0].length).toBeLessThanOrEqual(220);
-      expect(out.split("\n")[0]).toEndWith("…");
+      const line = out.split("\n")[0];
+      // The cut applies to the arguments: 199 characters plus "…".
+      const args = line.slice("[tool] write ".length);
+      expect(args.length).toBe(200);
+      expect(args).toBe(`${JSON.stringify({ content: "x".repeat(500) }).slice(0, 199)}…`);
     });
   });
 

@@ -1,18 +1,9 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspectLaunchDir } from "../src/launch-guard";
-
-const git = promisify(execFile);
-
-async function gitRepo(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "ah-guard-"));
-  await git("git", ["init", "-q"], { cwd: dir });
-  return dir;
-}
+import { gitRepo } from "./helpers";
 
 async function nonRepo(): Promise<string> {
   return mkdtemp(join(tmpdir(), "ah-guard-plain-"));
@@ -66,8 +57,3 @@ describe("inspectLaunchDir", () => {
     }
   });
 });
-
-async function realpath(p: string): Promise<string> {
-  const { realpath: rp } = await import("node:fs/promises");
-  return rp(p);
-}

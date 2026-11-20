@@ -14,9 +14,15 @@ async function asShellSees(value: string): Promise<string> {
   return stdout;
 }
 
+/** One spawn for many values: `printf '%s\\0'` round-trips each as a separate word. */
+async function asShellSeesAll(values: string[]): Promise<string[]> {
+  const { stdout } = await execFileP("sh", ["-c", `printf '%s\\0' ${values.map(shellWord).join(" ")}`]);
+  return stdout.split("\0").slice(0, -1);
+}
+
 describe("shellWord", () => {
   test("a value survives the shell unchanged, including quotes, newlines and dollars", async () => {
-    for (const value of [
+    const values = [
       "plain",
       "with space",
       "it's",
@@ -24,9 +30,9 @@ describe("shellWord", () => {
       "$HOME and `whoami` and $(date)",
       "back\\slash",
       "",
-    ]) {
-      expect(await asShellSees(value)).toBe(value);
-    }
+    ];
+    // One shell for the set: eight spawns made this test time out under load.
+    expect(await asShellSeesAll(values)).toEqual(values);
   });
 
   test("a quote cannot end the word early", async () => {
