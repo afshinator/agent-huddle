@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { LoadedConfig } from "./config";
 import { RoomStore, reconcileState } from "./store";
@@ -7,6 +7,8 @@ import { TurnLoop, type SubmitResult } from "./turn-loop";
 import { startRoom } from "./startup";
 import type { PiAgentClient } from "./seams/pi-agent-client";
 import { AgentStream } from "./agent-stream";
+import { PaneInbox } from "./pane-inbox";
+import { paneScript } from "./pane-command";
 import type { HerdrPaneManager } from "./seams/herdr-pane-manager";
 import type { Telemetry } from "./telemetry";
 import { errorMessage } from "./errors";
@@ -22,6 +24,7 @@ export interface CoordinatorDeps {
   cwd?: string;
   stdout?: { write(s: string): void };
   now?: () => string;
+  inboxPollMs?: number;
 }
 
 /**
@@ -45,6 +48,7 @@ export class Coordinator {
   private submitQueue: Promise<unknown> = Promise.resolve();
   private readonly agentLogs = new Map<string, string>();
   private readonly agentStream = new AgentStream();
+  private readonly inbox: PaneInbox;
   private readonly reportedFailures = new Set<string>();
   private roomState: RoomState | null = null;
   private roomStatus: RoomStatus = "idle";
@@ -58,6 +62,10 @@ export class Coordinator {
     this.cwd = deps.cwd ?? process.cwd();
     this.stdout = deps.stdout ?? process.stdout;
     this.now = deps.now ?? (() => new Date().toISOString());
+    this.inbox = new PaneInbox({
+      pollMs: deps.inboxPollMs,
+      onLine: (agentId, line) => this.submitFromPane(agentId, line),
+    });
     this.loop = new TurnLoop({
       config: deps.config,
       store: deps.store,
@@ -109,6 +117,19 @@ export class Coordinator {
       this.agentStream.open(agent.id, streamPath);
       this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `[started] pid=${info.pid}`));
 
+      // A writable pane carries typed lines through an inbox file (D7): a pane
+      // cannot tail and read a keyboard at once.
+      const writable = agent.pane_writable !== false;
+      const inboxPath = writable ? join(agentDir, "inbox") : null;
+      if (inboxPath !== null) {
+        await appendFile(inboxPath, "", "utf8");
+        await this.inbox.track(agent.id, inboxPath);
+      }
+      // The pane runs a script file, not an inline `sh -c`: herdr types the command
+      // into the pane shell one word per argument, which strips inline quoting.
+      const scriptPath = join(agentDir, "pane.sh");
+      await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath }), "utf8");
+
       this.pi.on("stream", agent.id, (delta) => {
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
         this.watchFailure("agent pane write", agent.id, this.agentStream.delta(agent.id, delta));
@@ -131,7 +152,7 @@ export class Coordinator {
         const paneId = await this.panes.openAgentPane({
           id: `agent-${agent.id}`,
           title: agent.handle,
-          command: ["tail", "-f", streamPath],
+          command: ["sh", scriptPath],
         });
         if (this.roomState) this.roomState.agents[agent.id].paneId = paneId;
       }
@@ -140,6 +161,7 @@ export class Coordinator {
 
     const result = await startRoom(this.config, this.loop);
     this.roomStatus = result?.status === "halted" ? "halted" : "idle";
+    this.inbox.start();
     await this.persistState();
     return result;
   }
@@ -162,6 +184,7 @@ export class Coordinator {
   }
 
   async shutdown(): Promise<void> {
+    this.inbox.stop();
     for (const agent of this.config.allAgents) {
       this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "shutdown", ""));
       await this.pi.shutdown(agent.id);
@@ -288,6 +311,17 @@ export class Coordinator {
         agentId,
         error: errorMessage(e),
       });
+    });
+  }
+
+  /** A line typed in an agent's pane is a public message to that agent (D7). */
+  private submitFromPane(agentId: string, line: string): void {
+    const agent = this.config.agentById.get(agentId);
+    if (!agent) return;
+    this.telemetry.log("info", "pane.input", { agentId, chars: line.length });
+    void this.submit(`${agent.handle} ${line}`).catch((e: unknown) => {
+      // The submit path reports its own failures; this only stops an unhandled rejection.
+      this.telemetry.log("error", "pane input failed", { agentId, error: errorMessage(e) });
     });
   }
 

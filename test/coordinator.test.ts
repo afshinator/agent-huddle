@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Coordinator } from "../src/coordinator";
@@ -13,8 +13,9 @@ import type { AgentSpec, LoadedConfig } from "../src/config";
 const lead: AgentSpec = { id: "lead", handle: "@lead", role: "lead" };
 const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 
-function makeConfig(roomDir: string, opts?: { maxHops?: number; task?: string }): LoadedConfig {
-  const allAgents = [lead, dev1];
+function makeConfig(roomDir: string, opts?: { maxHops?: number; task?: string; dev1Writable?: boolean }): LoadedConfig {
+  const agent: AgentSpec = opts?.dev1Writable === false ? { ...dev1, pane_writable: false } : dev1;
+  const allAgents = [lead, agent];
   return {
     config: {
       name: "room",
@@ -24,7 +25,7 @@ function makeConfig(roomDir: string, opts?: { maxHops?: number; task?: string })
       max_hops: opts?.maxHops ?? 12,
       turn_timeout_ms: 300_000,
       lead,
-      agents: [dev1],
+      agents: [agent],
     },
     sourcePath: join(roomDir, "team.yaml"),
     allAgents,
@@ -42,6 +43,21 @@ interface Harness {
   out: string[];
 }
 
+/** Poll the room log for a message that matches. */
+async function waitForMessage(
+  store: RoomStore,
+  match: (m: { text: string }) => boolean,
+  timeoutMs = 2000,
+): Promise<{ kind: string; from: string; text: string; mentions: string[] }> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const found = (await store.readMessages()).messages.find((m) => match(m));
+    if (found) return found as never;
+    if (Date.now() > deadline) throw new Error("message never appeared");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 /** Poll a file until it contains `needle`; the coordinator does not await pane writes. */
 async function waitForText(path: string, needle: string, timeoutMs = 2000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
@@ -53,7 +69,7 @@ async function waitForText(path: string, needle: string, timeoutMs = 2000): Prom
 }
 
 async function harness(
-  opts: { maxHops?: number; task?: string; now?: () => string },
+  opts: { maxHops?: number; task?: string; now?: () => string; dev1Writable?: boolean },
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-coord-"));
@@ -72,6 +88,7 @@ async function harness(
       panes,
       stdout: { write: (s) => out.push(s) },
       ...(opts.now ? { now: opts.now } : {}),
+      inboxPollMs: 5,
     });
     await fn({ dir, coordinator, store, pi, panes, telemetry, out });
   } finally {
@@ -103,10 +120,11 @@ describe("Coordinator (fakes)", () => {
       expect(state!.name).toBe("room");
       expect(Object.keys(state!.agents).sort()).toEqual(["dev1", "lead"]);
 
-      // per-agent panes opened with a tail command
+      // per-agent panes opened on the readable stream
       expect(panes.calls.filter((c) => c.op === "open")).toHaveLength(2);
       for (const c of panes.calls.filter((c) => c.op === "open")) {
-        expect((c.payload as { command: string[] }).command[0]).toBe("tail");
+        const scriptPath = (c.payload as { command: string[] }).command[1];
+        expect(await readFile(scriptPath, "utf8")).toContain("output.log");
       }
 
       // live room stream printed to stdout
@@ -314,7 +332,7 @@ describe("Coordinator (fakes)", () => {
       await coordinator.boot();
       // The pane must tail the readable file, not the JSON log.
       const opened = panes.calls.find((c) => c.op === "open");
-      expect((opened!.payload as { command: string[] }).command.join(" ")).toContain("output.log");
+      expect(await readFile((opened!.payload as { command: string[] }).command[1], "utf8")).toContain("output.log");
       pi.script("lead", [{ deltas: ["Answered ", "in ", "prose."], lastText: "Answered in prose.\nDONE" }]);
       await coordinator.submit("@lead go");
 
@@ -327,6 +345,46 @@ describe("Coordinator (fakes)", () => {
       const log = await readFile(join(dir, "agents", "lead", "log.jsonl"), "utf8");
       expect(log.trim().split("\n")[0]).toStartWith('{"ts":');
       expect(log).toContain('"event":"delta"');
+    });
+  });
+
+  test("a line typed in an agent pane becomes a public message to that agent", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, store, pi, panes }) => {
+      await coordinator.boot();
+      const inbox = join(dir, "agents", "dev1", "inbox");
+      // The pane command the writable pane runs.
+      const opened = panes.calls.filter((c) => c.op === "open");
+      const scripts = await Promise.all(opened.map((c) => readFile((c.payload as { command: string[] }).command[1], "utf8")));
+      expect(scripts.some((s) => s.includes(inbox) && s.includes("output.log"))).toBe(true);
+
+      pi.script("dev1", [{ lastText: "looking now" }]);
+      await appendFile(inbox, "check the parser\n", "utf8");
+
+      const msg = await waitForMessage(store, (m) => m.text === "@dev1 check the parser");
+      expect(msg.kind).toBe("user");
+      expect(msg.from).toBe("supervisor");
+      expect(msg.mentions).toEqual(["dev1"]);
+
+      // Public and activating only dev1: the lead ingests it, nobody else runs.
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1"]);
+      // Only the lead ingests it, and dev1's reply is pushed to the lead in turn.
+      const pushed = pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId);
+      expect(new Set(pushed)).toEqual(new Set(["lead"]));
+    });
+  });
+
+  test("pane_writable: false gives a read-only pane and ignores the inbox", async () => {
+    await harness({ task: undefined, dev1Writable: false }, async ({ dir, coordinator, store, pi, panes }) => {
+      await coordinator.boot();
+      const opened = panes.calls.filter((c) => c.op === "open");
+      const scripts = await Promise.all(opened.map((c) => readFile((c.payload as { command: string[] }).command[1], "utf8")));
+      expect(scripts.some((s) => s.includes("read-only - type in the chat pane"))).toBe(true);
+
+      // Even if a line lands in the file, nothing is dispatched.
+      await appendFile(join(dir, "agents", "dev1", "inbox"), "should be ignored\n", "utf8");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect((await store.readMessages()).messages.filter((m) => m.kind === "user")).toEqual([]);
+      expect(pi.calls.filter((c) => c.op === "prompt")).toEqual([]);
     });
   });
 

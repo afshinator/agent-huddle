@@ -106,6 +106,33 @@ describe("loadConfig", () => {
     });
   });
 
+  test("pane_writable is optional and accepts a boolean", async () => {
+    const yaml = `name: r
+${LEAD}agents:
+  - id: dev1
+    handle: "@dev1"
+    role: "dev"
+    pane_writable: false
+`;
+    await withConfig(yaml, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      expect(loaded.agentById.get("dev1")!.pane_writable).toBe(false);
+    });
+  });
+
+  test("a non-boolean pane_writable fails load naming the field", async () => {
+    const yaml = `name: r
+${LEAD}agents:
+  - id: dev1
+    handle: "@dev1"
+    role: "dev"
+    pane_writable: "no"
+`;
+    await withConfig(yaml, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/pane_writable/);
+    });
+  });
+
   test("rejects unknown agent key", async () => {
     const yaml = `name: r\nlead:\n  id: lead\n  handle: "@lead"\n  role: r\n  bogus: x\n`;
     await withConfig(yaml, async (p, cwd) => {

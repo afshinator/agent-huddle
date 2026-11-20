@@ -16,6 +16,7 @@ export interface AgentSpec {
   model?: string;                // pi --model
   thinking?: ThinkingLevel;      // pi --thinking
   tools?: string[];              // pi --tools allowlist
+  pane_writable?: boolean;       // pane accepts typed input (default true, D7)
 }
 
 export interface RoomConfig {
@@ -46,7 +47,7 @@ const ROOM_KEYS = new Set<string>([
 
 const AGENT_KEYS = new Set<string>([
   "id", "handle", "role", "system_prompt", "system_prompt_file",
-  "provider", "model", "thinking", "tools",
+  "provider", "model", "thinking", "tools", "pane_writable",
 ]);
 
 import { HANDLE_RE, LEAD_TOKEN, RESERVED_HANDLES } from "./router";
@@ -116,6 +117,11 @@ function parseAgent(v: unknown, what: string): AgentSpec {
     fail(`${what}.tools must be a list of strings`);
   }
 
+  const paneWritable = obj.pane_writable;
+  if (paneWritable !== undefined && typeof paneWritable !== "boolean") {
+    fail(`${what}.pane_writable must be true or false`);
+  }
+
   const provider = obj.provider;
   if (provider !== undefined && typeof provider !== "string") fail(`${what}.provider must be a string`);
   const model = obj.model;
@@ -128,6 +134,7 @@ function parseAgent(v: unknown, what: string): AgentSpec {
   if (model !== undefined) agent.model = model as string;
   if (thinking !== undefined) agent.thinking = thinking as ThinkingLevel;
   if (tools !== undefined) agent.tools = tools as string[];
+  if (paneWritable !== undefined) agent.pane_writable = paneWritable as boolean;
   return agent;
 }
 
