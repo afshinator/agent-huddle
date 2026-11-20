@@ -25,17 +25,37 @@ interface FakePane {
   closed: boolean;
 }
 
+export type FakePaneOp = "open" | "tail" | "close";
+
 export class FakeHerdrPaneManager implements HerdrPaneManager {
   readonly calls: PaneCall[] = [];
   readonly panes = new Map<PaneId, FakePane>();
+  private readonly failures = new Map<FakePaneOp, unknown[]>();
+
+  /** Reject the next `times` calls to `op` after `skip` successful ones. */
+  failOn(op: FakePaneOp, error: unknown, times = 1, skip = 0): void {
+    for (let i = 0; i < skip; i += 1) this.failures.set(op, [...(this.failures.get(op) ?? []), undefined]);
+    for (let i = 0; i < times; i += 1) this.failures.set(op, [...(this.failures.get(op) ?? []), error]);
+  }
+
+  private takeFailure(op: FakePaneOp): { error: unknown } | null {
+    const queue = this.failures.get(op);
+    if (!queue || queue.length === 0) return null;
+    const error = queue.shift();
+    return error === undefined ? null : { error };
+  }
 
   async openAgentPane(spec: PaneSpec): Promise<PaneId> {
+    const failure = this.takeFailure("open");
+    if (failure) throw failure.error;
     this.panes.set(spec.id, { spec, output: "", closed: false });
     this.calls.push({ op: "open", paneId: spec.id, payload: spec });
     return spec.id;
   }
 
   async tailLog(paneId: PaneId, logFile: string): Promise<void> {
+    const failure = this.takeFailure("tail");
+    if (failure) throw failure.error;
     this.requirePane(paneId);
     this.calls.push({ op: "tail", paneId, payload: logFile });
   }
@@ -45,6 +65,8 @@ export class FakeHerdrPaneManager implements HerdrPaneManager {
   }
 
   async close(paneId: PaneId): Promise<void> {
+    const failure = this.takeFailure("close");
+    if (failure) throw failure.error;
     this.requirePane(paneId).closed = true;
     this.calls.push({ op: "close", paneId });
   }

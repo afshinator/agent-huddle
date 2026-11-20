@@ -221,13 +221,8 @@ describe("Coordinator (fakes)", () => {
 
   test("a failed boot shuts down started agents and closes their panes", async () => {
     await harness({ task: undefined }, async ({ coordinator, store, pi, panes }) => {
-      const realSpawn = pi.spawn.bind(pi);
-      let spawned = 0;
-      pi.spawn = async (agent, opts) => {
-        if (++spawned === 2) throw new Error("spawn boom");
-        return realSpawn(agent, opts);
-      };
-
+      // The lead spawns; the second spawn rejects, via the fake's failure knob.
+      pi.failOn("spawn", new Error("spawn boom"), 1, 1);
       await expect(coordinator.boot()).rejects.toThrow("spawn boom");
 
       // The agent that did start is shut down, and its pane is closed.

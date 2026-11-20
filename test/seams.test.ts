@@ -35,8 +35,7 @@ describe("FakePiAgentClient", () => {
     expect(c.calls.filter((x) => x.op === "prompt")).toHaveLength(1);
   });
 
-  test("each event delivers its own payload type", async () => {
-    const c = new FakePiAgentClient();
+  test("each event delivers its own payload type", async () => {    const c = new FakePiAgentClient();
     await c.spawn(dev1, { cwd: "/w" });
 
     const received: { settled?: SettledResult; stream?: string; error?: Error } = {};
@@ -70,6 +69,30 @@ describe("FakePiAgentClient", () => {
     await c.pushContext("dev1", "room message");
     expect(c.calls.filter((x) => x.op === "pushContext")).toHaveLength(1);
     expect(c.calls.filter((x) => x.op === "prompt")).toHaveLength(0);
+  });
+
+  test("failOn makes spawn, prompt, pushContext and shutdown reject", async () => {
+    const c = new FakePiAgentClient();
+
+    c.failOn("spawn", new Error("spawn refused"));
+    await expect(c.spawn(dev1, { cwd: "/w" })).rejects.toThrow("spawn refused");
+
+    await c.spawn(dev1, { cwd: "/w" });
+    c.failOn("prompt", new Error("queue full"));
+    await expect(c.prompt("dev1", { message: "go" })).rejects.toThrow("queue full");
+
+    c.failOn("pushContext", new Error("host rejected"));
+    await expect(c.pushContext("dev1", "ctx")).rejects.toThrow("host rejected");
+
+    c.failOn("shutdown", new Error("already gone"));
+    await expect(c.shutdown("dev1")).rejects.toThrow("already gone");
+
+    // One knob fires once: the next call goes through.
+    await c.prompt("dev1", { message: "go" });
+    await c.waitForSettled("dev1", 1000);
+    await c.shutdown("dev1");
+    // A rejected call is not recorded: `calls` counts operations that happened.
+    expect(c.calls.filter((x) => x.op === "prompt")).toHaveLength(1);
   });
 
   test("scripted error emits error event and rejects the settle", async () => {
@@ -134,5 +157,22 @@ describe("FakeHerdrPaneManager", () => {
   test("unknown pane readOutput throws", async () => {
     const m = new FakeHerdrPaneManager();
     await expect(m.readOutput("nope")).rejects.toThrow(/unknown pane/);
+  });
+
+  test("failOn makes the next open, tail or close reject", async () => {
+    const m = new FakeHerdrPaneManager();
+    m.failOn("open", new Error("no pseudo-terminal"));
+    await expect(m.openAgentPane({ id: "p1", title: "@dev1" })).rejects.toThrow("no pseudo-terminal");
+
+    await m.openAgentPane({ id: "p1", title: "@dev1" });
+    m.failOn("tail", new Error("pane gone"));
+    await expect(m.tailLog("p1", "/log")).rejects.toThrow("pane gone");
+
+    m.failOn("close", new Error("already closed"));
+    await expect(m.close("p1")).rejects.toThrow("already closed");
+
+    // One knob fires once: the next call goes through.
+    await m.tailLog("p1", "/log");
+    expect(m.calls.filter((x) => x.op === "tail")).toHaveLength(1);
   });
 });

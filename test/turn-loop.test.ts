@@ -320,9 +320,7 @@ describe("TurnLoop", () => {
 
   test("a failed context push is a notice, not a chain failure", async () => {
     await harness(async ({ loop, pi, msgs, telemetry }) => {
-      pi.pushContext = async () => {
-        throw new Error("bash rpc failed");
-      };
+      pi.failOn("pushContext", new Error("bash rpc failed"), 99);
       pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "verified\nDONE" }]);
       pi.script("dev1", [{ lastText: "@lead ok" }]);
 

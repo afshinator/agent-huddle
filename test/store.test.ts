@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomStore, reconcileState } from "../src/store";
@@ -148,6 +148,27 @@ describe("RoomStore", () => {
       expect(state.leadAgentId).toBe("lead");
       expect(Object.keys(state.agents).sort()).toEqual(["dev1", "lead"]);
       expect(state.agents.dev1.sessionDir).toBe(join(dir, "agents", "dev1", "sessions"));
+    });
+  });
+});
+
+describe("RoomStore (hostile filesystem)", () => {
+  test("appendMessage and writeState reject when the room directory is unwritable", async () => {
+    await withDir(async (dir) => {
+      const room = join(dir, "room");
+      const store = new RoomStore(join(dir, "room"));
+      await chmod(dir, 0o500); // read + execute, no write: mkdir fails with EACCES
+      try {
+        await expect(store.appendMessage(msg("m1"))).rejects.toThrow(/EACCES|permission denied/);
+        const state = await reconcileState(makeConfig(room), null, []);
+        await expect(store.writeState(state)).rejects.toThrow(/EACCES|permission denied/);
+      } finally {
+        await chmod(dir, 0o700);
+      }
+
+      // The store does not stay poisoned: once the directory is writable it appends.
+      await store.appendMessage(msg("m2"));
+      expect((await store.readMessages()).messages.map((m) => m.id)).toEqual(["m2"]);
     });
   });
 });

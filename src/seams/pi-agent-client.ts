@@ -107,13 +107,32 @@ interface FakeAgent {
   settle: { promise: Promise<SettledResult>; resolve: (r: SettledResult) => void } | null;
 }
 
+export type FakePiOp = "spawn" | "prompt" | "pushContext" | "shutdown";
+
 export class FakePiAgentClient implements PiAgentClient {
   readonly calls: RecordedCall[] = [];
   private readonly agents = new Map<string, FakeAgent>();
   private readonly bus = new AgentListeners();
+  private readonly failures = new Map<FakePiOp, unknown[]>();
   private nextPid = 1000;
 
   constructor(private readonly baseDir = "/fake/sessions") {}
+
+  /**
+   * Reject the next `times` calls to `op` after `skip` successful ones.
+   * A failed call is not recorded, so `calls` keeps meaning "operations that happened".
+   */
+  failOn(op: FakePiOp, error: unknown, times = 1, skip = 0): void {
+    for (let i = 0; i < skip; i += 1) this.failures.set(op, [...(this.failures.get(op) ?? []), undefined]);
+    for (let i = 0; i < times; i += 1) this.failures.set(op, [...(this.failures.get(op) ?? []), error]);
+  }
+
+  private takeFailure(op: FakePiOp): { error: unknown } | null {
+    const queue = this.failures.get(op);
+    if (!queue || queue.length === 0) return null;
+    const error = queue.shift();
+    return error === undefined ? null : { error };
+  }
 
   /** Queue scripted turns for an agent (consumed FIFO on each prompt). */
   script(agentId: string, turns: ScriptedTurn[]): void {
@@ -121,6 +140,8 @@ export class FakePiAgentClient implements PiAgentClient {
   }
 
   async spawn(agent: AgentSpec, opts: SpawnOptions): Promise<AgentProcessInfo> {
+    const failure = this.takeFailure("spawn");
+    if (failure) throw failure.error;
     const a = this.ensure(agent.id);
     a.spec = agent;
     a.spawned = true;
@@ -130,6 +151,8 @@ export class FakePiAgentClient implements PiAgentClient {
   }
 
   async prompt(agentId: string, req: PromptRequest): Promise<void> {
+    const failure = this.takeFailure("prompt");
+    if (failure) throw failure.error;
     const a = this.requireAgent(agentId);
     this.record("prompt", agentId, req);
     const turn = a.script.shift() ?? { lastText: null };
@@ -164,6 +187,8 @@ export class FakePiAgentClient implements PiAgentClient {
   }
 
   async pushContext(agentId: string, text: string): Promise<void> {
+    const failure = this.takeFailure("pushContext");
+    if (failure) throw failure.error;
     this.requireAgent(agentId);
     this.record("pushContext", agentId, text);
   }
@@ -174,6 +199,8 @@ export class FakePiAgentClient implements PiAgentClient {
   }
 
   async shutdown(agentId: string): Promise<void> {
+    const failure = this.takeFailure("shutdown");
+    if (failure) throw failure.error;
     const a = this.requireAgent(agentId);
     a.shutdown = true;
     this.record("shutdown", agentId, undefined);

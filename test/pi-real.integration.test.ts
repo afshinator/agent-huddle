@@ -74,6 +74,44 @@ while (true) {
       await rm(roomDir, { recursive: true, force: true });
     }
   });
+
+  test("a child that dies mid-turn rejects the turn and reports it once", async () => {
+    const roomDir = await mkdtemp(join(tmpdir(), "ah-killed-child-"));
+    const fixture = join(roomDir, "idle-fixture.ts");
+    const launcher = join(roomDir, "idle-fixture.sh");
+    // Reads commands and answers none: it stays alive and silent until killed.
+    await writeFile(
+      fixture,
+      `const reader = Bun.stdin.stream().pipeThrough(new TextDecoderStream()).getReader();
+while (!(await reader.read()).done) {}
+`,
+      "utf8",
+    );
+    await chmod(fixture, 0o755);
+    await writeFile(launcher, `#!/bin/sh\nexec bun ${fixture} "$@"\n`, "utf8");
+    await chmod(launcher, 0o755);
+
+    const client = new RealPiAgentClient({ roomDir, piBin: launcher });
+    const errors: Error[] = [];
+    try {
+      const info = await client.spawn({ id: "killed", handle: "@killed", role: "test" }, { cwd: roomDir });
+      client.on("error", "killed", (error) => errors.push(error));
+
+      const turn = client.prompt("killed", { message: "go" });
+      const turnError = turn.catch((error: unknown) => error);
+      process.kill(info.pid, "SIGKILL");
+
+      await expect(client.waitForSettled("killed", 5_000)).rejects.toThrow(/exited before settling/);
+      expect(((await turnError) as Error).message).toMatch(/exited/);
+      expect(errors.map((error) => error.message)).toEqual([
+        "pi process for killed exited unexpectedly",
+      ]);
+      // Shutdown of an already-dead child is a no-op, not a second failure.
+      await client.shutdown("killed");
+    } finally {
+      await rm(roomDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe.skipIf(!piAvailable() || integrationDisabled())("RealPiAgentClient (integration)", () => {
