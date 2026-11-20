@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { LoadedConfig } from "./config";
-import { RoomStore, rebuildState } from "./store";
+import { RoomStore, reconcileState } from "./store";
 import { buildRolePrompt, buildSocialContract } from "./prompts";
 import { TurnLoop, type SubmitResult } from "./turn-loop";
 import { startRoom } from "./startup";
@@ -39,6 +39,7 @@ export class Coordinator {
   private readonly cwd: string;
   private readonly stdout: { write(s: string): void };
   private readonly now: () => string;
+  private persistQueue: Promise<void> = Promise.resolve();
   private readonly agentLogs = new Map<string, string>();
   private roomState: RoomState | null = null;
   private roomStatus: RoomStatus = "idle";
@@ -88,7 +89,7 @@ export class Coordinator {
 
       this.pi.on("stream", agent.id, (delta) => void this.appendAgentLog(agent.id, "delta", delta));
       this.pi.on("settled", agent.id, (r) => void this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
-      this.pi.on("error", agent.id, (e) => void this.appendAgentLog(agent.id, "error", e.message));
+      this.pi.on("error", agent.id, (e) => void this.handleAgentError(agent.id, e));
       await this.appendAgentLog(agent.id, "spawned", `pid=${info.pid}`);
 
       if (this.panes) {
@@ -116,7 +117,7 @@ export class Coordinator {
     const result = await this.loop.submit(text, "user");
     this.roomStatus = result.status === "halted" ? "halted" : "idle";
     for (const agent of Object.values(this.roomState?.agents ?? {})) {
-      agent.status = result.status === "halted" ? "error" : "idle";
+      if (agent.status === "busy") agent.status = "idle";
       agent.lastActivityAt = this.now();
     }
     await this.persistState();
@@ -142,15 +143,48 @@ export class Coordinator {
     await this.persistState();
   }
 
-  private async persistState(): Promise<void> {
-    if (!this.roomState) this.roomState = await this.loadOrCreateState();
-    this.roomState.status = this.roomStatus;
-    this.roomState.lastMessageId = (await this.store.readMessages()).at(-1)?.id ?? null;
-    await this.store.writeState(this.roomState);
+  private persistState(): Promise<void> {
+    const persist = this.persistQueue.then(async () => {
+      if (!this.roomState) this.roomState = await this.loadOrCreateState();
+      this.roomState.status = this.roomStatus;
+      this.roomState.lastMessageId = (await this.store.readMessages()).at(-1)?.id ?? null;
+      await this.store.writeState(this.roomState);
+    });
+    this.persistQueue = persist.catch(() => undefined);
+    return persist;
   }
 
   private async loadOrCreateState(): Promise<RoomState> {
-    return (await this.store.readState()) ?? (await rebuildState(this.config, this.config.config.room_dir));
+    return reconcileState(
+      this.config,
+      this.config.config.room_dir,
+      await this.store.readState(),
+    );
+  }
+
+  private async handleAgentError(agentId: string, error: Error): Promise<void> {
+    await this.appendAgentLog(agentId, "error", error.message);
+    if (this.roomState?.agents[agentId]) {
+      this.roomState.agents[agentId].status = "error";
+      this.roomState.agents[agentId].lastActivityAt = this.now();
+      await this.persistState();
+    }
+    const chain = this.roomState?.chain;
+    if (chain?.status === "active" || chain?.status === "wrap_up") {
+      await this.store.appendMessage({
+        id: crypto.randomUUID(),
+        ts: this.now(),
+        kind: "notice",
+        from: "room",
+        handle: "room",
+        text: `agent ${agentId} failed: ${error.message}`,
+        mentions: [],
+        chainId: chain.chainId,
+        hop: chain.hopCount,
+      });
+      this.roomStatus = "halted";
+      await this.persistState();
+    }
   }
 
   private async appendAgentLog(agentId: string, event: string, text: string): Promise<void> {

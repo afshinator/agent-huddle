@@ -25,6 +25,7 @@ interface RealAgent {
   lastText: string | null;
   pendingSettle: PendingSettle | null;
   exited: boolean;
+  shuttingDown: boolean;
 }
 
 type ListenerEvent = "settled" | "stream" | "error";
@@ -60,7 +61,13 @@ function waitForExit(child: ChildProcessWithoutNullStreams, ms: number): Promise
 export class RealPiAgentClient implements PiAgentClient {
   private readonly agents = new Map<string, RealAgent>();
   private readonly listeners = new Map<string, Map<ListenerEvent, Array<(arg: any) => void>>>();
-  private readonly pendingCommands = new Map<string, { agentId: string; resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private readonly pendingCommands = new Map<string, {
+    agentId: string;
+    resolve: (v: unknown) => void;
+    reject: (e: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
+  private readonly commandTimeoutMs = 30_000;
   private cmdSeq = 0;
 
   constructor(private readonly opts: { roomDir: string; piBin?: string }) {}
@@ -160,7 +167,7 @@ export class RealPiAgentClient implements PiAgentClient {
     } catch (e) {
       agent.pendingSettle = null;
       try {
-        await this.command(agent, { type: "abort" });
+        await this.command(agent, { type: "abort" }, 5_000);
       } catch {
         // abort already in progress or process gone
       }
@@ -177,6 +184,7 @@ export class RealPiAgentClient implements PiAgentClient {
   async shutdown(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     if (agent.exited) return;
+    agent.shuttingDown = true;
 
     agent.child.stdin.end(); // orderly shutdown request
     await waitForExit(agent.child, 2000);
@@ -203,6 +211,7 @@ export class RealPiAgentClient implements PiAgentClient {
       lastText: null,
       pendingSettle: null,
       exited: false,
+      shuttingDown: false,
     });
     this.listeners.set(agent.id, new Map<ListenerEvent, Array<(arg: any) => void>>([
       ["settled", []],
@@ -236,9 +245,13 @@ export class RealPiAgentClient implements PiAgentClient {
     child.on("exit", () => {
       const a = this.agents.get(agent.id);
       if (a) a.exited = true;
+      if (a && !a.shuttingDown) {
+        this.emit(agent.id, "error", new Error(`pi process for ${agent.id} exited unexpectedly`));
+      }
       for (const [id, p] of this.pendingCommands) {
         if (p.agentId === agent.id) {
           this.pendingCommands.delete(id);
+          clearTimeout(p.timer);
           p.reject(new Error(`pi process for ${agent.id} exited`));
         }
       }
@@ -255,6 +268,7 @@ export class RealPiAgentClient implements PiAgentClient {
       const pending = rec.id ? this.pendingCommands.get(rec.id) : undefined;
       if (pending) {
         this.pendingCommands.delete(rec.id);
+        clearTimeout(pending.timer);
         if (rec.success) pending.resolve(rec.data);
         else pending.reject(new Error(rec.error ?? `command ${rec.command} failed`));
       } else if (rec.success === false) {
@@ -326,16 +340,23 @@ export class RealPiAgentClient implements PiAgentClient {
     this.emit(agentId, "error", new Error(`pi RPC protocol error: ${message}`));
   }
 
-  private command(agent: RealAgent, cmd: Record<string, unknown>): Promise<unknown> {
+  private command(
+    agent: RealAgent,
+    cmd: Record<string, unknown>,
+    timeoutMs = this.commandTimeoutMs,
+  ): Promise<unknown> {
     const id = `cmd-${++this.cmdSeq}`;
     const full = { ...cmd, id };
-    // shortcut: no command-acceptance timeout; a hung (not exited) pi would
-    // hang the caller. Upgrade if a run ever wedges on prompt acceptance.
     return new Promise((resolve, reject) => {
-      this.pendingCommands.set(id, { agentId: agent.id, resolve, reject });
+      const timer = setTimeout(() => {
+        this.pendingCommands.delete(id);
+        reject(new Error(`pi command ${String(cmd.type)} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.pendingCommands.set(id, { agentId: agent.id, resolve, reject, timer });
       agent.child.stdin.write(JSON.stringify(full) + "\n", (err) => {
         if (err) {
           this.pendingCommands.delete(id);
+          clearTimeout(timer);
           reject(err);
         }
       });

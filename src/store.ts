@@ -1,4 +1,5 @@
 import { appendFile, mkdir, open, readFile, rename } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { LoadedConfig } from "./config";
 import type { RoomMessage } from "./messages";
@@ -7,6 +8,7 @@ import type { AgentRuntime, RoomState } from "./state";
 export class RoomStore {
   /** Live room-stream hook; the coordinator prints each appended message here. */
   onAppend?: (msg: RoomMessage) => void;
+  private stateWrite: Promise<void> = Promise.resolve();
 
   constructor(private readonly roomDir: string) {}
 
@@ -38,17 +40,22 @@ export class RoomStore {
       .map((line) => JSON.parse(line) as RoomMessage);
   }
 
-  async writeState(state: RoomState): Promise<void> {
-    await mkdir(this.roomDir, { recursive: true });
-    const tmp = `${this.statePath}.tmp`;
-    const fh = await open(tmp, "w");
-    try {
-      await fh.writeFile(JSON.stringify(state, null, 2) + "\n", "utf8");
-      await fh.sync();
-    } finally {
-      await fh.close();
-    }
-    await rename(tmp, this.statePath);
+  writeState(state: RoomState): Promise<void> {
+    const serialized = JSON.stringify(state, null, 2) + "\n";
+    const write = this.stateWrite.then(async () => {
+      await mkdir(this.roomDir, { recursive: true });
+      const tmp = `${this.statePath}.${randomUUID()}.tmp`;
+      const fh = await open(tmp, "w");
+      try {
+        await fh.writeFile(serialized, "utf8");
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+      await rename(tmp, this.statePath);
+    });
+    this.stateWrite = write.catch(() => undefined);
+    return write;
   }
 
   async readState(): Promise<RoomState | null> {
@@ -68,32 +75,40 @@ export class RoomStore {
  * recoverable cache, not the source of truth). Chain/status are reset to idle;
  * only `lastMessageId` and per-agent runtime entries are reconstructed.
  */
-export async function rebuildState(
+export async function reconcileState(
   config: LoadedConfig,
   roomDir: string,
+  existing: RoomState | null,
 ): Promise<RoomState> {
-  const store = new RoomStore(roomDir);
-  const messages = await store.readMessages();
-  const last = messages.length > 0 ? messages[messages.length - 1] : null;
-
+  const messages = await new RoomStore(roomDir).readMessages();
+  const last = messages.at(-1);
   const agents: Record<string, AgentRuntime> = {};
-  for (const a of config.allAgents) {
-    agents[a.id] = {
-      id: a.id,
-      handle: a.handle,
-      sessionDir: join(roomDir, "agents", a.id, "sessions"),
-      status: "idle",
+  for (const spec of config.allAgents) {
+    const previous = existing?.agents?.[spec.id];
+    agents[spec.id] = {
+      id: spec.id,
+      handle: spec.handle,
+      sessionDir: join(roomDir, "agents", spec.id, "sessions"),
+      status: "starting",
+      ...(previous?.sessionFile ? { sessionFile: previous.sessionFile } : {}),
     };
   }
 
   return {
     name: config.config.name,
     configPath: config.sourcePath,
-    startedAt: new Date().toISOString(),
+    startedAt: existing?.startedAt ?? new Date().toISOString(),
     status: "idle",
     leadAgentId: config.config.lead.id,
     chain: null,
     agents,
-    lastMessageId: last ? last.id : null,
+    lastMessageId: last?.id ?? null,
   };
+}
+
+export async function rebuildState(
+  config: LoadedConfig,
+  roomDir: string,
+): Promise<RoomState> {
+  return reconcileState(config, roomDir, null);
 }
