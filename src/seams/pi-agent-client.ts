@@ -219,9 +219,11 @@ export class FakePiAgentClient implements PiAgentClient {
     this.record("shutdown", agentId, undefined);
     // The real client rejects a pending settle when its child exits; without this the
     // fake let a held turn outlive shutdown, hiding what a stop mid-turn really does.
+    // Same wording as the real client (`src/real/pi-agent-client-real.ts`), because the
+    // message reaches a notice and test/client-parity.test.ts compares the two (#52).
     const settle = a.settle;
     a.settle = null;
-    settle?.reject(new Error(`pi process for ${agentId} exited`));
+    settle?.reject(new Error(`pi process for ${agentId} exited before settling`));
   }
 
   on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {
