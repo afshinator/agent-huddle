@@ -10,7 +10,7 @@ Status: pre-implementation. Single source of truth for `/to-tickets` and `/imple
 
 - YAML team templates: room config, one lead coordinator, N specialist agents (each with identity, lane, system prompt, provider, model, thinking, tools).
 - One shared chat room. Every agent sees every room message (shared awareness).
-- Mention-gated routing: `@handle` targets that agent; untargeted messages route to the lead.
+- Mention-gated routing: `@handle` targets that agent; a message with no mention activates **nobody** and is ingested by everyone (v1.1; was: route to the lead).
 - Hard `max_hops` cap per user-turn chain, one lead "finish-up" nudge, then `hop_limit_reached` halt.
 - Persistent room log (`messages.jsonl`) + room state (`state.json`) as the single source of truth.
 - One persistent `pi --mode rpc` session per agent under its own `--session-dir`.
@@ -92,6 +92,7 @@ agents:                    # D4/D5. specialists. v1 default roster: 2 devs + 1 r
     model: deepseek/deepseek-v4.1-flash   # shorthand "deepseek-flash"
     thinking: high
     tools: [read, bash, edit, write, grep]
+    pane_writable: true      # v1.1, default true
   - id: dev2
     handle: "@dev2"
     role: "Implement features and tests."
@@ -114,6 +115,7 @@ Rules:
 - `handle` must match `/^@[A-Za-z0-9_-]+$/` (the router's mention token, §6.2), so it must be quoted in YAML. It is unique across the roster, and `@all` / `@everyone` are rejected everywhere while `@lead` is allowed only on the lead — the router resolves those tokens before the handle map, so any other use would leave that agent unreachable.
 - `system_prompt` and `system_prompt_file` are mutually exclusive; validation rejects a config with both.
 - `tools` is an optional allowlist passed as `--tools`. Omit to inherit `pi` defaults.
+- `pane_writable` (v1.1, bool, default `true`) — whether the agent's pane accepts typed input, which posts a public message addressed to that agent (§6.4). `false` opens a tail-only pane with a read-only banner.
 - Unknown keys are rejected at load time (fail fast, do not silently drop).
 
 ### 3.1 TypeScript types
@@ -277,7 +279,8 @@ Router.resolveTargets(message)
         ├─ has @mentions ──► targets = mentioned agent ids (dedup, order preserved)
         │                     (mention of "lead"/lead.handle maps to lead id)
         │
-        └─ no @mentions ───► targets = [leadAgentId]   // D5 default
+        └─ no @mentions ───► targets = []   // v1.1: nobody is activated (D6);
+        │                     startup_task targets the lead explicitly
         │
         ▼
 TurnLoop: dispatch each target in order, one at a time
@@ -297,6 +300,7 @@ A **hop** = one dispatched agent turn (one `prompt` → `agent_settled`). `chain
 - **Deterministic layer (Router):** only mentioned agents are ever dispatched. An unmentioned agent never receives a `prompt` in this chain. This is enforced in code, independent of the prompt text.
 - **Prompt layer (social contract):** the silence-unless-addressed text (§5) backs the deterministic gate and covers agents that still ingest the message as context (§6.6).
 - Mentions are parsed with `@handle` against the handle map; `@lead` and the lead's `handle` both resolve to the lead.
+- **No mention activates nobody** (v1.1, D6). Every agent still ingests the text (§6.6), so a message can inform the room without requesting work. The chain completes immediately with status `idle`. The one exception is the room's startup `task:`, which targets the lead by construction — a boot directive is not a chat message.
 - A reply's mention of its **own author** is ignored by routing: "report to @lead" from the lead does not dispatch the lead again. The handle stays in `mentions[]` for the record; the queue drops it.
 - Broadcast: `@all` or `@everyone` targets every agent (lead + all specialists). Each dispatched agent is one hop.
 
@@ -325,9 +329,10 @@ Human input always resets the chain (`hopCount = 0`, `nudgeIssued = false`, new 
 
 - Human message with `@agent` → targets that agent (supervisor directive). Multiple `@mentions` target all named agents.
 - Human message `@all` / `@everyone` → every agent (lead + specialists).
-- Human message without `@mention` → routes to lead.
+- Human message without `@mention` → **nobody is activated**; every agent ingests it (§6.2, v1.1).
 - Human message `@lead` → lead only.
 - Human may type in the room pane at any time; input is queued and delivered at the next settle boundary (never interrupts an in-flight turn mid-stream).
+- **Typing in an agent's pane** (v1.1, D7) posts a public room message with that agent's handle implied: text typed in `@dev1`'s pane becomes `@dev1 <text>` in `messages.jsonl`, with `from: supervisor`. It is visible to everyone and activates only that agent — there is no private channel in v1.
 
 ### 6.5 Definition of Done (v1 boundary)
 
@@ -491,6 +496,10 @@ export interface HerdrPaneManager {
 | `close` | `herdr` fails | hides the pane; the agent's `pi` process keeps running because it is a coordinator child, not a pane process. The fakes reject an unknown id |
 
 The room pane is the coordinator's own terminal (the human launches the coordinator in it); it is **not** managed by this seam. Only agent panes are.
+
+**Pane content (v1.1, D7).** An agent pane shows that agent's **readable output stream**, not `log.jsonl`: its messages as prose, its tool calls as one line each, its deltas coalesced. `log.jsonl` remains on disk as the machine-readable record; no pane tails raw JSON.
+
+**Pane input (v1.1, D7).** A writable pane (`pane_writable: true`, the default) runs two processes: the tail, plus a reader that appends typed lines to a per-agent inbox file. The coordinator watches each inbox and turns every line into a public room message from the supervisor, addressed to that agent (§6.4). A pane cannot both `tail` and read a keyboard, so the inbox file is what carries the input; it is also why a typed line survives an app restart. A read-only pane runs the tail alone behind a `read-only — type in the chat pane` banner, because otherwise swallowed keystrokes give no feedback.
 
 Real implementation: shells to `herdr pane split/run/rename/read/close`. Fake: in-memory pane registry, records commands and log tails for assertions.
 

@@ -78,3 +78,52 @@ lines per submit, and 0 after the change (#15).
 
 **Cost, accepted:** an append that bypasses the store leaves the id stale; every append goes through
 the store by construction. `src/store.ts`, `src/coordinator.ts`.
+
+---
+
+## D6 — a message with no mention activates nobody (v1.1)
+
+**Decision:** a message whose text mentions no handle targets nobody: `resolveTargets` returns an
+empty list, every agent still ingests the text as context (§6.6), and the chain completes immediately
+as `idle`. The startup `task:` is the one exception — it targets the lead, because a boot directive is
+not a chat message.
+
+**Rejected:** the v1 rule, where an unaddressed message fell back to the lead.
+
+**Why:** this is a chat room, not a request queue. A supervisor or a lead must be able to say
+something — a constraint, a status, context — without spending a turn and without obliging the lead to
+answer every observation. The fallback also made "nobody acted" indistinguishable from "the lead
+decided not to", which is a bad state for a human to debug.
+
+**Cost, accepted:** a silent room is now reachable. A human who forgets the `@handle` sees nothing
+happen, so a message with no targets must produce a room notice saying so rather than nothing.
+`src/router.ts` (`resolveTargets`), `src/turn-loop.ts` (chain start).
+
+---
+
+## D7 — an agent pane shows the readable stream, and typing in it is a public message (v1.1)
+
+**Decision:** an agent pane shows that agent's output rendered for a human — its messages as prose,
+its tool calls one line each, its deltas coalesced — while `log.jsonl` stays on disk as the
+machine-readable record. Panes are writable by default (`pane_writable: true`); a line typed in
+`@dev1`'s pane is posted as a public room message with `@dev1` implied: visible to everyone, activating
+only dev1. A read-only pane runs the tail alone behind a banner, because swallowed keystrokes give no
+feedback.
+
+**Rejected:**
+
+- *Agent panes tail `log.jsonl`.* That is what v1 shipped: one JSON record per token fragment,
+  unreadable by construction, and the reason a manned run produced a wall of noise with no conversation
+  in it.
+- *Agent panes show the conversation.* Two views of one conversation means the room pane stops being
+  the whole story, and "what has been said" no longer has one answer.
+- *Typing in a pane sends a private message to that agent.* Explored and dropped: it needs hidden
+  traffic, a per-agent inbox with a leak rule for the agent's public reply, and it re-creates a second
+  moderator channel. Public-with-implied-mention keeps the convenience and none of that.
+
+**Why:** the two artefacts have different audiences. The human wants the agent's work as prose; a
+debugger wants JSON events. Serving both from one file made the pane a log dump wearing a chat label.
+
+**Cost, accepted:** a second per-agent output file to keep coherent with `log.jsonl`, and a
+two-process pane command (tail plus reader) for writable panes, because a pane cannot tail a file and
+read a keyboard at the same time.
