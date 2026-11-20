@@ -61,6 +61,8 @@ export class Coordinator {
   private stopping = false;
   /** The boot-time chain, so a stop during boot waits for it like a supervisor turn. */
   private bootRun: Promise<unknown> = Promise.resolve();
+  /** Chains and boot runs currently running, for a test that ends before its room does. */
+  private inFlight = 0;
 
   constructor(deps: CoordinatorDeps) {
     this.config = deps.config;
@@ -106,7 +108,10 @@ export class Coordinator {
     await this.checkLaunchDir();
     try {
       const run = this.bootRoom();
-      this.bootRun = run.catch(() => undefined);
+      this.inFlight += 1;
+      this.bootRun = run.catch(() => undefined).finally(() => {
+        this.inFlight -= 1;
+      });
       return await run;
     } catch (e) {
       await this.abortBoot(e);
@@ -198,7 +203,8 @@ export class Coordinator {
   }
 
   /** `targets` pins the first dispatch (pane input, #40); the chat pane leaves it unset. */
-  submit(text: string, targets?: readonly string[]): Promise<SubmitResult> {    const run = this.submitQueue.then(async () => {
+  submit(text: string, targets?: readonly string[]): Promise<SubmitResult> {    this.inFlight += 1;
+    const run = this.submitQueue.then(async () => {
       this.roomStatus = "active";
       for (const agent of Object.values(this.roomState?.agents ?? {})) agent.status = "busy";
       await this.persistState();
@@ -211,8 +217,18 @@ export class Coordinator {
       await this.persistState();
       return result;
     });
-    this.submitQueue = run.catch(() => undefined);
+    this.submitQueue = run.catch(() => undefined).finally(() => {
+      this.inFlight -= 1;
+    });
     return run;
+  }
+
+  /**
+   * Whether a chain or the boot run is still running. A test that returns with work in
+   * flight leaves writes for whatever runs next — the room dir is gone by then (#53).
+   */
+  workInFlight(): boolean {
+    return this.inFlight > 0;
   }
 
   async shutdown(): Promise<void> {

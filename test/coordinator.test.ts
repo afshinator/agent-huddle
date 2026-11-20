@@ -65,6 +65,8 @@ async function harness(
   fn: (h: Harness) => Promise<void>,
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-coord-"));
+  let leaked: string | null = null;
+  let coordinator: Coordinator | null = null;
   try {
     const config = makeConfig(dir, opts);
     const store = new RoomStore(dir);
@@ -73,7 +75,7 @@ async function harness(
     const out: string[] = [];
     const err: string[] = [];
     const telemetry = new RecordingTelemetry();
-    const coordinator = new Coordinator({
+    coordinator = new Coordinator({
       config,
       store,
       pi,
@@ -88,8 +90,26 @@ async function harness(
       ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
     });
     await fn({ dir, err, coordinator, store, pi, panes, telemetry, out });
+
+    // A test that returns mid-chain leaves writes for whatever runs next: the room dir is
+    // removed below, so the write lands as an ENOENT in a later test (#53). Drain first, so
+    // nothing can write into a removed dir, then fail this test on what it left behind.
+    if (coordinator.workInFlight()) {
+      const state = await store.readState().catch(() => null);
+      const chain = state?.chain;
+      leaked = chain
+        ? `chain ${chain.chainId} (hop ${chain.hopCount}, ${chain.status}; dispatched ${chain.dispatchedAgentIds.join(", ") || "nobody yet"})`
+        : "the boot run";
+    }
   } finally {
+    await coordinator?.shutdown().catch(() => undefined);
     await rm(dir, { recursive: true, force: true });
+  }
+  if (leaked) {
+    throw new Error(
+      `harness: the test ended with ${leaked} still running. Await the chain or call ` +
+        `shutdown() before returning — its writes would land in a room dir this harness removes.`,
+    );
   }
 }
 
@@ -485,6 +505,17 @@ describe("Coordinator (fakes)", () => {
       expect(state!.status).toBe("idle");
       expect(state!.chain).toBeNull();
     });
+  });
+
+  test("the harness fails a test that ends with a chain still running", async () => {
+    await expect(
+      harness({}, async ({ coordinator, pi }) => {
+        pi.script("lead", [{ hold: true }]);
+        await coordinator.boot();
+        void coordinator.submit("@lead start the work");
+        await waitUntil(() => pi.calls.some((call) => call.op === "prompt"));
+      }),
+    ).rejects.toThrow(/harness: the test ended with chain .+ still running/);
   });
 
   test("shutdown keeps a halted room halted", async () => {
