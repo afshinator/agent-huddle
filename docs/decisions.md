@@ -229,6 +229,11 @@ which clears the chain and leaves the room `idle`.
 **Why:** the flag is the only place that knows the operator's intent, and it is set before any code that
 could yield. The ordering is invisible in the code — `shutdown()` looks like it could set the flag later.
 
+**Follow-up, found on CI:** the rejected turn unwinds *after* `shutdown()` returned, so the final state was
+written while a chain was still writing it (a rename on a temp dir the caller had already removed). Shutdown
+now waits for the chain that owns the dead turn — `submitQueue` and `bootRun` — before persisting. A stop
+during boot was reachable all along: `index.ts` installs the signal handlers before `await boot()`.
+
 **Cost, accepted:** a genuine crash that happens to land in the few milliseconds after shutdown began is
 recorded as a cancellation. The pane still shows `[exited]`, and the room writes nothing to the transcript
 to say a chain was interrupted, so `messages.jsonl` can end mid-chain with no explanation.

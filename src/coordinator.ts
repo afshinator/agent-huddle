@@ -57,6 +57,8 @@ export class Coordinator {
   private roomStatus: RoomStatus = "idle";
   /** Set the moment shutdown begins: a turn that dies after this was stopped, not failed. */
   private stopping = false;
+  /** The boot-time chain, so a stop during boot waits for it like a supervisor turn. */
+  private bootRun: Promise<unknown> = Promise.resolve();
 
   constructor(deps: CoordinatorDeps) {
     this.config = deps.config;
@@ -94,7 +96,9 @@ export class Coordinator {
     // directory it refuses to write into (abortBoot would, via its state write).
     await this.checkLaunchDir();
     try {
-      return await this.bootRoom();
+      const run = this.bootRoom();
+      this.bootRun = run.catch(() => undefined);
+      return await run;
     } catch (e) {
       await this.abortBoot(e);
       throw e;
@@ -211,6 +215,10 @@ export class Coordinator {
     // the later child dead-but-unflagged, so its pane reports a crash (#51).
     const stops = this.config.allAgents.map((agent) => this.pi.shutdown(agent.id));
     await Promise.all(stops);
+    // A rejected turn unwinds as cancelled (D11). Wait for the chains that own it — the
+    // supervisor's and boot's — or the final state is written while one is still writing.
+    await this.submitQueue;
+    await this.bootRun;
     for (const agent of this.config.allAgents) {
       this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "shutdown", ""));
       this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, "[exited]"));

@@ -442,8 +442,15 @@ describe("Coordinator (fakes)", () => {
       const running = coordinator.submit("@lead start the work");
       await waitUntil(() => pi.calls.some((c) => c.op === "prompt"));
 
+      let unwound = false;
+      void running.then(() => {
+        unwound = true;
+      });
+
       await coordinator.shutdown();
-      await running;
+      // Shutdown must not return leaving a chain to finish afterwards: that write lands
+      // in a room the caller (and a test harness) already considers closed.
+      expect(unwound).toBe(true);
 
       expect((await store.readMessages()).messages.filter((m) => m.text.includes("pi process for lead"))).toEqual([]);
       const state = await store.readState();
