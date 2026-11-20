@@ -120,7 +120,9 @@ describe("loadConfig", () => {
   test("rejects a handle without @", async () => {
     const yaml = `name: r\n${LEAD}\nagents:\n  - id: dev1\n    handle: dev1\n    role: x\n`;
     await withConfig(yaml, async (p, cwd) => {
-      await expect(loadConfig(p, cwd)).rejects.toThrow(/handle must look like/);
+      await expect(loadConfig(p, cwd)).rejects.toThrow(
+        'config.agents[0].handle must look like "@dev1" (got "dev1")',
+      );
     });
   });
 

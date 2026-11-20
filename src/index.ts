@@ -7,6 +7,7 @@ import { JsonlTelemetry } from "./telemetry";
 import { RealPiAgentClient } from "./real/pi-agent-client-real";
 import { HerdrPaneManagerReal } from "./real/herdr-pane-manager-real";
 import { Coordinator } from "./coordinator";
+import { createShutdown } from "./shutdown";
 
 async function main(): Promise<void> {
   const yamlPath = process.argv[2];
@@ -22,14 +23,11 @@ async function main(): Promise<void> {
   const panes = process.env.HERDR_ENV === "1" ? new HerdrPaneManagerReal({ cwd: process.cwd() }) : null;
   const coordinator = new Coordinator({ config, store, pi, telemetry, panes });
 
-  let shuttingDown = false;
-  const shutdown = async (): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    await coordinator.shutdown();
-    await telemetry.flush();
-    process.exit(0);
-  };
+  const shutdown = createShutdown({
+    shutdown: () => coordinator.shutdown(),
+    flush: () => telemetry.flush(),
+    exit: (code) => process.exit(code),
+  });
   process.once("SIGINT", () => void shutdown());
   process.once("SIGTERM", () => void shutdown());
 

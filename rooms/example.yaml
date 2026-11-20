@@ -9,7 +9,7 @@ lead:
   id: lead
   handle: "@lead"
   role: "Lead coordinator: decompose, assign, integrate. Never do specialist work."
-  system_prompt_file: prompts/lead.md
+  system_prompt_file: ../prompts/lead.md   # resolved relative to this file
   provider: commandcode
   model: deepseek/deepseek-v4-pro
   thinking: medium
