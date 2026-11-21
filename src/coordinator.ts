@@ -5,7 +5,7 @@ import { RoomStore, reconcileState } from "./store";
 import { buildRolePrompt, buildSocialContract } from "./prompts";
 import { TurnLoop, type SubmitResult } from "./turn-loop";
 import { startRoom } from "./startup";
-import type { PiAgentClient } from "./seams/pi-agent-client";
+import type { PiAgentClient, SessionStats } from "./seams/pi-agent-client";
 import { AgentStream } from "./agent-stream";
 import { PaneInbox } from "./pane-inbox";
 import { paneScript } from "./pane-command";
@@ -74,6 +74,8 @@ export class Coordinator {
   private persistQueue: Promise<void> = Promise.resolve();
   private submitQueue: Promise<unknown> = Promise.resolve();
   private readonly agentLogs = new Map<string, string>();
+  /** Last spend snapshot per agent, so each turn records its own delta (#T12). */
+  private readonly lastStats = new Map<string, { tokens: number; cost: number | null }>();
   private readonly agentStream: AgentStream;
   private readonly inbox: PaneInbox;
   private readonly reportedFailures = new Set<string>();
@@ -253,7 +255,15 @@ export class Coordinator {
           runtime.status = "idle";
           runtime.lastActivityAt = this.now();
         }
-        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
+        // Stats first: the readout closes a turn at `settled`, so anything after it belongs to no turn.
+        this.watchFailure(
+          "agent log write",
+          agent.id,
+          (async () => {
+            await this.appendTurnStats(agent.id);
+            await this.appendAgentLog(agent.id, "settled", r.lastText ?? "");
+          })(),
+        );
         // A provider may settle with text and no deltas; then the room still needs the words.
         if (!this.chat.end(agent.id)) this.printAgentText(agent.handle, r.lastText);
         this.working.delete(agent.id);
@@ -522,17 +532,53 @@ export class Coordinator {
    * nothing must read as "unknown" rather than "free". The pane is a scrollback, so the same numbers
    * are written to `summary.json`.
    */
+  /**
+   * What one agent's session says it has spent so far, or null when the provider stays quiet.
+   *
+   * The command's own timeout is 30s, which is longer than a human will wait to see what a run cost,
+   * and longer than a turn can afford to stall on bookkeeping.
+   */
+  private async readStats(agentId: string): Promise<SessionStats | null> {
+    if (this.pi.sessionStats === undefined) return null;
+    try {
+      return await Promise.race([
+        this.pi.sessionStats(agentId),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("no answer in 5000ms")), 5000)),
+      ]);
+    } catch (e) {
+      this.telemetry.log("info", "session stats unavailable", { agentId, error: errorMessage(e) });
+      return null;
+    }
+  }
+
+  /**
+   * The delta this turn spent, recorded before `settled` so the timing readout can attribute it (#T12).
+   *
+   * A cumulative total repeated per turn says nothing about any single turn, which is why a run that
+   * burned 1.3M tokens could not say which phase did it.
+   */
+  private async appendTurnStats(agentId: string): Promise<void> {
+    const stats = await this.readStats(agentId);
+    if (stats === null) return;
+    if (stats.tokens.total === 0 && stats.cost === null) return;
+    const prev = this.lastStats.get(agentId) ?? { tokens: 0, cost: 0 };
+    // One unknown cost makes the turn's cost unknown, never partly known.
+    const cost = stats.cost === null || prev.cost === null ? null : stats.cost - prev.cost;
+    this.lastStats.set(agentId, { tokens: stats.tokens.total, cost: stats.cost });
+    await this.appendAgentLog(
+      agentId,
+      "stats",
+      JSON.stringify({ tokens: stats.tokens.total - prev.tokens, cost, toolCalls: stats.toolCalls }),
+    );
+  }
+
   private async printSpend(): Promise<void> {
     const rows: Array<{ agentId: string; handle: string; tokens: number; cost: number | null; toolCalls: number }> = [];
     for (const agent of this.config.allAgents) {
       if (this.pi.sessionStats === undefined) break;
       try {
-        // A provider that never answers must not hold the summary hostage; the command's own timeout
-        // is 30s, which is longer than a human will wait to see what a run cost.
-        const stats = await Promise.race([
-          this.pi.sessionStats(agent.id),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("no answer in 5000ms")), 5000)),
-        ]);
+        const stats = await this.readStats(agent.id);
+        if (stats === null) continue;
         if (stats.tokens.total === 0 && stats.cost === null) continue;
         rows.push({
           agentId: agent.id,

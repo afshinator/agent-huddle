@@ -124,3 +124,5 @@ Rules that decide most disagreements:
   and dispatch the next step yourself.
 - A peer's turn that timed out still hands on what it wrote: use it, and say that it timed out.
 - Do not restate the agents' own instructions in your messages. Point at the task and say what to check.
+- Say what the output must look like — verdict, counts, the command behind each — rather than "run
+  everything and paste it". A turn's transcript is context every later turn pays for again.

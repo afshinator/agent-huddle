@@ -36,6 +36,9 @@ export interface TurnTiming {
   longest: Interval | null;
   /** Time inside tools, from `tool_end`'s own measurement. */
   toolMs: number;
+  /** What the turn spent, from its `stats` record: 0 and null when the provider said nothing. */
+  tokens: number;
+  cost: number | null;
   events: number;
 }
 
@@ -70,6 +73,9 @@ function summarise(agentId: string, lines: LogLine[]): TurnTiming | null {
   const last = timed[timed.length - 1]!;
   let longest: Interval | null = null;
   let toolMs = 0;
+  let tokens = 0;
+  let cost: number | null = 0;
+  let sawStats = false;
   for (let i = 1; i < timed.length; i += 1) {
     const prev = timed[i - 1]!;
     const now = timed[i]!;
@@ -78,6 +84,15 @@ function summarise(agentId: string, lines: LogLine[]): TurnTiming | null {
     if (now.event === "tool_end") {
       const measured = / (\d+)ms$/.exec(now.text ?? "");
       if (measured) toolMs += Number(measured[1]);
+    }
+    if (now.event === "stats") {
+      const parsed = parseStats(now.text);
+      if (parsed !== null) {
+        sawStats = true;
+        tokens += parsed.tokens;
+        // One turn with no cost answer makes the turn's cost unknown, not partly known.
+        cost = parsed.cost === null || cost === null ? null : cost + parsed.cost;
+      }
     }
   }
   return {
@@ -89,8 +104,23 @@ function summarise(agentId: string, lines: LogLine[]): TurnTiming | null {
     firstEvent: timed[1]!.event,
     longest,
     toolMs,
+    tokens,
+    cost: sawStats ? cost : null,
     events: timed.length,
   };
+}
+
+/** A `stats` record's payload. A malformed one is ignored rather than failing a readout. */
+function parseStats(text: string | undefined): { tokens: number; cost: number | null } | null {
+  if (text === undefined) return null;
+  try {
+    const raw = JSON.parse(text) as { tokens?: unknown; cost?: unknown };
+    const tokens = typeof raw.tokens === "number" ? raw.tokens : 0;
+    const cost = typeof raw.cost === "number" ? raw.cost : null;
+    return { tokens, cost };
+  } catch {
+    return null;
+  }
 }
 
 /** Every agent that has a log in a run directory, in a stable order. */
@@ -122,10 +152,16 @@ export function formatRun(timings: Map<string, TurnTiming[]>): string {
   for (const [agentId, turns] of timings) {
     for (const t of turns) {
       const longest = t.longest === null ? "—" : `${(t.longest.ms / 1000).toFixed(1)}s after ${t.longest.after} → ${t.longest.until}`;
+      // Spend is printed only when the provider reported it: a turn with no answer is not a free one.
+      const spend =
+        t.tokens === 0 && t.cost === null
+          ? ""
+          : `  ${t.tokens} tokens` +
+            (t.cost === null ? " · cost unknown" : ` · $${t.cost < 0.01 ? t.cost.toFixed(4) : t.cost.toFixed(2)}`);
       rows.push(
         `${agentId.padEnd(9)} ${t.start}  total ${(t.totalMs / 1000).toFixed(1)}s` +
           `  first ${(t.firstEventMs / 1000).toFixed(2)}s (${t.firstEvent})` +
-          `  tools ${(t.toolMs / 1000).toFixed(1)}s  longest ${longest}`,
+          `  tools ${(t.toolMs / 1000).toFixed(1)}s  longest ${longest}${spend}`,
       );
     }
   }

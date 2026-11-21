@@ -63,7 +63,9 @@ the caller that was missed.
    an honest verdict; implying you ran it when you did not is not.
 4. Run the project's own typecheck and test commands yourself — the ones its `package.json` scripts,
    `Makefile` or docs name. Their results are part of your verdict, and you do not take @dev1's word for
-   them.
+   them. Report the counts and the failing output when there is one; a passing suite needs its summary
+   line, not its 900 lines. Read the function you are judging with `offset`/`limit` rather than whole
+   files, and if `node_modules` is missing, `npm ci >/dev/null 2>&1` — the install log is not evidence.
 5. Judge the shape: is this the smallest complete change? Look for an option, config, abstraction or
    dependency nobody asked for; for a helper that already existed; for a comment that restates the code.
    Then look for the opposite failure — validation, error handling or a test path cut to make the diff

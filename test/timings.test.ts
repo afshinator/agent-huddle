@@ -38,6 +38,31 @@ describe("turnTimings", () => {
     expect(turns[0]!.firstEventMs).toBe(1000);
   });
 
+  test("a turn reports what it spent, from its stats record (#T12)", () => {
+    const turns = turnTimings("dev1", [
+      { ts: t(0), event: "turn_start" },
+      { ts: t(1), event: "delta", text: "Got it" },
+      { ts: t(2), event: "tool_start", text: "bash" },
+      { ts: t(3), event: "tool_end", text: "bash 1000ms" },
+      { ts: t(4), event: "stats", text: JSON.stringify({ tokens: 31240, cost: 0.0001, toolCalls: 9 }) },
+      { ts: t(5), event: "settled", text: "done" },
+    ]);
+    expect(turns[0]!.tokens).toBe(31240);
+    expect(turns[0]!.cost).toBeCloseTo(0.0001, 6);
+    expect(formatRun(new Map([["dev1", turns]]))).toContain("31240 tokens");
+  });
+
+  test("a turn without stats reports no cost rather than zero", () => {
+    const turns = turnTimings("dev1", [
+      { ts: t(0), event: "turn_start" },
+      { ts: t(1), event: "delta", text: "hi" },
+      { ts: t(2), event: "settled", text: "hi" },
+    ]);
+    expect(turns[0]!.tokens).toBe(0);
+    expect(turns[0]!.cost).toBeNull();
+    expect(formatRun(new Map([["dev1", turns]]))).not.toContain("tokens");
+  });
+
   test("a gap with nothing in it is reported as the wait it is", () => {
     const turns = turnTimings("lead", [
       { ts: t(0), event: "turn_start" },

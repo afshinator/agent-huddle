@@ -82,6 +82,17 @@ changes need no new test, but say that in the report so the reviewer is not gues
 **Then run the project's own typecheck and test commands.** Only commands that read the tree or prove
 the change: a command that is neither is scope creep.
 
+Three habits that decide what the next turn pays for, because everything you print is context the run
+carries from then on:
+
+- **Dependencies are an environment step, not a finding.** If `node_modules` is missing, install it once
+  and keep it out of the transcript: `npm ci >/dev/null 2>&1` (or the project's equivalent) — the exit
+  code is the answer, and the install log is not.
+- **Locate with `rg`, read the function you are changing.** Open the file around the change with
+  `offset`/`limit`; do not read 800 lines to edit twenty.
+- **Green runs summarize, failures do not.** On a passing suite quote the counts and the last few lines
+  (`| tail -40`); on a failure show the failing test and its assertion in full, and re-run only that file.
+
 **Commit on `run/<slug>`** once the suite is green: one commit, a message that says why the change
 exists, ending its subject with the ticket number as `(<n>)` — this repo's convention is
 `fix(area): what changed (#56)` — and no co-author lines. Do not amend, do not add unrelated files,

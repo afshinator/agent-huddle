@@ -505,7 +505,9 @@ Every pause in a room is one of three things, and the records separate them: the
 token (`dispatch` → first `delta`), a tool running (`tool_start` → `tool_end`, with the tool's own
 `durationMs`), or the model thinking (any other gap). `bun src/timings.ts <run-dir>` prints, per turn,
 the total, the first-token latency, time inside tools, and the longest wait together with what preceded
-it — so "the agent is churning" and "the agent is stalled" are facts rather than impressions. A gap with
+it — so "the agent is churning" and "the agent is stalled" are facts rather than impressions, and the
+same line carries what the turn spent (`stats`, T12): the tokens and cost of that turn, not the running
+total, because a total repeated per turn says nothing about any single turn. A gap with
 no event in it, ending in `settle timeout`, is the only real stall, and it is the case the room now
 survives.
 

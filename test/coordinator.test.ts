@@ -277,6 +277,31 @@ describe("The timing record (§76)", () => {
   }, 20_000);
 });
 
+describe("What one turn cost (§T12)", () => {
+  test("a settled turn records the tokens it spent, before the settled line", async () => {
+    await harness({ task: "do the work", color: false }, async ({ coordinator, pi, dir }) => {
+      pi.script("lead", [{ lastText: "Got it: start\nDONE" }]);
+      pi.setSessionStats("lead", {
+        tokens: { input: 1200, output: 300, cacheRead: 0, cacheWrite: 0, total: 1500 },
+        cost: 0.12,
+        toolCalls: 3,
+      });
+      await coordinator.boot();
+
+      const lines = (await readFile(join(dir, "agents", "lead", "log.jsonl"), "utf8"))
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l) as { event: string; text?: string });
+      const statsIndex = lines.findIndex((l) => l.event === "stats");
+      const settledIndex = lines.findIndex((l) => l.event === "settled");
+      expect(statsIndex).toBeGreaterThan(-1);
+      // Order matters: the readout closes a turn at `settled`, so a stats line after it is lost.
+      expect(statsIndex).toBeLessThan(settledIndex);
+      expect(JSON.parse(lines[statsIndex]!.text!)).toEqual({ tokens: 1500, cost: 0.12, toolCalls: 3 });
+    });
+  }, 20_000);
+});
+
 describe("The run's cost summary (§76)", () => {
   test("each agent's tokens and cost are printed once the chain is done", async () => {
     await harness({ task: "do the work", color: false }, async ({ coordinator, pi, out, dir }) => {
