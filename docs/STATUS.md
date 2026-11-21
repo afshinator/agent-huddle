@@ -119,6 +119,8 @@ started.
 | A pane title is plain: herdr prints it as text, so an escape shows literally — measured live | `test/coordinator.test.ts`, D17 |
 | A reply logs why it dispatched whom (`dispatch`: targets, queued, broadcast, self-mention) | `test/turn-loop.test.ts`, #73 |
 | A turn that times out hands on what it streamed, so the agent it named is still dispatched | `test/turn-loop.test.ts`, D20 |
+| An acknowledgement prints when the turn starts working, not when it ends | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, D21 |
+| `… said go. DONE` ends the chain; `almost DONE` does not, and an empty reply owes no ack | `test/turn-loop.test.ts`, D21 |
 | A turn's messages print on their own lines even when the provider streams them glued | `test/chat-stream.test.ts`, `test/pi-protocol.test.ts`, D20 |
 | A turn's settled text is every assistant message it contains, and a message boundary starts a new room line | `test/pi-protocol.test.ts` (two stubs), `docs/tickets/T11-settled-text-per-turn.md` |
 | `dispatch_scope: anyone` (default) dispatches every mention; `lead` makes a peer's mention context | `test/turn-loop.test.ts` (both scopes), `test/config.test.ts`, D18 |

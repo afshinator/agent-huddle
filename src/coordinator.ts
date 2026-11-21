@@ -214,7 +214,10 @@ export class Coordinator {
 
       // A provider that streams a whole turn glued says afterwards where the next message started,
       // so the room can split the line it is still holding (#73).
-      this.pi.on("message_end", agent.id, ({ text }) => this.chat.messageBoundary(agent.id, text));
+      this.pi.on("message_end", agent.id, ({ text }) => {
+        this.chat.messageBoundary(agent.id, text);
+        this.chat.flush(agent.id);
+      });
 
       this.pi.on("stream", agent.id, (delta) => {
         markWorking();
@@ -224,6 +227,9 @@ export class Coordinator {
       });
       this.pi.on("tool", agent.id, (tool) => {
         markWorking();
+        // A tool call cannot happen inside a sentence, so the line the provider left unterminated
+        // ends here — otherwise "Got it: …" stays hidden until the turn's final report (#75).
+        this.chat.flush(agent.id);
         this.watchFailure("agent pane write", agent.id, this.agentStream.tool(agent.id, tool));
       });
       this.pi.on("settled", agent.id, (r) => {

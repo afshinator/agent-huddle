@@ -43,6 +43,20 @@ export class ChatStream {
   }
 
   /**
+   * Print the line the provider left unterminated, keeping the turn open.
+   *
+   * A model often writes "Got it: …" with no trailing newline and then runs tools for a minute. The
+   * line used to stay hidden until the next newline arrived, so the acknowledgement only appeared
+   * with the final report — the room looked as if the agent skipped it (#75).
+   */
+  flush(agentId: string): void {
+    const held = this.partial.get(agentId) ?? "";
+    if (held === "") return;
+    this.partial.set(agentId, "");
+    this.writeLines(agentId, `${held}\n`);
+  }
+
+  /**
    * A new assistant message starts inside the text not yet flushed (#73).
    *
    * A provider may stream a turn's messages glued and only say where the boundary is afterwards. The

@@ -343,6 +343,31 @@ describe("TurnLoop", () => {
     );
   }, 20_000);
 
+  test("a DONE that ends the lead's last sentence still ends the chain", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      // The live run: the lead wrote "…said go with evidence. DONE" and the room kept going,
+      // dispatching the agent it had just named, for a turn that had nothing left to do.
+      pi.script("lead", [{ lastText: "Got it: check\nCount matches, @reviewer said go. DONE" }]);
+
+      const result = await loop.submit("@lead start", "user");
+
+      expect(result.status).toBe("completed");
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead"]);
+    });
+  });
+
+  test("an empty reply owes no acknowledgement: there is nothing to miss", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      // A turn that settles with no text has said nothing, so "silent pickup" is not a diagnosis.
+      pi.script("lead", [{ lastText: "" }]);
+
+      await loop.submit("@lead go", "user");
+
+      const notices = (await msgs()).filter((m) => m.kind === "notice" && m.text.includes("Got it:"));
+      expect(notices).toEqual([]);
+    });
+  });
+
   test("a human's direct message to the lead needs an acknowledgement as well", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "working on it" }]);

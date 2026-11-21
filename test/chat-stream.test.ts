@@ -17,6 +17,27 @@ describe("ChatStream", () => {
     expect(out).toEqual(["[@dev1] Got it: check the footer\n"]);
   });
 
+  test("flush prints the line the provider left unterminated", () => {
+    const { chat, out } = make();
+    // dev1 wrote "Got it: …" with no trailing newline, then ran tools for 40 seconds; the line
+    // was held all that time and only appeared with the final report (#75).
+    chat.delta("dev1", "Got it: tally every tracked .md file");
+    expect(out).toEqual([]);
+    chat.flush("dev1");
+
+    expect(out).toEqual(["[@dev1] Got it: tally every tracked .md file\n"]);
+    // the turn continues on a fresh line, with no second prefix
+    chat.delta("dev1", "Row count: 28\n");
+    expect(out.join("")).toBe("[@dev1] Got it: tally every tracked .md file\nRow count: 28\n");
+  });
+
+  test("flush with nothing held prints nothing", () => {
+    const { chat, out } = make();
+    chat.delta("dev1", "one line\n");
+    chat.flush("dev1");
+    expect(out).toEqual(["[@dev1] one line\n"]);
+  });
+
   test("a message boundary splits the line the turn has not flushed yet", () => {
     const { chat, out } = make();
     // The provider streams two assistant messages glued, then says where the second one starts.

@@ -493,3 +493,19 @@ then hangs has finished its turn.
 provider may stream a turn's messages glued and only say afterwards where the next one starts; without the
 event the room has to print a run-on or hold the text back, and it holds nothing back, because live
 streaming is the point of D16.
+
+## D21 — A turn's open line is printed when the work starts, not when it ends (#75)
+
+**Decision.** A tool call, or the end of an assistant message, flushes the line the room is holding. A
+`DONE` the lead writes as the close of its last sentence (`… said go. DONE`) ends the chain, while
+`almost DONE` still does not. An empty reply owes no acknowledgement.
+
+**Why:** a model writes "Got it: …" with no trailing newline and then runs tools for a minute, so the line
+sat unprinted until the next newline arrived and the acknowledgement appeared with the final report — the
+room looked like the agent had skipped it, twice, and both times the check complained. The same run had
+the lead close with `… said go with evidence. DONE`, which the room did not accept, so it dispatched the
+agent it had just named for a turn with no work in it; that turn settled empty, and the ack check
+published a notice about a reply that said nothing.
+
+**Rejected:** holding text back to judge it, and matching `DONE` anywhere in the text — a model discussing
+`DONE` would end the chain. The punctuation requirement is what keeps "almost DONE" out.

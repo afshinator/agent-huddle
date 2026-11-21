@@ -23,7 +23,12 @@ export const CONCLUDE_PROMPT =
 /** `DONE` on a line of its own (§6.5: `/^DONE$/m` with trimmed lines). */
 export function hasDoneSignal(text: string | null): boolean {
   if (text === null) return false;
-  return text.split("\n").some((line) => line.trim() === "DONE");
+  // A line of its own, or the word the reply ends on: models write "…said go. DONE" and meant it,
+  // and a DONE the room ignores dispatches an agent that has nothing left to do (#75).
+  if (/(^|\n)\s*DONE\s*$/.test(text)) return true;
+  // …or after a sentence it closes: "Count matches, @reviewer said go. DONE". "almost DONE" is not
+  // an ending, which is why the punctuation before it is required.
+  return /[.!?]\s+DONE\s*$/.test(text);
 }
 
 /**
@@ -197,7 +202,8 @@ export class TurnLoop {
       const settled = await this.dispatch(chain, agentId, promptText, true);
       if (settled === null) return this.finish(chain, this.isStopping() ? "cancelled" : "halted");
 
-      if (ackRequired && !hasAck(settled.lastText)) {
+      // An empty reply said nothing: "silent pickup" would be a notice about a turn that never spoke.
+      if (ackRequired && (settled.lastText ?? "").trim() !== "" && !hasAck(settled.lastText)) {
         const handle = this.cfg.agentById.get(agentId)?.handle ?? agentId;
         await this.append(
           chain,
