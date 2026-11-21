@@ -347,7 +347,12 @@ export class RealPiAgentClient implements PiAgentClient {
           // Already streamed: the boundary between the earlier messages and this one is the
           // only thing missing, and the record must show it.
           const prefix = agent.textBuffer.slice(0, agent.textBuffer.length - ev.content.length);
-          if (prefix !== "" && !prefix.endsWith("\n")) agent.textBuffer = `${prefix}\n${ev.content}`;
+          if (prefix !== "") {
+            if (!prefix.endsWith("\n")) agent.textBuffer = `${prefix}\n${ev.content}`;
+            // The room has printed both messages glued; it needs the same boundary to split the
+            // line it is still holding (#73).
+            this.bus.emit(agentId, "message_end", { text: ev.content });
+          }
         } else if (!agent.textBuffer.includes(ev.content)) {
           agent.textBuffer += `${agent.textBuffer.endsWith("\n") ? "" : "\n"}${ev.content}`;
         }

@@ -301,18 +301,21 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     await chmod(stub, 0o755);
     const client = new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } });
     const streamed: string[] = [];
+    const boundaries: string[] = [];
     try {
       await client.spawn(dev1, { cwd: dir });
       client.on("stream", "dev1", (delta) => streamed.push(delta));
+      client.on("message_end", "dev1", (m) => boundaries.push(m.text));
       await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
       const settled = await client.waitForSettled("dev1", 10_000);
 
       // The record — what the ack check, DONE detection and messages.jsonl all read — keeps both
       // messages on their own lines.
       expect(settled.lastText).toBe("Got it: tally the docs.\n@lead 28 rows written.");
-      // The pane already printed both before text_end revealed the boundary, so the stream keeps
-      // the run-on: cosmetic, and accepted until a provider signals a message boundary earlier.
+      // The deltas themselves arrive glued; the room is told where the second message starts so it
+      // can split the line it is still holding (#73).
       expect(streamed.join("")).toBe("Got it: tally the docs.@lead 28 rows written.");
+      expect(boundaries).toEqual(["@lead 28 rows written."]);
     } finally {
       await client.shutdown("dev1").catch(() => undefined);
       await rm(dir, { recursive: true, force: true });

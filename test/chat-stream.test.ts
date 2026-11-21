@@ -17,6 +17,25 @@ describe("ChatStream", () => {
     expect(out).toEqual(["[@dev1] Got it: check the footer\n"]);
   });
 
+  test("a message boundary splits the line the turn has not flushed yet", () => {
+    const { chat, out } = make();
+    // The provider streams two assistant messages glued, then says where the second one starts.
+    chat.delta("dev1", "Got it: tally the docs.");
+    chat.delta("dev1", "Got it: tally written.");
+    chat.messageBoundary("dev1", "Got it: tally written.");
+    chat.delta("dev1", "\n");
+
+    expect(out).toEqual(["[@dev1] Got it: tally the docs.\nGot it: tally written.\n"]);
+  });
+
+  test("a boundary that does not match what is held changes nothing", () => {
+    const { chat, out } = make();
+    chat.delta("dev1", "Got it: one thing");
+    chat.messageBoundary("dev1", "something else");
+    chat.delta("dev1", "\n");
+    expect(out).toEqual(["[@dev1] Got it: one thing\n"]);
+  });
+
   test("the prefix is painted with the agent's colour, and the prose is not", () => {
     const out: string[] = [];
     const chat = new ChatStream(

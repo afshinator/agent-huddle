@@ -43,6 +43,20 @@ export class ChatStream {
   }
 
   /**
+   * A new assistant message starts inside the text not yet flushed (#73).
+   *
+   * A provider may stream a turn's messages glued and only say where the boundary is afterwards. The
+   * last `text` characters are that new message, so the line is split there instead of printing a
+   * run-on. Nothing is printed twice and the text is kept verbatim.
+   */
+  messageBoundary(agentId: string, text: string): void {
+    if (text === "") return;
+    const held = this.partial.get(agentId) ?? "";
+    if (!held.endsWith(text) || held.length === text.length) return;
+    this.partial.set(agentId, `${held.slice(0, held.length - text.length).replace(/\n?$/, "\n")}${text}`);
+  }
+
+  /**
    * The turn is over. Returns false when nothing was ever printed for it, so the caller can fall
    * back to the settled text (a provider may send only `text_end`, with no deltas at all).
    */

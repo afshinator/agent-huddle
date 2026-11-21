@@ -473,3 +473,23 @@ what the room was launched to do, the notice is the room reporting on itself.
 **Cost, accepted:** the boot pane now prints the task twice — once as `ask:` in the banner (a one-line
 pointer) and once as the brief block. That is deliberate: the banner is the index, the block is the text,
 and the reference run showed a human cannot read the whole ask off a banner anyway.
+
+## D20 — A turn that times out hands on what it wrote (#73)
+
+**Decision.** When `waitForSettled` fails with a settle timeout and the turn had streamed text, the loop
+records that text as the turn's message, prints a notice saying how much it kept, and carries on with the
+mentions inside it. A timeout with nothing streamed still halts, as before.
+
+**Why:** dispatch happens on settle, so a lead that printed "`@dev1` do the tally" and then went quiet took
+the assignment with it: the room sat with every pane saying "never dispatched" until a human typed. The
+work had been *done out loud*; only the settle was missing.
+
+**Cost, accepted:** the timed-out turn's process may still be running its own version of the turn, and its
+eventual settle is ignored. The room prefers a slightly stale message to a dead chain. And the text is
+partial by definition: `DONE` inside it still counts, which is deliberate — a model that writes `DONE` and
+then hangs has finished its turn.
+
+**Seam:** `ChatStream` gained `messageBoundary`, fed by a new `message_end` event on the client seam. A
+provider may stream a turn's messages glued and only say afterwards where the next one starts; without the
+event the room has to print a run-on or hold the text back, and it holds nothing back, because live
+streaming is the point of D16.

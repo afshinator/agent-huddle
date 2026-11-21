@@ -212,6 +212,10 @@ export class Coordinator {
         this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `${agent.handle} — working`));
       };
 
+      // A provider that streams a whole turn glued says afterwards where the next message started,
+      // so the room can split the line it is still holding (#73).
+      this.pi.on("message_end", agent.id, ({ text }) => this.chat.messageBoundary(agent.id, text));
+
       this.pi.on("stream", agent.id, (delta) => {
         markWorking();
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));

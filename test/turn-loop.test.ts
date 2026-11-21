@@ -451,6 +451,28 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("a turn that times out still hands on what it had written", async () => {
+    await harness(
+      async ({ loop, pi, msgs }) => {
+        // The live failure: the lead printed its assignment, then hit the timeout, so the agent it
+        // named was never dispatched and the room went quiet mid-chain.
+        pi.script("lead", [{ deltas: ["Got it: start\n@dev1 tally the docs\n"], hold: true }]);
+        // dev1 names nobody, so the chain ends after it and the test cannot hang on a loop.
+        pi.script("dev1", [{ lastText: "Got it: tally\n28 rows" }]);
+
+        await loop.submit("@lead start", "user");
+
+        expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1"]);
+        const notices = (await msgs()).filter((m) => m.kind === "notice").map((m) => m.text);
+        expect(notices.some((t) => t.includes("settle timeout"))).toBe(true);
+        // the text that did stream is the record of the turn, not an empty message
+        const leadMsg = (await msgs()).find((m) => m.kind === "agent" && m.from === "lead");
+        expect(leadMsg?.text).toContain("@dev1 tally the docs");
+      },
+      { turnTimeoutMs: 300 },
+    );
+  }, 20_000);
+
   test("a turn timeout is reported as a timeout, not a failure", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.failOn("waitForSettled", new Error("settle timeout after 5000ms"));

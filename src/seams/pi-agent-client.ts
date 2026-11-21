@@ -33,6 +33,8 @@ export interface PiAgentClient {
   on(event: "stream", agentId: string, fn: (delta: string) => void): void;
   on(event: "error", agentId: string, fn: (err: Error) => void): void;
   on(event: "tool", agentId: string, fn: (t: { name: string; args: unknown }) => void): void;
+  /** A new assistant message began inside text already streamed: the last `text` chars are it (#73). */
+  on(event: "message_end", agentId: string, fn: (m: { text: string }) => void): void;
 }
 
 /** One scripted turn: stream deltas then a settled result (or an error). */
@@ -59,6 +61,8 @@ export interface AgentEventMap {
   error: Error;
   /** A tool the agent started running. `args` is whatever the tool received. */
   tool: { name: string; args: unknown };
+  /** Where a new assistant message starts, inside text already streamed (see `ChatStream`). */
+  message_end: { text: string };
 }
 
 export type AgentEvent = keyof AgentEventMap;
@@ -68,6 +72,7 @@ interface AgentListenerLists {
   stream: Array<(delta: string) => void>;
   error: Array<(err: Error) => void>;
   tool: Array<(t: { name: string; args: unknown }) => void>;
+  message_end: Array<(m: { text: string }) => void>;
 }
 
 /** Per-agent event fan-out shared by the fake and the real client. */
@@ -90,7 +95,7 @@ export class AgentListeners {
   private lists(agentId: string): AgentListenerLists {
     let lists = this.byAgent.get(agentId);
     if (!lists) {
-      lists = { settled: [], stream: [], error: [], tool: [] };
+      lists = { settled: [], stream: [], error: [], tool: [], message_end: [] };
       this.byAgent.set(agentId, lists);
     }
     return lists;
@@ -210,7 +215,18 @@ export class FakePiAgentClient implements PiAgentClient {
     this.record("waitForSettled", agentId, timeoutMs);
     const failure = this.takeFailure("waitForSettled");
     if (failure) throw failure.error;
-    return a.settle ? a.settle.promise : { aborted: false, lastText: a.lastText };
+    if (!a.settle) return { aborted: false, lastText: a.lastText };
+    // Same budget and same wording as the real client: a fake that waits forever cannot exercise
+    // what a turn does when its provider goes quiet (see `client-parity.test.ts`).
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await new Promise<SettledResult>((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`settle timeout after ${timeoutMs}ms`)), timeoutMs);
+        a.settle!.promise.then(resolve, reject);
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async shutdown(agentId: string): Promise<void> {

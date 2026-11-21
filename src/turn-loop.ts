@@ -93,6 +93,8 @@ export class TurnLoop {
   private readonly now: () => string;
   private readonly newId: () => string;
   private readonly handleById: Map<string, string>;
+  /** Text streamed in each agent's current turn, so a timed-out turn still has something to say. */
+  private readonly streamed = new Map<string, string>();
   private readonly onChainState?: (state: ChainState | null) => Promise<void> | void;
   private readonly isStoppingHook?: () => boolean;
 
@@ -107,6 +109,13 @@ export class TurnLoop {
     this.handleById = new Map(deps.config.allAgents.map((a) => [a.id, a.handle]));
     this.onChainState = deps.onChainState;
     this.isStoppingHook = deps.isStopping;
+    // The room's own copy of what has streamed this turn: a turn that times out has already said
+    // things on screen, and dropping them ends the chain one step short (#73).
+    for (const agent of deps.config.allAgents) {
+      deps.pi.on("stream", agent.id, (delta) => {
+        this.streamed.set(agent.id, (this.streamed.get(agent.id) ?? "") + delta);
+      });
+    }
   }
 
   /**
@@ -287,6 +296,7 @@ export class TurnLoop {
       this.telemetry.counter("room.hops_total", { agentId, chainId: chain.chainId });
       span.addEvent("dispatch", { agentId });
       try {
+        this.streamed.set(agentId, "");
         await this.pi.prompt(agentId, { message: text, streamingBehavior: "followUp" });
         const startedAt = performance.now();
         const settled = await this.pi.waitForSettled(agentId, this.turnTimeoutMs);
@@ -310,6 +320,20 @@ export class TurnLoop {
         this.telemetry.log("error", "agent turn failed", { agentId, error: msg });
         span.setStatus("error", msg);
         await this.append(chain, "notice", "room", `agent ${agentId}: ${msg}`, hop);
+        // A timeout is not a failed turn: the agent wrote what it wrote, and a chain that ignores it
+        // leaves the agent it named waiting forever. Hand on the text and keep going.
+        const partial = this.streamed.get(agentId) ?? "";
+        if (/settle timeout/.test(msg) && partial !== "") {
+          await this.append(chain, "agent", agentId, partial, hop);
+          await this.append(
+            chain,
+            "notice",
+            "room",
+            `agent ${agentId}: continuing with the ${partial.length} characters it had written`,
+            hop,
+          );
+          return { aborted: false, lastText: partial };
+        }
         return null;
       }
     });
