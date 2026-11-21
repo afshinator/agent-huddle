@@ -180,6 +180,36 @@ export function askedFrom(ticket: Ticket): { task: string; definitionOfDone: str
   return { task, definitionOfDone: criteria.text, source: criteria.source };
 }
 
+/**
+ * Tickets the body says must land first, read from its Dependencies section.
+ *
+ * GitHub's native links are the reliable signal, but they are a thing somebody has to remember to
+ * add: #54 carries both, and a ticket that only says "must not merge before #64" in prose is exactly
+ * the one a native-only gate lets through (#82). Only the Dependencies section counts — a mention in
+ * "References" or a `Blocks #n` line names work that comes *after* this ticket, not before it.
+ */
+export function dependencyReferences(body: string): number[] {
+  const heading = /^#{1,6}\s*dependencies\b.*$/im.exec(body);
+  if (heading === null) return [];
+  const level = (heading[0].match(/^#+/) ?? ["#"])[0].length;
+  const section: string[] = [];
+  for (const line of body.slice(heading.index + heading[0].length).split("\n")) {
+    const next = /^(#{1,6})\s/.exec(line);
+    if (next !== null && next[1]!.length <= level) break;
+    section.push(line);
+  }
+  // A line counts only when it opens by naming what this ticket waits for. "Blocks #54" and
+  // "#54 and #55 must not merge before this" are the other direction, and reading them as blockers
+  // refused the one ticket that was runnable.
+  const WAITING = /^\s*[-*]?\s*[*_]{0,2}(needs?|needed|blocked by|requires?|depends on)\b/i;
+  const found = new Set<number>();
+  for (const line of section) {
+    if (!WAITING.test(line)) continue;
+    for (const m of line.matchAll(/#(\d+)/g)) found.add(Number(m[1]));
+  }
+  return [...found].sort((a, b) => a - b);
+}
+
 /** A blocker that is still open, named. Null when the ticket may be dispatched. */
 export function blockerReason(blockers: readonly { number: number; state: string }[]): string | null {
   const open = blockers.filter((b) => b.state.toLowerCase() !== "closed");
@@ -333,7 +363,8 @@ function cmdCheck(argv: string[]): number {
     const issue = Number(args.get("issue"));
     if (auth && Number.isFinite(issue)) {
       try {
-        const blocked = blockerReason(blockedBy(repo, issue));
+        const body = sh("gh", ["issue", "view", String(issue), "--json", "body", "--jq", ".body"], repo);
+        const blocked = blockerReason(blockersOf(repo, issue, body));
         rows.push({ ok: blocked === null, fatal: true, label: `#${issue} unblocked`, detail: blocked ?? "" });
       } catch (e) {
         rows.push({ ok: false, fatal: true, label: `#${issue} unblocked`, detail: (e as Error).message });
@@ -352,8 +383,32 @@ function cmdCheck(argv: string[]): number {
  * Throws rather than returning empty on a failed read: "no blockers" and "could not ask" must not
  * look the same, or the gate that exists to stop a blocked ticket lets it through when the API blips.
  */
+function repoSlug(repo: string): string {
+  return sh("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], repo);
+}
+
+function issueState(repo: string, issue: number): string {
+  return sh("gh", ["api", `repos/${repoSlug(repo)}/issues/${issue}`, "--jq", ".state"]).trim();
+}
+
+/**
+ * Every reason this ticket must wait: GitHub's native links, plus the ones its body states in prose.
+ *
+ * Both are read because either can be missing. #54 has both; a ticket that only says "must not merge
+ * before #64" is the one a native-only gate waves through (#82).
+ */
+function blockersOf(repo: string, issue: number, body: string): Array<{ number: number; state: string }> {
+  const merged = new Map<number, string>();
+  for (const b of blockedBy(repo, issue)) merged.set(b.number, b.state);
+  for (const n of dependencyReferences(body)) {
+    if (n === issue || merged.has(n)) continue;
+    merged.set(n, issueState(repo, n));
+  }
+  return [...merged].map(([number, state]) => ({ number, state }));
+}
+
 function blockedBy(repo: string, issue: number): Array<{ number: number; state: string }> {
-  const slug = sh("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], repo);
+  const slug = repoSlug(repo);
   const raw = trySh("gh", ["api", `repos/${slug}/issues/${issue}/dependencies/blocked_by`]);
   if (raw === null) throw new Error(`could not read the dependencies of #${issue}`);
   if (raw.trim() === "") return [];
@@ -389,7 +444,7 @@ function cmdIssue(argv: string[]): number {
   // first, and GitHub records that as a native dependency (#81).
   let blocked: string | null;
   try {
-    blocked = blockerReason(blockedBy(repo, json.number));
+    blocked = blockerReason(blockersOf(repo, json.number, json.body));
   } catch (e) {
     process.stderr.write(`launch: refusing — ${(e as Error).message}; dispatch needs to know its blockers\n`);
     return 1;

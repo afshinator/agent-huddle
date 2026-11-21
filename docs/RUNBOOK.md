@@ -34,7 +34,9 @@ constraints, its dependencies, its out-of-scope list — and its acceptance-crit
 
 **Preconditions that refuse the run.** Beyond the label, the launcher reads GitHub's native dependencies:
 a ticket blocked by an open issue is refused, naming it (`blocked by #64 (open)`), and `--ignore-blockers`
-is the deliberate override. A ticket can be `ready-for-agent` and still be unsafe to dispatch — #54 is
+is the deliberate override. Both sources are read: the native links, and `## Dependencies` lines that open
+by naming what the ticket waits for. A ticket whose only block is prose still refuses — that is the case a
+native-only gate would have waved through. A ticket can be `ready-for-agent` and still be unsafe to dispatch — #54 is
 exactly that: triaged, and blocked by #64. The gate reads the tracker, not the prose in the body, so also
 read the ticket's own Dependencies section.
 

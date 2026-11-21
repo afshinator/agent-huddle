@@ -3,6 +3,7 @@ import {
   askedFrom,
   blockerReason,
   criteriaOf,
+  dependencyReferences,
   eligibility,
   lockfileFor,
   worktreeAction,
@@ -211,5 +212,70 @@ describe("a blocked ticket is not dispatchable (#81)", () => {
     expect(blockerReason([{ number: 64, state: "open" }, { number: 67, state: "open" }])).toBe(
       "blocked by #64 (open), #67 (open)",
     );
+  });
+});
+
+describe("dependencies named in prose count too (#82)", () => {
+  // The real bodies. #54 carries a native edge *and* the sentence; #64 carries the sentence that
+  // must NOT read as a blocker, because it is about what it blocks, not what blocks it.
+  const body54 = [
+    "## What to build",
+    "Something. See #53 for context and #57 later.",
+    "",
+    "## Dependencies",
+    "- Needs before merge: #64 (open). #65 is closed, so that half of the edge is already cleared.",
+    "- Blocks #57 (open): it re-runs the symbols this parser repairs.",
+    "*Blocked by #64 and #65* as native GitHub dependencies.",
+    "",
+    "## Out of scope",
+    "- Nothing here mentions #67.",
+  ].join("\n");
+
+  const body64 = [
+    "## Acceptance criteria",
+    "1. Something.",
+    "",
+    "## Dependencies",
+    "- Nothing blocks this ticket.",
+    "- Blocks #54 (open) and #67 (open): #54 must not merge before this.",
+    // The line that made a naive scan refuse the one runnable ticket: it says *they* wait for *me*.
+    "None to build. #54 and #55 must not merge before this: once a parse returns 1 to 32 fields, every",
+    "row is stored `partial` and reported ok.",
+    "",
+    "## Out of scope",
+    "- The parser, which is #54.",
+  ].join("\n");
+
+  const body67 = [
+    "## Dependencies",
+    "- Needs #64 (open) merged first: it sets the cutoff.",
+    "- Nothing depends on this ticket.",
+  ].join("\n");
+
+  test("a 'needs before merge' line names its blockers", () => {
+    expect(dependencyReferences(body54).sort((a, b) => a - b)).toEqual([64, 65]);
+  });
+
+  test("a 'blocks' line is not a blocker, however open the ticket it names", () => {
+    expect(dependencyReferences(body64)).toEqual([]);
+  });
+
+  test("'nothing blocks this ticket' names nobody", () => {
+    expect(dependencyReferences(body64)).not.toContain(54);
+  });
+
+  test("mentions outside the Dependencies section are not blockers", () => {
+    expect(dependencyReferences(body54)).not.toContain(53);
+    expect(dependencyReferences(body54)).not.toContain(57);
+    expect(dependencyReferences(body64)).not.toContain(67);
+  });
+
+  test("a 'needs #n' line is a blocker", () => {
+    expect(dependencyReferences(body67)).toEqual([64]);
+  });
+
+  test("a prose-only blocker reaches the same refusal as a native one", () => {
+    const states = dependencyReferences(body67).map((n) => ({ number: n, state: "open" }));
+    expect(blockerReason(states)).toBe("blocked by #64 (open)");
   });
 });
