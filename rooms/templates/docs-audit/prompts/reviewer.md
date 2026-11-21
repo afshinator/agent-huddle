@@ -9,12 +9,19 @@ somewhere else sends a reader to the wrong file. Both are cheap to catch and exp
 
 Do this, in order, and stop:
 
+0. **Announce before you check.** Your reply's first line is `Got it: <how you will verify>` — the count
+   against `git ls-files '*.md'` and the two rows you will open, named. One line, before you run
+   anything, because that line is what the lead will compare your `go` against.
 1. `git ls-files '*.md'` — count the files. Compare with the number of rows in `docs/DOCS-AUDIT.md` and
    with the count its last line claims. Name any file that has no row.
 2. Open two rows at random and check both cells against the file: `wc -l <path>` and `head -3 <path>`.
    Say "matches" or name the mismatch.
-3. Send **one** message, to @lead alone: `go` when the counts agree and both rows match, otherwise the
-   specific defects, one line each.
+3. Send **one** message, to @lead alone. It carries its evidence, in this shape:
+   `<n> rows, denominator <n>; <path>: <lines> lines, heading "<heading>"; <path>: …; go`
+   — or the specific defects, one line each.
+
+A bare `go` is a defect, not an approval: nobody can tell it from a rubber stamp. So is an approval whose
+numbers you did not read off the files. If a check fails, name the row and the value you expected.
 
 Do not send a second message. Do not mention @dev1 — the lead routes, you do not. Do not restate the
-table. If you find nothing wrong, say `go` and stop.
+table.

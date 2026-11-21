@@ -526,12 +526,30 @@ export class Coordinator {
     // An agent's text already reached the room as it streamed; printing the settled
     // record again would show every reply twice (#63).
     if (msg.kind === "agent") return;
+    // The brief is background: what the room was launched to do, not an instruction issued
+    // now by a participant. It prints as a block so nothing appears to be speaking it (#68).
+    if (msg.kind === "startup_task") {
+      this.printBrief(msg.text);
+      return;
+    }
     // A notice means something happened outside a turn: close any line left open, so the
     // transcript never ends mid-sentence with no indication why.
-    if (msg.kind === "notice" || msg.kind === "hop_limit_reached") this.chat.endAll("interrupted");
-    const prefix =
-      msg.kind === "notice" || msg.kind === "hop_limit_reached" ? "[room]" : paintTag(msg.handle, (h) => this.colourFor(h));
+    if (msg.kind === "notice" || msg.kind === "hop_limit_reached") {
+      this.chat.endAll("interrupted");
+      // The room's own note, not a participant's message: a bare `·` marks it as out-of-band,
+      // and no agent ever receives it as context (#68).
+      this.stdout.write(`· ${this.paint(msg.text)}\n`);
+      return;
+    }
+    const prefix = paintTag(msg.handle, (h) => this.colourFor(h));
     this.stdout.write(`${prefix} ${this.paint(msg.text)}\n`);
+  }
+
+  /** The room's brief: a framed block, so it reads as background rather than a command. */
+  private printBrief(text: string): void {
+    this.printLine("── brief ── background: what this room was launched to do");
+    for (const line of text.split("\n")) this.printLine(line === "" ? "" : `  ${this.paint(line)}`);
+    this.printLine("── end brief ──");
   }
 
   /** A settled reply whose turn streamed nothing: print it the way the room always has. */

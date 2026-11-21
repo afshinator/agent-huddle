@@ -423,3 +423,33 @@ anyway; the room is where a reader needs to tell voices apart.
 **Cost, accepted:** a terminal without truecolor shows the escapes literally, which is why
 `PALETTE_MODE` exists (`rgb` or `256`); and `room.log` is stripped of colour, so the archive and the
 screen can differ in appearance but not in content.
+
+## D18 — Work is handed out by the lead; a peer's mention is context (#68)
+
+**Decision.** An agent's reply dispatches only the lead, or only where the author already is the lead. Any
+other mention is recorded and pushed to that agent as context, and starts nothing.
+
+**Why:** a live run had dev1's report end `@reviewer count is 28 rows …` and the reviewer began verifying
+on its own initiative, mid-report, before the lead had asked for anything. A report is not an assignment,
+and a mention inside a report must not be read as one. Reports go to the lead because that is the one
+edge the loop needs.
+
+**Rejected:** keeping peer-to-peer dispatch and asking prompts not to name peers — the failure was
+mechanical, not textual, so the router has to hold it. Also rejected: a notice when a peer mention is
+ignored; the lead already has the text as context and the room is noisy enough.
+
+**Cost, accepted:** a two-agent handoff that does not involve the lead now needs the lead to relay it.
+
+## D19 — The brief is background, and notices are the room's own voice (#68)
+
+**Decision.** The startup task prints as a framed block (`── brief ── … ── end brief ──`), not as
+`[room] <task>`, and a room notice prints as `· <note>` with no participant prefix. Neither ever reaches
+an agent as a prompt.
+
+**Why:** agents read `[room] …` as somebody speaking, so a brief looked like a live instruction and a
+notice looked like chat from a participant that does not exist. Both are the human's channel: the brief is
+what the room was launched to do, the notice is the room reporting on itself.
+
+**Cost, accepted:** the boot pane now prints the task twice — once as `ask:` in the banner (a one-line
+pointer) and once as the brief block. That is deliberate: the banner is the index, the block is the text,
+and the reference run showed a human cannot read the whole ask off a banner anyway.

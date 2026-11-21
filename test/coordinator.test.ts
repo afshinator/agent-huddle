@@ -259,6 +259,32 @@ describe("A boot's pane stream is its own (#61)", () => {
   }, 20_000);
 });
 
+describe("What a room message is allowed to look like (§room)", () => {
+  test("the startup task is printed as background, not as somebody giving orders", async () => {
+    await harness({ task: "Tally the docs and report the count." }, async ({ coordinator, out }) => {
+      await coordinator.boot();
+      const text = out.join("");
+      expect(text).toContain("── brief");
+      expect(text).toContain("background");
+      // No pseudo-participant: nothing in the room is "speaking" the brief.
+      expect(text).not.toContain("[room] Tally the docs");
+    });
+  }, 20_000);
+
+  test("a room notice is marked as the room's own note, not a message from a participant", async () => {
+    await harness({ task: undefined }, async ({ coordinator, out, pi }) => {
+      // A notice arises here: a direct mention answered without an acknowledgement.
+      pi.script("lead", [{ lastText: "working on it" }]);
+      await coordinator.boot();
+      await coordinator.submit("@lead go");
+
+      const text = out.join("");
+      expect(text).toContain('· @lead answered a direct message without "Got it: …"');
+      expect(text).not.toContain('[room] @lead answered');
+    });
+  }, 20_000);
+});
+
 describe("Agent colours in the room (#66)", () => {
   test("a mention and its prefix take the agent's colour when colour is on", async () => {
     await harness({ task: "do the work", color: true }, async ({ coordinator, pi, out }) => {
@@ -299,8 +325,8 @@ describe("Coordinator boot banner (#59)", () => {
       expect(lines[0]).toContain("@lead");
       expect(lines[0]).toContain("@dev1");
       expect(lines[0]).toContain(dir);
-      // the banner is what precedes the first room message, and nothing else
-      const banner = lines.slice(0, lines.findIndex((line) => line.startsWith("[")));
+      // the banner is what precedes the brief block, and nothing else
+      const banner = lines.slice(0, lines.findIndex((line) => line.startsWith("── brief")));
       expect(banner.join("\n")).toContain("ask: audit the docs");
       expect(banner.join("\n")).not.toContain("second line");   // a pointer, not a transcript
       expect(banner.join("\n")).toContain(`transcript: ${logPath}`);
@@ -377,7 +403,8 @@ describe("Coordinator (fakes)", () => {
 
       // live room stream printed to stdout
       const stream = out.join("");
-      expect(stream).toContain("[room] do the work");
+      // the startup task is printed as a framed brief, not as a participant's message
+      expect(stream).toContain("── brief ── background: what this room was launched to do\n  do the work");
       expect(stream).toContain("[@lead]");
       expect(stream).toContain("[@dev1]");
     });

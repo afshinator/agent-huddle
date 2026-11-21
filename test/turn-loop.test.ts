@@ -120,6 +120,41 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("a non-lead's mention is context, not a dispatch: only the lead hands out work", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      // The live run: dev1's report said "@reviewer count is 28", and the reviewer started
+      // verifying on its own initiative mid-report. A report is not an assignment.
+      // dev1 reports and names the reviewer in the same message, exactly as the live run did.
+      pi.script("dev1", [{ lastText: "Got it: tally\n@reviewer count is 28, ready\n@lead done" }]);
+      pi.script("lead", [{ lastText: "Got it: ok\nDONE" }]);
+
+      await loop.submit("@dev1 tally the docs", "user");
+
+      const prompted = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
+      // The report reaches the lead; the reviewer is named but not dispatched.
+      expect(prompted).toEqual(["dev1", "lead"]);
+      // The reviewer still sees it — as context, which is what a report is worth to it.
+      expect(pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId)).toContain("reviewer");
+    });
+  });
+
+  test("the lead's mention does dispatch the agent it names", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("dev1", [{ lastText: "Got it: tally\n28 rows\n@lead done" }]);
+      pi.script("lead", [{ lastText: "Got it: check\n@reviewer verify the count" }, { lastText: "count confirmed\nDONE" }]);
+      pi.script("reviewer", [{ lastText: "Got it: verify\ncount is 28\n@lead go" }]);
+
+      await loop.submit("@dev1 tally the docs", "user");
+
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual([
+        "dev1",
+        "lead",
+        "reviewer",
+        "lead",
+      ]);
+    });
+  });
+
   test("a startup task targets the lead even without a mention", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "all done\nDONE" }]);
@@ -228,34 +263,33 @@ describe("TurnLoop", () => {
     });
   });
 
-  test("by default an agent-to-agent mention needs no acknowledgement", async () => {
+  test("a peer mention is context, so no acknowledgement is owed for one", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }]);
-      // dev1 passes the work on; @dev2 is mentioned by a peer, not by the lead
+      // dev1 mentions a peer; under D18 that is a note to the room, not an assignment.
       pi.script("dev1", [{ lastText: "Got it: hand it on\n@dev2 take it" }]);
-      pi.script("dev2", [{ lastText: "taken" }]);
 
       await loop.submit("@lead start", "user");
 
       const ackNotices = (await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
       expect(ackNotices.length).toBe(0);
-      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "dev2"]);
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1"]);
     });
   }, 20_000);
 
   test("ack_scope: anyone makes a peer mention owe an acknowledgement too", async () => {
     await harness(
       async ({ loop, pi, msgs }) => {
-        pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }]);
-        pi.script("dev1", [{ lastText: "Got it: hand it on\n@dev2 take it" }]);
-        pi.script("dev2", [{ lastText: "taken" }]);
+        pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }, { lastText: "ok\nDONE" }]);
+        // dev1 reports back to the lead without an acknowledgement line.
+        pi.script("dev1", [{ lastText: "handed on\n@lead done" }]);
 
         await loop.submit("@lead start", "user");
 
         const ackNotices = (await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
-        expect(ackNotices.length).toBe(1);
-        expect(ackNotices[0]!.text).toContain("@dev2");
-        expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "dev2"]);
+        // both edges are governed under `anyone`: the lead's assignment and dev1's report back
+        expect(ackNotices.map((n) => n.text.split(" ")[0])).toEqual(["@dev1", "@lead"]);
+        expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "lead"]);
       },
       { ackScope: "anyone" },
     );

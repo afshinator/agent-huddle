@@ -474,7 +474,18 @@ Rules:
   a message with `agent_start`, and a model's acknowledgement and its `DONE` are two messages (§T11). Its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
 - **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes tool calls (`[tool] <name> <args>`) and lifecycle lines to it, never the agent's prose — the conversation lives in the room, once (#65). `log.jsonl` holds the JSON records for machines, deltas included, and no pane reads it. Writable by default (`pane_writable: false` gives a tail-only pane with a banner, §9.2); closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
 
+### 7.9 Who a mention dispatches (D18, #68)
+
+An agent's reply starts a turn for the **lead** only, or for anyone when the author **is** the lead. Any
+other mention — a report naming a peer — is recorded and pushed to that agent as context and starts
+nothing. The router holds this, not the prompts: the failure that produced it was mechanical.
+
 ### 8.0 What the room prints before it works (#59)
+
+The startup task then prints as a framed block (`── brief ── background: what this room was launched to
+do` … `── end brief ──`), because it is background rather than an instruction issued now by a participant.
+A room notice prints as `· <note>`: the room's own voice, never a `[handle]` line, and never an agent's
+prompt (D19).
 
 Before the first dispatch the coordinator prints a banner: the room's name, its handles, the run
 directory, the ask's first non-blank line, and the path of `room.log`. After the panes exist it prints

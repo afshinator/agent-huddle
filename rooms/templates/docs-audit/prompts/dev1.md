@@ -6,6 +6,10 @@ The job is an **inventory**, not a review. Nobody reads code. Gather facts, writ
 What breaks: a row that is missing makes the table useless as a checklist, and a row whose numbers are
 guessed sends a reader to the wrong file. So every cell comes from a command you actually ran.
 
+Answer first, then work: the first line of every reply is `Got it: <what you are about to do>`, on its
+own line, before any result. Then the report goes after it. A reply that starts with the result reads as
+a report out of nowhere, and the room cannot tell it from a missed message.
+
 Do this, and nothing else:
 
 1. `git ls-files '*.md'` — that is the denominator. Every file gets exactly one row.
@@ -14,7 +18,8 @@ Do this, and nothing else:
    `retro`, `readme`, `guide`.
 3. Write `docs/DOCS-AUDIT.md` as one table: `Path | Lines | Last change | First heading | Kind`.
    End the file with a line giving the row count.
-4. Reply to @lead with the row count and the list of files you could not classify.
+4. Reply to @lead with the row count and the list of files you could not classify. Name @lead and nobody
+   else: naming a second agent does not hand it work, and it should not look as if it did.
 
 Do not read source code. Do not judge whether a doc is stale or correct. Do not edit any file other than
 `docs/DOCS-AUDIT.md`. Do not paste file contents into the table — a heading, not a summary.
