@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { loadConfig } from "../src/config";
 import { HANDLE_RE } from "../src/router";
@@ -22,6 +22,25 @@ test("every shipped template loads and holds handles the router can match", asyn
     }
   }
   expect(offenders).toEqual([]);
+});
+
+test("one launcher takes a template name, and no template ships its own", async () => {
+  // Two copies of a 108-line script drifted the moment one of them was edited. The template is an
+  // argument now, and a template that grows its own launcher has quietly forked the boot path.
+  const dirs = (await readdir(templatesDir, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+  const forked: string[] = [];
+  for (const dir of dirs) {
+    for (const file of await readdir(join(templatesDir, dir))) {
+      if (file.startsWith("launch")) forked.push(`${dir}/${file}`);
+    }
+  }
+  expect(forked).toEqual([]);
+  const shared = await stat(join(roomsDir, "launch.sh"));
+  expect(shared.isFile()).toBe(true);
+  // The launcher is run, not imported: without the executable bit it is `bash rooms/launch.sh`.
+  expect(shared.mode & 0o111).toBeGreaterThan(0);
 });
 
 test("every shipped template is self-contained: its prompts sit in its own directory", async () => {

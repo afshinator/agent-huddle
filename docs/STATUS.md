@@ -10,7 +10,7 @@ rather than softened.
 ## What it does
 
 **A template owns a kind of room; a run owns one ask.** `rooms/templates/<type>/` is tracked and holds
-the template plus its prompts and its `launch.sh`. A run is a small file naming `template:` plus `task`,
+the template plus its prompts, and one shared `rooms/launch.sh --template <name>`. A run is a small file naming `template:` plus `task`,
 `definition_of_done` and any budget it overrides, and its collateral — the resolved config, a snapshot of
 the prompts that ran, the ask, notes and the room's runtime — lives in the gitignored `_run/<NNN>-<slug>/`
 in the repo the room runs in (D13). The ordinal is creation order, so `ls _run/` reads as a history, and
@@ -141,7 +141,7 @@ started.
   `@all`, three or more agents, a lead that refuses to emit `DONE`, a chain that reaches `max_hops`, and a
   reviewer that pushes work back to another specialist are unproven in a manned room. `rooms/templates/docs-audit`
   is a three-agent room staged for exactly that; until it runs, three agents are configuration, not behaviour.
-- **The template/run launcher is verified only up to the boot.** `launch.sh` was exercised with `--dry-run`
+- **The template/run launcher is verified only up to the boot.** `rooms/launch.sh` was exercised with `--dry-run`
   against a throwaway repo: collateral written, worktree created (branch and detached), resolved config
   loads. No room has been booted through it yet, so the last step — exec with the resolved config and
   `room_dir` pointing at `_run/` — is unproven in a real launch.
@@ -184,7 +184,7 @@ started.
   checkout. What survives a merge is the run's output, and a run note only if the ask produced one.
 - **Run numbering assumes the launcher.** A hand-made `_run/<name>/` is ignored when counting, and two
   launchers started at the same moment can pick the same ordinal — nothing locks.
-- **`_run/` being ignored is the repo's job, not the launcher's.** `launch.sh` warns when `_run/` is not in
+- **`_run/` being ignored is the repo's job, not the launcher's.** `rooms/launch.sh` warns when `_run/` is not in
   `.gitignore` and then writes there anyway.
 - **The tool-substitution rules are enforced outside this repo.** `sed -n` file slices, heredoc file writes,
   interpreter rewrites and `git add -A` are refused by a user-level agent extension, so a clone gets the rules

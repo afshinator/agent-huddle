@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Launch this room template against a repo.
+# Launch a room template against a repo.
 #
-#   ./rooms/templates/<type>/launch.sh --repo <path> --slug <slug> [--branch] [--run <run.yaml>]
+#   ./rooms/launch.sh --template <name> --repo <path> --slug <slug> [--branch] [--run <run.yaml>]
 #   Add --dry-run to prepare the collateral and the worktree without booting the room.
 #
 # What it creates, in this order:
@@ -11,14 +11,14 @@
 #                                    detached otherwise: this is where the room's output goes
 #   3. the room itself, whose agents write in that worktree
 #
-# Nothing commits inside the room. After DONE the supervisor commits on the branch, pushes
-# it, merges it, and removes the worktree.
+# The launcher neither commits nor pushes. Whether a room commits its work on the branch is the
+# template's own contract, stated in its prompts; merging the run branch stays with a human.
 set -euo pipefail
 
-TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
-HUDDLE_ROOT="$(cd "$TEMPLATE_DIR/../../.." && pwd)"
-TEMPLATE="$TEMPLATE_DIR/template.yaml"
+ROOMS_DIR="$(cd "$(dirname "$0")" && pwd)"
+HUDDLE_ROOT="$(cd "$ROOMS_DIR/.." && pwd)"
 
+TEMPLATE_NAME=""
 REPO=""
 SLUG=""
 BRANCH=0
@@ -26,12 +26,16 @@ RUN_FILE=""
 DRY_RUN=0
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+  if [ -d "$ROOMS_DIR/templates" ]; then
+    echo "templates: $(ls "$ROOMS_DIR/templates" | tr '\n' ' ')"
+  fi
   exit 2
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --template) TEMPLATE_NAME="${2:-}"; shift 2 ;;
     --repo) REPO="${2:-}"; shift 2 ;;
     --slug) SLUG="${2:-}"; shift 2 ;;
     --run) RUN_FILE="${2:-}"; shift 2 ;;
@@ -42,7 +46,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -f "$TEMPLATE" ] || { echo "launch: no template.yaml beside this script" >&2; exit 1; }
+[ -n "$TEMPLATE_NAME" ] || { echo "launch: --template <name> is required" >&2; usage; }
+TEMPLATE="$ROOMS_DIR/templates/$TEMPLATE_NAME/template.yaml"
+[ -f "$TEMPLATE" ] || {
+  echo "launch: no template at $TEMPLATE" >&2
+  echo "templates: $(ls "$ROOMS_DIR/templates" 2>/dev/null | tr '\n' ' ')" >&2
+  exit 1
+}
 
 REPO="${REPO:-$PWD}"
 REPO="$(cd "$REPO" && pwd)"
@@ -52,7 +62,7 @@ SLUG="$(bun "$HUDDLE_ROOT/src/run-slug.ts" next "$REPO/_run" "$REQUESTED")"
 [ -n "$SLUG" ] || { echo "launch: could not name the run" >&2; exit 1; }
 RUN_DIR="$REPO/_run/$SLUG"
 WORKTREE="$(dirname "$REPO")/$(basename "$REPO")-$SLUG"
-NAME="$(basename "$TEMPLATE_DIR")"
+NAME="$TEMPLATE_NAME"
 
 if [ -z "$RUN_FILE" ]; then
   mkdir -p "$RUN_DIR"

@@ -35,7 +35,7 @@ one ask. Templates are tracked, runs never are:
 ```
 rooms/templates/<type>/template.yaml   # name, budgets, lead + agents, each with its prompt
 rooms/templates/<type>/prompts/*.md    # the prompts that template uses
-rooms/templates/<type>/launch.sh       # the only glue: prepare, worktree, boot
+rooms/launch.sh                        # the only glue: prepare, worktree, boot
 _run/<NNN>-<slug>/                     # gitignored: the ask, the resolved config, prompts snapshot,
                                        # room runtime, notes — everything this run produced or used
 ```
@@ -43,7 +43,7 @@ _run/<NNN>-<slug>/                     # gitignored: the ask, the resolved confi
 Start a room from its template, pointing at the repo whose code the agents will touch:
 
 ```bash
-./rooms/templates/docs-audit/launch.sh --repo ~/dev/some-repo --slug 2026-11-20-audit --branch
+./rooms/launch.sh --template docs-audit --repo ~/dev/some-repo --slug 2026-11-20-audit --branch
 ```
 
 The run directory is numbered in creation order (`001-docs-audit`, `002-…`), so `ls _run/` reads as a
@@ -166,7 +166,7 @@ agents:
     tools: [read, bash, edit, write, grep]
 ```
 
-`system_prompt` and `system_prompt_file` are mutually exclusive, and a prompt path resolves against the file that wrote it. Handles must be quoted in YAML because `@` is reserved in an unquoted YAML scalar. Two three-agent templates ship, each with a `launch.sh`: [`rooms/templates/docs-audit/template.yaml`](rooms/templates/docs-audit/template.yaml) for an inventory room, and [`rooms/templates/ticket-resolver1/template.yaml`](rooms/templates/ticket-resolver1/template.yaml) for a room that verifies a ticket, fixes it, and has the fix reviewed.
+`system_prompt` and `system_prompt_file` are mutually exclusive, and a prompt path resolves against the file that wrote it. Handles must be quoted in YAML because `@` is reserved in an unquoted YAML scalar. Two three-agent templates ship, both launched by `rooms/launch.sh --template <name>`: [`rooms/templates/docs-audit/template.yaml`](rooms/templates/docs-audit/template.yaml) for an inventory room, and [`rooms/templates/ticket-resolver1/template.yaml`](rooms/templates/ticket-resolver1/template.yaml) for a room that verifies a ticket, fixes it, and has the fix reviewed.
 
 ## Routing and completion
 
