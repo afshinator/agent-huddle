@@ -482,7 +482,9 @@ the measured shape — `layout: tab 176x49 above · chat 176x25 · 2 panes 88x24
 screenshot. A manager that reports nothing says so; the line is never silently absent. With
 `AH_DEBUG=1` each pane's `rect` is traced too.
 
-An agent's prose is printed while it is being written, not when its turn ends (D16). A partial line is
+An agent's prose is printed while it is being written, not when its turn ends (D16), and the
+settled record is that same text: the turn's own streamed text wins, with the provider's
+`get_last_assistant_text` used only when a turn streamed nothing (#64). A partial line is
 held, not broken; when a turn dies — timeout, abort, a notice — the open line is closed with
 `[handle] (interrupted)` so the transcript never stops mid-sentence. Tool calls stay in the agent's own
 pane: the room is the conversation, not the machine log.

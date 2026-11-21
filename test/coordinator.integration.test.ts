@@ -41,7 +41,7 @@ while (true) {
           ? "Got it: implement it\\n@lead implementation complete"
           : "Got it: dev1 is done\\nverified\\nDONE";
       lastText = text;
-      for (const part of text.match(/.{1,12}/g) ?? []) {
+      for (const part of text.match(/[\\s\\S]{1,12}/g) ?? []) {
         out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: part } });
       }
       out({ type: "agent_settled", aborted: false });

@@ -22,7 +22,7 @@ const model = process.env.PI_TEST_MODEL ?? "deepseek/deepseek-v4.1-flash";
 const agent: AgentSpec = { id: "itest", handle: "@itest", role: "test", provider, model };
 
 describe("RealPiAgentClient (controlled RPC)", () => {
-  test("uses authoritative final text and reports malformed/unmatched records", async () => {
+  test("records the turn's own text and reports malformed/unmatched records", async () => {
     const roomDir = await mkdtemp(join(tmpdir(), "ah-rpc-fixture-"));
     const fixture = join(roomDir, "rpc-fixture.ts");
     const launcher = join(roomDir, "rpc-fixture.sh");
@@ -64,7 +64,9 @@ while (true) {
       client.on("error", "fixture", (error) => errors.push(error));
       await client.prompt("fixture", { message: "go" });
       const result = await client.waitForSettled("fixture", 2_000);
-      expect(result.lastText).toBe("AUTHORITATIVE");
+      // The room showed TEXT_END, so the record says TEXT_END: preferring the provider's
+      // "last assistant text" made the record begin mid-reply (#64).
+      expect(result.lastText).toBe("TEXT_END");
       expect(errors.map((error) => error.message)).toEqual([
         expect.stringContaining("invalid JSON record"),
         expect.stringContaining("unmatched failed response"),

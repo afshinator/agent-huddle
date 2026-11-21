@@ -347,7 +347,7 @@ export class RealPiAgentClient implements PiAgentClient {
       const settle = agent.pendingSettle;
       if (!settle) return;
 
-      void this.readAuthoritativeText(agent).then(
+      void this.settleText(agent).then(
         (lastText) => {
           const result: SettledResult = { aborted: !!rec.aborted, lastText };
           agent.lastText = lastText;
@@ -378,10 +378,19 @@ export class RealPiAgentClient implements PiAgentClient {
     // agent_end, bash_execution_update, queue_update, etc. are ignored.
   }
 
-  private async readAuthoritativeText(agent: RealAgent): Promise<string | null> {
+  /**
+   * The text this turn produced.
+   *
+   * The turn's own accumulation comes first: the room printed exactly these deltas, so recording
+   * anything else makes the transcript and the record disagree — a live run showed `Got it: …` in
+   * the chat while the settled record began at the turn's last message (#64). The provider's
+   * "last assistant text" is the fallback for a turn that streamed nothing (a resumed session).
+   */
+  private async settleText(agent: RealAgent): Promise<string | null> {
+    if (agent.textBuffer !== "") return agent.textBuffer;
     const data = await this.command(agent, { type: "get_last_assistant_text" });
     const text = (data as { text?: unknown } | undefined)?.text;
-    return typeof text === "string" ? text : agent.textBuffer || null;
+    return typeof text === "string" ? text : null;
   }
 
   private reportProtocolError(agentId: string, message: string): void {
