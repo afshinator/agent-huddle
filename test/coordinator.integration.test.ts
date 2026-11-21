@@ -45,6 +45,14 @@ while (true) {
         out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: part } });
       }
       out({ type: "agent_settled", aborted: false });
+    } else if (command.type === "get_session_stats") {
+      out({
+        id: command.id,
+        type: "response",
+        command: "get_session_stats",
+        success: true,
+        data: { tokens: { input: 100, output: 20, cacheRead: 0, cacheWrite: 0, total: 120 }, cost: 0.01, toolCalls: 1 },
+      });
     } else if (command.type === "get_last_assistant_text") {
       out({ id: command.id, type: "response", command: "get_last_assistant_text", success: true, data: { text: lastText } });
     } else if (command.type === "bash") {

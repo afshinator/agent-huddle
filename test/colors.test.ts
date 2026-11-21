@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { AGENT_RGB, FALLBACK_RGB, colorOf, markOf, paintTag, stripAnsi, colorEnabled } from "../src/colors";
+import { AGENT_MARK, AGENT_RGB, FALLBACK_MARKS, FALLBACK_RGB, colorOf, markOf, paintTag, stripAnsi, colorEnabled } from "../src/colors";
 
 const RED = "\u001b[38;2;255;0;0m";
 const BLUE = "\u001b[38;2;0;0;255m";
@@ -26,6 +26,27 @@ describe("paintTag", () => {
   test("the message prefix takes the agent's colour", () => {
     expect(paintTag("@lead", () => "38;2;255;0;0")).toBe(`${RED}[@lead]${RESET}`);
     expect(paintTag("@lead", () => null)).toBe("[@lead]");
+  });
+});
+
+describe("the palette is the emoji palette", () => {
+  test("each named agent's colour is its mark's colour, sampled from the system font", () => {
+    // Measured, not chosen: the squares are drawn by the font, so the text has to match them
+    // (tools/emoji-palette.swift). 🟨 🟦 🟪
+    expect(AGENT_RGB.lead).toEqual([238, 180, 0]);
+    expect(AGENT_RGB.dev1).toEqual([5, 93, 242]);
+    expect(AGENT_RGB.reviewer).toEqual([185, 49, 255]);
+    // and the fallbacks match theirs: 🟩 🟥 🟧
+    expect(FALLBACK_RGB).toEqual([
+      [0, 177, 0],
+      [212, 33, 17],
+      [255, 138, 4],
+    ]);
+  });
+
+  test("every named agent has a mark, and every fallback colour a fallback mark", () => {
+    for (const id of Object.keys(AGENT_RGB)) expect(AGENT_MARK[id]).toBeDefined();
+    expect(FALLBACK_MARKS.length).toBe(FALLBACK_RGB.length);
   });
 });
 

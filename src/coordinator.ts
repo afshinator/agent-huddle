@@ -225,7 +225,13 @@ export class Coordinator {
         // The room sees the prose as it is written, not when the turn ends (#63).
         this.chat.delta(agent.id, delta);
       });
+      this.pi.on("tool_end", agent.id, (t) => {
+        const ms = t.durationMs === undefined ? "" : ` ${t.durationMs}ms`;
+        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "tool_end", `${t.name}${ms}`));
+      });
+
       this.pi.on("tool", agent.id, (tool) => {
+        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "tool_start", tool.name));
         markWorking();
         // A tool call cannot happen inside a sentence, so the line the provider left unterminated
         // ends here — otherwise "Got it: …" stays hidden until the turn's final report (#75).
@@ -269,6 +275,7 @@ export class Coordinator {
 
     this.printLayout();
     const result = await startRoom(this.config, this.loop);
+    if (result !== null) await this.printSpend();
     this.roomStatus = result?.status === "halted" ? "halted" : "idle";
     this.inbox.start();
     await this.persistState();
@@ -283,6 +290,7 @@ export class Coordinator {
       await this.persistState();
 
       const result = await this.loop.submit(text, "user", targets);
+      await this.printSpend();
       this.roomStatus = result.status === "halted" ? "halted" : "idle";
       for (const agent of Object.values(this.roomState?.agents ?? {})) {
         if (agent.status === "busy") agent.status = "idle";
@@ -500,6 +508,55 @@ export class Coordinator {
     const path = this.agentLogs.get(agentId);
     if (!path) return;
     await appendFile(path, JSON.stringify({ ts: this.now(), event, text }) + "\n", "utf8");
+  }
+
+  /**
+   * What the run spent, per agent, when the chain is over (#76).
+   *
+   * A room that costs money should say what it cost without being asked, and a provider that reports
+   * nothing must read as "unknown" rather than "free". The pane is a scrollback, so the same numbers
+   * are written to `summary.json`.
+   */
+  private async printSpend(): Promise<void> {
+    const rows: Array<{ agentId: string; handle: string; tokens: number; cost: number | null; toolCalls: number }> = [];
+    for (const agent of this.config.allAgents) {
+      if (this.pi.sessionStats === undefined) break;
+      try {
+        // A provider that never answers must not hold the summary hostage; the command's own timeout
+        // is 30s, which is longer than a human will wait to see what a run cost.
+        const stats = await Promise.race([
+          this.pi.sessionStats(agent.id),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("no answer in 5000ms")), 5000)),
+        ]);
+        if (stats.tokens.total === 0 && stats.cost === null) continue;
+        rows.push({
+          agentId: agent.id,
+          handle: agent.handle,
+          tokens: stats.tokens.total,
+          cost: stats.cost,
+          toolCalls: stats.toolCalls,
+        });
+      } catch (e) {
+        this.telemetry.log("info", "session stats unavailable", { agentId: agent.id, error: errorMessage(e) });
+      }
+    }
+    if (rows.length === 0) return;
+
+    const tokens = rows.reduce((n, r) => n + r.tokens, 0);
+    const costs = rows.map((r) => r.cost);
+    const known = costs.filter((c): c is number => c !== null);
+    const total = known.length === 0 ? "unknown" : `$${known.reduce((a, b) => a + b, 0).toFixed(2)}`;
+    this.printLine("── spend ──");
+    for (const r of rows) {
+      const cost = r.cost === null ? "cost unknown" : `$${r.cost.toFixed(2)}`;
+      this.printLine(`  ${r.handle}  ${r.tokens} tokens · ${cost} · ${r.toolCalls} tool calls`);
+    }
+    this.printLine(`  total  ${tokens} tokens · ${total}`);
+    try {
+      await writeFile(join(this.config.config.room_dir, "summary.json"), JSON.stringify(rows, null, 2) + "\n", "utf8");
+    } catch (e) {
+      this.telemetry.log("warn", "summary write failed", { error: errorMessage(e) });
+    }
   }
 
   /** One line of room preamble: a human watching the pane should know what is running. */

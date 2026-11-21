@@ -14,9 +14,9 @@ export type Rgb = [number, number, number];
 
 /** agent id → colour. Edit freely; an agent you remove falls back to the list below. */
 export const AGENT_RGB: Record<string, Rgb> = {
-  lead: [230, 170, 80], // amber
-  dev1: [90, 170, 255], // blue
-  reviewer: [180, 140, 240], // violet
+  lead: [238, 180, 0], // 🟨, sampled from the system emoji font
+  dev1: [5, 93, 242], // 🟦
+  reviewer: [185, 49, 255], // 🟪
 };
 
 /**
@@ -37,11 +37,14 @@ export function markOf(id: string, slot: number): string {
   return AGENT_MARK[id] ?? FALLBACK_MARKS[slot % FALLBACK_MARKS.length]!;
 }
 
-/** Agents the table does not name take these in slot order, wrapping around. */
+/**
+ * Agents the table does not name take these in slot order, wrapping around. Sampled the same way,
+ * so a fallback agent's text matches the mark in its pane title.
+ */
 export const FALLBACK_RGB: Rgb[] = [
-  [120, 200, 160],
-  [240, 120, 160],
-  [200, 200, 120],
+  [0, 177, 0], // 🟩
+  [212, 33, 17], // 🟥
+  [255, 138, 4], // 🟧
 ];
 
 /** `"rgb"` is 24-bit truecolor; `"256"` uses the 256-colour cube when a terminal lacks it. */

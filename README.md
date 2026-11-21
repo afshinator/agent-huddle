@@ -77,6 +77,11 @@ when its turn ends, and a turn that dies mid-sentence says so. The conversation 
 agent's own pane carries tool calls and lifecycle lines, never its replies, and `log.jsonl` keeps the
 JSON records for analysis.
 
+When a chain finishes the room prints what the run cost, per agent — tokens, dollars when the provider
+reports them, `unknown` when it does not — and writes the same numbers to `summary.json`. To see where
+the time in a run went, `bun src/timings.ts _run/<run>` prints per turn the first-token latency, the time
+inside tools, and the longest wait with what preceded it.
+
 Every agent has a colour and the `[@handle]` prefix of its messages is shown in it — a handle named
 inside a sentence stays plain, so colour means "this agent is speaking". Each pane's title starts with a coloured mark (`🟨 @lead`), because herdr prints a title as text and an
 escape would show literally. The table is `src/colors.ts`, one line per agent. `AH_COLOR=0` (or `NO_COLOR`) turns it off, and `room.log` is always plain text.

@@ -35,6 +35,10 @@ export interface PiAgentClient {
   on(event: "tool", agentId: string, fn: (t: { name: string; args: unknown }) => void): void;
   /** A new assistant message began inside text already streamed: the last `text` chars are it (#73). */
   on(event: "message_end", agentId: string, fn: (m: { text: string }) => void): void;
+  /** A tool call finished. `durationMs` is what the tool's own `execute()` took (#76). */
+  on(event: "tool_end", agentId: string, fn: (t: { name: string; durationMs?: number }) => void): void;
+  /** Tokens and cost this agent's session has spent so far, when the provider reports them. */
+  sessionStats?(agentId: string): Promise<SessionStats>;
 }
 
 /** One scripted turn: stream deltas then a settled result (or an error). */
@@ -63,6 +67,17 @@ export interface AgentEventMap {
   tool: { name: string; args: unknown };
   /** Where a new assistant message starts, inside text already streamed (see `ChatStream`). */
   message_end: { text: string };
+  tool_end: { name: string; durationMs?: number };
+}
+
+/**
+ * What one agent has spent. `cost` is null when the provider does not report it — a room must be able
+ * to say "unknown" rather than invent a number.
+ */
+export interface SessionStats {
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  cost: number | null;
+  toolCalls: number;
 }
 
 export type AgentEvent = keyof AgentEventMap;
@@ -73,6 +88,7 @@ interface AgentListenerLists {
   error: Array<(err: Error) => void>;
   tool: Array<(t: { name: string; args: unknown }) => void>;
   message_end: Array<(m: { text: string }) => void>;
+  tool_end: Array<(t: { name: string; durationMs?: number }) => void>;
 }
 
 /** Per-agent event fan-out shared by the fake and the real client. */
@@ -95,7 +111,7 @@ export class AgentListeners {
   private lists(agentId: string): AgentListenerLists {
     let lists = this.byAgent.get(agentId);
     if (!lists) {
-      lists = { settled: [], stream: [], error: [], tool: [], message_end: [] };
+      lists = { settled: [], stream: [], error: [], tool: [], message_end: [], tool_end: [] };
       this.byAgent.set(agentId, lists);
     }
     return lists;
@@ -125,6 +141,8 @@ export class FakePiAgentClient implements PiAgentClient {
   private readonly agents = new Map<string, FakeAgent>();
   private readonly bus = new AgentListeners();
   private readonly failures = new Map<FakePiOp, unknown[]>();
+  /** What each agent's session reports it spent, when a test sets it. */
+  private readonly stats = new Map<string, SessionStats>();
   private nextPid = 1000;
 
   constructor(private readonly baseDir = "/fake/sessions") {}
@@ -208,6 +226,17 @@ export class FakePiAgentClient implements PiAgentClient {
     if (failure) throw failure.error;
     this.requireAgent(agentId);
     this.record("pushContext", agentId, text);
+  }
+
+  /** Script what an agent's session reports it spent. */
+  setSessionStats(agentId: string, stats: SessionStats): void {
+    this.requireAgent(agentId);
+    this.stats.set(agentId, stats);
+  }
+
+  async sessionStats(agentId: string): Promise<SessionStats> {
+    this.requireAgent(agentId);
+    return this.stats.get(agentId) ?? { tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: null, toolCalls: 0 };
   }
 
   async waitForSettled(agentId: string, timeoutMs: number): Promise<SettledResult> {

@@ -491,6 +491,29 @@ names the lead: the lead is the router, and a report that forgets the handle mus
 mechanical. `dispatch_scope: lead` is the docs-audit template's choice, because a tally report that ends
 "@reviewer count is 28" must not summon the reviewer before the lead asks.
 
+### 7.95 Pauses, spend, and what the record can prove (#76)
+
+Every pause in a room is one of three things, and the records separate them: the provider's first
+token (`dispatch` → first `delta`), a tool running (`tool_start` → `tool_end`, with the tool's own
+`durationMs`), or the model thinking (any other gap). `bun src/timings.ts <run-dir>` prints, per turn,
+the total, the first-token latency, time inside tools, and the longest wait together with what preceded
+it — so "the agent is churning" and "the agent is stalled" are facts rather than impressions. A gap with
+no event in it, ending in `settle timeout`, is the only real stall, and it is the case the room now
+survives.
+
+When a chain finishes the room prints what it cost, per agent, and writes the same numbers to
+`summary.json`:
+
+```
+── spend ──
+  @lead  48211 tokens · $0.19 · 12 tool calls
+  total  48211 tokens · $0.19
+```
+
+A provider that reports no cost prints `cost unknown` and the total prints `unknown`: a room must not
+claim a run was free because its provider stayed quiet. If an agent does not answer the question in five
+seconds, it is left out rather than holding the summary.
+
 ### 8.0 What the room prints before it works (#59)
 
 The startup task then prints as a framed block (`── brief ── background: what this room was launched to

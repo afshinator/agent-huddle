@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Coordinator } from "../src/coordinator";
+import { colorOf } from "../src/colors";
 import { RoomStore } from "../src/store";
 import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
@@ -260,6 +261,44 @@ describe("A boot's pane stream is its own (#61)", () => {
   }, 20_000);
 });
 
+describe("The run's cost summary (§76)", () => {
+  test("each agent's tokens and cost are printed once the chain is done", async () => {
+    await harness({ task: "do the work", color: false }, async ({ coordinator, pi, out, dir }) => {
+      pi.script("lead", [{ lastText: "Got it: start\nDONE" }]);
+      pi.setSessionStats("lead", {
+        tokens: { input: 1200, output: 300, cacheRead: 0, cacheWrite: 0, total: 1500 },
+        cost: 0.12,
+        toolCalls: 3,
+      });
+
+      await coordinator.boot();
+
+      const text = out.join("");
+      expect(text).toContain("── spend ──");
+      expect(text).toContain("1500 tokens");
+      expect(text).toContain("$0.12");
+      // and the same numbers land in a file, because a pane's scrollback is not a record
+      const summary = JSON.parse(await readFile(join(dir, "summary.json"), "utf8")) as Array<{ agentId: string; tokens: number }>;
+      expect(summary.find((s) => s.agentId === "lead")?.tokens).toBe(1500);
+    });
+  }, 20_000);
+
+  test("a provider that reports no cost prints unknown, never zero", async () => {
+    await harness({ task: "do the work", color: false }, async ({ coordinator, pi, out }) => {
+      pi.script("lead", [{ lastText: "Got it: start\nDONE" }]);
+      pi.setSessionStats("lead", {
+        tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 },
+        cost: null,
+        toolCalls: 0,
+      });
+
+      await coordinator.boot();
+
+      expect(out.join("")).toContain("unknown");
+    });
+  }, 20_000);
+});
+
 describe("What a room message is allowed to look like (§room)", () => {
   test("the startup task is printed as background, not as somebody giving orders", async () => {
     await harness({ task: "Tally the docs and report the count." }, async ({ coordinator, out }) => {
@@ -298,12 +337,12 @@ describe("Agent colours in the room (#66)", () => {
       await coordinator.boot();
 
       const text = out.join("");
-      // the prefix of a message carries the sender's colour
-      expect(text).toContain("\u001b[38;2;230;170;80m[@lead]\u001b[0m");
-      expect(text).toContain("\u001b[38;2;90;170;255m[@dev1]\u001b[0m");
+      // the prefix of a message carries the sender's colour, which is its mark's colour
+      expect(text).toContain(`\u001b[${colorOf("lead", 0)}m[@lead]\u001b[0m`);
+      expect(text).toContain(`\u001b[${colorOf("dev1", 1)}m[@dev1]\u001b[0m`);
       // a handle named inside somebody's text stays plain: colour marks who is speaking,
       // not who is being talked about (#70)
-      expect(text).not.toContain("\u001b[38;2;90;170;255m@dev1\u001b[0m go");
+      expect(text).not.toContain(`\u001b[${colorOf("dev1", 1)}m@dev1\u001b[0m go`);
     });
   }, 20_000);
 

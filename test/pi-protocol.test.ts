@@ -270,6 +270,46 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     }
   }, 20_000);
 
+  test("a tool's own duration reaches the room, so a pause is attributable (§76)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-tool-end-"));
+    const stub = join(dir, "fake-pi");
+    await writeFile(
+      stub,
+      `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (v) => console.log(JSON.stringify(v));
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const cmd = JSON.parse(line);
+  if (cmd.type === "prompt") {
+    out({ id: cmd.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } });
+    out({ type: "agent_start" });
+    out({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "ls" } });
+    out({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", isError: false, durationMs: 1234 });
+    out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "done" } });
+    out({ type: "agent_settled", aborted: false });
+  }
+  if (cmd.type === "get_last_assistant_text") {
+    out({ id: cmd.id, type: "response", command: cmd.type, success: true, data: { text: "done" } });
+  }
+});
+`,
+      "utf8",
+    );
+    await chmod(stub, 0o755);
+    const client = new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } });
+    const ends: Array<{ name: string; durationMs?: number }> = [];
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      client.on("tool_end", "dev1", (t) => ends.push(t));
+      await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
+      await client.waitForSettled("dev1", 10_000);
+      expect(ends).toEqual([{ name: "bash", durationMs: 1234 }]);
+    } finally {
+      await client.shutdown("dev1").catch(() => undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   test("a text_end carrying only the last message does not discard the earlier one (§T11)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ah-turn-end2-"));
     const stub = join(dir, "fake-pi");

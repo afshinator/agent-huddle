@@ -513,3 +513,19 @@ published a notice about a reply that said nothing.
 
 **Rejected:** holding text back to judge it, and matching `DONE` anywhere in the text — a model discussing
 `DONE` would end the chain. The punctuation requirement is what keeps "almost DONE" out.
+
+## D22 — The record says why a pause happened, and what the run cost (#76)
+
+**Decision.** The adapter surfaces `tool_execution_end` (a `tool_end` event carrying the tool's own
+`durationMs`), the coordinator writes `tool_start` / `tool_end` to each agent's `log.jsonl`, and
+`bun src/timings.ts <run-dir>` reports per turn: dispatch → first event, time in tools, the longest gap
+and what preceded it. On chain completion the room prints each agent's tokens and cost and writes
+`summary.json`, with `unknown` — never `0` — where a provider reports no cost.
+
+**Why:** "the room looks stuck" is not actionable. A gap after `tool_start` is a tool; a gap after a
+`delta` is the model; a gap after dispatch is the provider. Only the third and fourth shapes are worth
+acting on, and before this the record could not tell them apart because only tool *starts* were logged.
+
+**Rejected:** inferring cost from a model price table inside the room — the provider is the authority,
+and a stale table would print a confident wrong number. Also rejected: blocking the summary on a
+provider that never answers; a five-second race leaves it out.

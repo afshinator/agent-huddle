@@ -8,6 +8,7 @@ import type {
   AgentProcessInfo,
   PiAgentClient,
   PromptRequest,
+  SessionStats,
   SettledResult,
   SpawnOptions,
 } from "../seams/pi-agent-client";
@@ -49,6 +50,7 @@ interface RpcRecord {
   assistantMessageEvent?: { type?: string; delta?: string; content?: string };
   toolName?: string;
   args?: unknown;
+  durationMs?: number;
 }
 
 function asError(value: unknown): Error {
@@ -178,6 +180,28 @@ export class RealPiAgentClient implements PiAgentClient {
       rejectSettle(e as Error);
       throw e;
     }
+  }
+
+  /**
+   * What this agent's session has spent. The provider decides whether it can say: `cost` stays null
+   * when the response omits it, and the room prints "unknown" rather than inventing a number (#76).
+   */
+  async sessionStats(agentId: string): Promise<SessionStats> {
+    const agent = this.requireAgent(agentId);
+    const raw = (await this.command(agent, { type: "get_session_stats" })) as Record<string, unknown>;
+    const tokens = (raw.tokens ?? {}) as Record<string, unknown>;
+    const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    return {
+      tokens: {
+        input: num(tokens.input),
+        output: num(tokens.output),
+        cacheRead: num(tokens.cacheRead),
+        cacheWrite: num(tokens.cacheWrite),
+        total: num(tokens.total),
+      },
+      cost: typeof raw.cost === "number" && Number.isFinite(raw.cost) ? raw.cost : null,
+      toolCalls: num(raw.toolCalls),
+    };
   }
 
   async pushContext(agentId: string, text: string): Promise<void> {
@@ -396,12 +420,21 @@ export class RealPiAgentClient implements PiAgentClient {
       return;
     }
 
-    // Only the start is surfaced: the end record adds isError/durationMs, and no
-    // consumer reads them yet (D8).
     if (rec.type === "tool_execution_start") {
       this.bus.emit(agentId, "tool", {
         name: typeof rec.toolName === "string" ? rec.toolName : "unknown",
         args: rec.args,
+      });
+      return;
+    }
+
+    // The end record is what makes a pause legible: without a duration, "the agent is thinking" and
+    // "the tool is still running" look identical in the record (#76).
+    if (rec.type === "tool_execution_end") {
+      const durationMs = typeof rec.durationMs === "number" ? rec.durationMs : undefined;
+      this.bus.emit(agentId, "tool_end", {
+        name: typeof rec.toolName === "string" ? rec.toolName : "unknown",
+        ...(durationMs === undefined ? {} : { durationMs }),
       });
       return;
     }
