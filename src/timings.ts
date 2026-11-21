@@ -39,13 +39,20 @@ export interface TurnTiming {
   events: number;
 }
 
-/** A turn is everything between one `settled` and the next, for a given agent. */
+/**
+ * A turn is one `turn_start` (the dispatch) to its `settled`, for a given agent.
+ *
+ * Everything before a dispatch belongs to the room waiting, not to the agent working: a reviewer
+ * spawned at boot and dispatched three minutes later spent none of that time on its turn, and counting
+ * it made the first-token latency look like three minutes.
+ */
 export function turnTimings(agentId: string, lines: LogLine[]): TurnTiming[] {
   const turns: TurnTiming[] = [];
   let current: LogLine[] = [];
   for (const line of lines) {
-    current.push(line);
-    if (line.event !== "settled") continue;
+    if (line.event === "turn_start") current = [line];
+    else if (current.length > 0) current.push(line);
+    if (line.event !== "settled" || current.length === 0) continue;
     const t = summarise(agentId, current);
     if (t !== null) turns.push(t);
     current = [];

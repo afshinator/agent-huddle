@@ -127,6 +127,10 @@ export class Coordinator {
       telemetry: deps.telemetry,
       turnTimeoutMs: deps.config.config.turn_timeout_ms,
       onChainState: (chain) => this.updateChainState(chain),
+      // A turn's timing starts at its dispatch, not at boot (#76).
+      onDispatch: (agentId) => {
+        this.watchFailure("agent log write", agentId, this.appendAgentLog(agentId, "turn_start", ""));
+      },
       isStopping: () => this.stopping,
     });
     deps.store.onAppend = (msg) => {

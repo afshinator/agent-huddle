@@ -78,6 +78,8 @@ export interface TurnLoopDeps {
   now?: () => string;
   newId?: () => string;
   onChainState?: (state: ChainState | null) => Promise<void> | void;
+  /** Called when an agent is dispatched, so the record can mark where its turn begins (#76). */
+  onDispatch?: (agentId: string) => void;
   /** True once the room is stopping, so a dying turn reads as cancelled, not failed. */
   isStopping?: () => boolean;
 }
@@ -101,6 +103,7 @@ export class TurnLoop {
   /** Text streamed in each agent's current turn, so a timed-out turn still has something to say. */
   private readonly streamed = new Map<string, string>();
   private readonly onChainState?: (state: ChainState | null) => Promise<void> | void;
+  private readonly onDispatch?: (agentId: string) => void;
   private readonly isStoppingHook?: () => boolean;
 
   constructor(deps: TurnLoopDeps) {

@@ -25,6 +25,19 @@ describe("turnTimings", () => {
     expect(turns[0]!.totalMs).toBe(41000);
   });
 
+  test("time before the agent was dispatched is not part of a turn", () => {
+    const turns = turnTimings("reviewer", [
+      // The live shape: spawned at boot, dispatched three minutes later, answered at once.
+      { ts: t(0), event: "spawned" },
+      { ts: t(175), event: "turn_start" },
+      { ts: t(176), event: "delta", text: "Got it" },
+      { ts: t(180), event: "settled", text: "Got it …" },
+    ]);
+    expect(turns).toHaveLength(1);
+    expect(turns[0]!.totalMs).toBe(5000);
+    expect(turns[0]!.firstEventMs).toBe(1000);
+  });
+
   test("a gap with nothing in it is reported as the wait it is", () => {
     const turns = turnTimings("lead", [
       { ts: t(0), event: "turn_start" },
