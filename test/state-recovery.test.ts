@@ -25,7 +25,7 @@ test("Coordinator repairs a partial state cache before boot", async () => {
     const c = config(dir);
     const store = new RoomStore(dir);
     const pi = new FakePiAgentClient();
-    const coordinator = new Coordinator({ config: c, store, pi, telemetry: new NoopTelemetry(), panes: new FakeHerdrPaneManager() });
+    const coordinator = new Coordinator({ config: c, store, pi, telemetry: new NoopTelemetry(), panes: new FakeHerdrPaneManager(), color: false });
     const result = await coordinator.boot();
     expect(result).toBeNull();
     const state = await store.readState();
@@ -42,7 +42,7 @@ test("a stale active state does not make boot resume a chain", async () => {
     await writeFile(join(dir, "state.json"), JSON.stringify({ name: "room", startedAt: "s", status: "active", chain: { chainId: "c1", status: "active", hopCount: 3 }, agents: {} }));
     const c = config(dir);
     const store = new RoomStore(dir);
-    const coordinator = new Coordinator({ config: c, store, pi: new FakePiAgentClient(), telemetry: new NoopTelemetry(), panes: new FakeHerdrPaneManager() });
+    const coordinator = new Coordinator({ config: c, store, pi: new FakePiAgentClient(), telemetry: new NoopTelemetry(), panes: new FakeHerdrPaneManager(), color: false });
 
     await coordinator.boot();
 
@@ -59,7 +59,7 @@ test("Coordinator boots from the log when state.json is corrupt", async () => { 
     await writeFile(join(dir, "state.json"), '{"name":"room","startedAt":"x","agents":', "utf8");
 
     const store = new RoomStore(dir);
-    const coordinator = new Coordinator({ config: config(dir), store, pi: new FakePiAgentClient(), telemetry: new NoopTelemetry(), panes: new FakeHerdrPaneManager() });
+    const coordinator = new Coordinator({ config: config(dir), store, pi: new FakePiAgentClient(), telemetry: new NoopTelemetry(), panes: new FakeHerdrPaneManager(), color: false });
 
     await expect(coordinator.boot()).resolves.toBeNull();
 
@@ -79,7 +79,7 @@ test("Coordinator boots after a truncated log line and warns once", async () => 
 
     const telemetry = new RecordingTelemetry();
     const store = new RoomStore(dir);
-    const coordinator = new Coordinator({ config: config(dir), store, pi: new FakePiAgentClient(), telemetry });
+    const coordinator = new Coordinator({ config: config(dir), store, pi: new FakePiAgentClient(), telemetry, color: false });
 
     await expect(coordinator.boot()).resolves.toBeNull();
 

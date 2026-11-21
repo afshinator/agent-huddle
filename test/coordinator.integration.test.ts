@@ -67,7 +67,7 @@ describe.skipIf(integrationDisabled())("Coordinator (controlled real RPC)", () =
     const config = await loadConfig(join(dir, "team.yaml"), dir);
     const store = new RoomStore(config.config.room_dir);
     const pi = new RealPiAgentClient({ roomDir: config.config.room_dir, piBin: fixture });
-    const coordinator = new Coordinator({ config, store, pi, telemetry: new NoopTelemetry() });
+    const coordinator = new Coordinator({ config, store, pi, telemetry: new NoopTelemetry(), color: false });
     try {
       const result = await coordinator.boot();
       expect(result?.status).toBe("completed");
@@ -97,7 +97,7 @@ describe.skipIf(integrationDisabled())("Coordinator (real pi, headless)", () => 
     const config = await loadConfig(join(dir, "team.yaml"), dir);
     const store = new RoomStore(config.config.room_dir);
     const pi = new RealPiAgentClient({ roomDir: config.config.room_dir });
-    const coordinator = new Coordinator({ config, store, pi, telemetry: new NoopTelemetry() });
+    const coordinator = new Coordinator({ config, store, pi, telemetry: new NoopTelemetry(), color: false });
     try {
       const boot = await coordinator.boot();
       expect(boot).toBeNull();

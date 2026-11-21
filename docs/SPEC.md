@@ -492,7 +492,8 @@ pane: the room is the conversation, not the machine log.
 Every agent gets a colour and every `@handle` in the room is printed in it, as is the `[@handle]`
 prefix; the table lives in `src/colors.ts` and nowhere else (#66). Colours are 24-bit RGB so they do not
 change with the reader's terminal theme. `AH_COLOR=1` forces colour, `AH_COLOR=0` or `NO_COLOR` disables
-it, and the default is colour when the room's own output is a terminal — so a piped run and the test
+it, and the default is colour when the room's stdout is a terminal — decided by `src/index.ts`, because
+the coordinator receives a wrapped `stdout` and cannot see one (#67) — so a piped run and the test
 suite are plain. `room.log` is written without escapes, so the archive stays greppable.
 
 Every line the room prints also appends to `<room_dir>/room.log`. `messages.jsonl` stays the machine

@@ -11,6 +11,7 @@ import { createShutdown } from "./shutdown";
 import { LaunchGuardError } from "./launch-guard";
 import { createDebug, debugEnabled } from "./debug";
 import { createRoomLog } from "./room-log";
+import { colorEnabled } from "./colors";
 
 async function main(): Promise<void> {
   const yamlPath = process.argv[2];
@@ -40,6 +41,8 @@ async function main(): Promise<void> {
     panes,
     debug,
     stdout: roomLog,
+    // The coordinator cannot see a terminal through a wrapped stdout, so the caller decides (#67).
+    color: colorEnabled(process.env, process.stdout.isTTY === true),
     roomLogPath: roomLog.path,
   });
 

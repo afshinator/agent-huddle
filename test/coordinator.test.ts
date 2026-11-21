@@ -95,7 +95,7 @@ async function harness(
       ...(opts.agentStream ? { agentStream: opts.agentStream } : {}),
       ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
       ...(opts.roomLogPath ? { roomLogPath: opts.roomLogPath } : {}),
-      ...(opts.color !== undefined ? { color: opts.color } : {}),
+      color: opts.color ?? false,
       ...(opts.debug ? { debug: opts.debug } : {}),
     });
     // Narrowed non-null locally: the `let` above exists only for the finally block, and a

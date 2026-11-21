@@ -17,7 +17,7 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream } from "./chat-stream";
-import { colorEnabled, colorOf, paintHandles, paintTag } from "./colors";
+import { colorOf, paintHandles, paintTag } from "./colors";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -34,8 +34,9 @@ export interface CoordinatorDeps {
   stdout?: { write(s: string): void };
   /** Where the human-readable transcript lives, printed in the banner (#59). */
   roomLogPath?: string;
-  /** Force colour on or off; default is "on when the room's own output is a terminal" (#66). */
-  color?: boolean;
+  /** Colour on or off, decided by the caller: the coordinator cannot see a terminal through a
+   *  wrapped stdout, and guessing got it wrong (#67). */
+  color: boolean;
   stderr?: { write(s: string): void };
   now?: () => string;
   inboxPollMs?: number;
@@ -66,7 +67,7 @@ export class Coordinator {
   private readonly chat: ChatStream;
   /** Agents that have shown activity this turn, so the "working" marker is written once. */
   private readonly working = new Set<string>();
-  /** On unless the output is not a terminal; `AH_COLOR` and `NO_COLOR` override (#66). */
+  /** Decided by the caller (#67): `AH_COLOR`, `NO_COLOR`, or "the output is a terminal". */
   private readonly color: boolean;
   private readonly stderr: { write(s: string): void };
   private readonly now: () => string;
@@ -95,7 +96,7 @@ export class Coordinator {
     this.cwd = deps.cwd ?? process.cwd();
     this.stdout = deps.stdout ?? process.stdout;
     this.roomLogPath = deps.roomLogPath;
-    this.color = deps.color ?? colorEnabled(process.env, this.stdout === process.stdout && process.stdout.isTTY === true);
+    this.color = deps.color;
     this.chat = new ChatStream(
       { write: (s) => this.stdout.write(this.paint(s)) },
       (agentId) => this.config.agentById.get(agentId)?.handle ?? agentId,
