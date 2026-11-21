@@ -1,7 +1,7 @@
 # Docs audit run — three agents, one audit, one reviewer
 
-Date: 2026-11-20 · config: `rooms/docs-audit.yaml` · worktree `../agent-huddle-docaudit`,
-branch `docaudit` · not yet run.
+Date: 2026-11-20 · template: `rooms/templates/docs-audit/template.yaml` · run:
+`_run/2026-11-20-docs-audit/run.yaml` · not yet run.
 
 Purpose: first room with **three** agents (lead, dev, reviewer), a pushback loop, and a
 verification chain that ends in the lead rather than in the dev's own claim. Also the first run
@@ -15,11 +15,15 @@ checked against the commit they describe.
 
 ```bash
 cd /Users/afshin/Documents/dev/agent-huddle
-git worktree add ../agent-huddle-docaudit -b docaudit   # already created
-cd ../agent-huddle-docaudit && bun install
-# room pane in herdr, then:
-./launch-docs-audit.sh
+# the ask is already written; this prepares collateral and a detached worktree and boots
+./rooms/templates/docs-audit/launch.sh --repo . --slug 2026-11-20-docs-audit --branch --dry-run
+./rooms/templates/docs-audit/launch.sh --repo . --slug 2026-11-20-docs-audit --branch
 ```
+
+`--branch` because the run produces `docs/DOCS-AUDIT.md`, which is worth checking in: the branch
+`run/2026-11-20-docs-audit` is what gets pushed and merged. Collateral lands in
+`_run/2026-11-20-docs-audit/` (gitignored): `run.yaml`, `run.resolved.yaml`, `prompts/`, `notes.md`,
+then the room's `messages.jsonl`, `state.json`, `telemetry.jsonl` and `agents/`.
 
 `max_hops: 16` (two pushback rounds), `turn_timeout_ms: 600000`, `launch_guard: refuse`.
 Agents: `@lead` `deepseek/deepseek-v4-pro` medium, `@dev1` `deepseek/deepseek-v4.1-flash` high,
@@ -49,8 +53,12 @@ stale claim, then the counts.
 ```bash
 # from the room pane: Ctrl-C, wait for `[exited]` lines, exit 0
 cd /Users/afshin/Documents/dev/agent-huddle
-git worktree remove ../agent-huddle-docaudit   # after reviewing docs/DOCS-AUDIT.md
-git worktree list                              # must not list the run dir
+git -C ../agent-huddle-2026-11-20-docs-audit status          # the room's output, uncommitted
+git -C ../agent-huddle-2026-11-20-docs-audit add docs/DOCS-AUDIT.md
+git -C ../agent-huddle-2026-11-20-docs-audit commit -m "docs: audit the docs against the code"
+git -C ../agent-huddle-2026-11-20-docs-audit push -u origin run/2026-11-20-docs-audit
+git worktree remove ../agent-huddle-2026-11-20-docs-audit    # after the merge
+git worktree list                                             # must not list the run dir
 ```
 
 The audit document is the only thing worth keeping: copy it out of the worktree before removing it

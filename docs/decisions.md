@@ -263,3 +263,40 @@ predicate is invisible in the code — `isRepoRoot` reads like the whole test.
 **Cost, accepted:** a worktree of a repository you care about is not flagged, and neither is a
 subdirectory launch. The record still names the directory and branch, so a `warn` in a log is readable
 after the fact.
+
+## D13 — A room is a template plus a run, and the run is never tracked
+
+**Context.** A room's collateral was spread across four directories: `rooms/<name>.yaml` beside other
+rooms' configs, its prompts in a shared `prompts/` that also held prompts of rooms long gone, its launcher
+at a third level, and its run note in `docs/runs/`. Nothing said which files belonged together, so the
+`.gitignore` rule had to be `rooms/*/` — coarse enough to forbid ever tracking a template directory. The
+worse half was the run: `task` and `definition_of_done` lived in the same file as the agents, models and
+prompt paths, so asking a different question of the same room meant copying thirty lines of roster and
+watching the copy drift.
+
+**Decision.** A **template** owns the kind of room: agent count, models, thinking, tools, prompts and
+budget defaults, all inside one tracked directory (`rooms/templates/<type>/`). A **run** owns one ask: a
+small file naming `template:` plus `task`, `definition_of_done` and any budget it wants to change. The
+run's collateral — the resolved config, a snapshot of the prompt files that ran, the ask, notes, and the
+room's runtime files — goes in `_run/<slug>/` in the repo the room runs in, gitignored. The room's output
+goes to a linked worktree on `run/<slug>` when the run produces something to check in, and to a detached
+worktree when it does not.
+
+**Rejected alternatives.**
+- *Co-locate the files and leave the config format alone.* It fixes the template half and makes the run
+  half worse: every run file repeats the roster, and a roster duplicated across runs is how a room runs
+  models nobody chose.
+- *Deep-merge an agent override field by field.* Half-merging a model with a tool list produces a room
+  that exists in no file; a run replaces an agent whole, or adds one.
+- *Commit the run's collateral next to the template.* It makes every run a tracked directory, turns the
+  repo's history into run logs, and puts a prompt snapshot in the way of the template someone is editing.
+- *Run in the main checkout when there is no branch.* Agent writes would land in a tree that holds work
+  and tests; a detached worktree costs one command and keeps the invariant.
+
+**Why:** the boundary that decides what may be committed should be visible in the file layout, not
+inferred from a config key. Templates are the thing worth sharing; a run is one question asked once.
+
+**Cost, accepted:** two files to read instead of one, and `room_dir` changes meaning between a standalone
+config (default `<cwd>/rooms/<name>`) and a run (default the run file's directory). The resolved snapshot
+is what a run is reproducible from, so a template edited later silently stops describing past runs — which
+is the point, but it means the snapshot is the evidence, not the template.

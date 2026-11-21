@@ -47,6 +47,12 @@ const ROOM_KEYS = new Set<string>([
   "launch_guard", "lead", "agents",
 ]);
 
+/** A run file names a template and carries only what is specific to that run. */
+const RUN_KEYS = new Set<string>([...ROOM_KEYS, "template"]);
+
+/** Keys a run may not set: they belong to the template, or to the file itself. */
+const TEMPLATE_OWNED = new Set<string>(["name"]);
+
 const LAUNCH_GUARDS = new Set(["refuse", "warn", "off"]);
 
 const AGENT_KEYS = new Set<string>([
@@ -147,25 +153,102 @@ function parseAgent(v: unknown, what: string): AgentSpec {
  * - `room_dir` resolves against `cwd` (default: <cwd>/rooms/<name>).
  * - `system_prompt_file` resolves against the YAML file's directory.
  */
-export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise<LoadedConfig> {
-  const sourcePath = resolve(cwd, yamlPath);
+interface ParsedFile {
+  obj: Record<string, unknown>;
+  path: string;
+}
 
+/** Read one YAML file, rejecting unknown keys, with prompt paths made absolute. */
+async function readRoomFile(path: string, what: string, isRun: boolean): Promise<ParsedFile> {
   let text: string;
   try {
-    text = await readFile(sourcePath, "utf8");
+    text = await readFile(path, "utf8");
   } catch (e) {
-    fail(`cannot read config: ${errorMessage(e)}`);
+    fail(`cannot read ${what}: ${errorMessage(e)}`);
   }
 
   let raw: unknown;
   try {
     raw = parseYaml(text);
   } catch (e) {
-    fail(`invalid YAML: ${errorMessage(e)}`);
+    fail(`invalid YAML in ${what}: ${errorMessage(e)}`);
   }
 
   const obj = assertPlainObject(raw, "config");
-  rejectUnknownKeys(obj, ROOM_KEYS, "config");
+  rejectUnknownKeys(obj, isRun ? RUN_KEYS : ROOM_KEYS, "config");
+  // A prompt path belongs to the file that wrote it: resolve it there, so a run that
+  // overrides one agent cannot accidentally point into the template's directory.
+  const dir = dirname(path);
+  const entries = [obj.lead, ...(Array.isArray(obj.agents) ? obj.agents : [])];
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const agent = entry as Record<string, unknown>;
+    if (typeof agent.system_prompt_file === "string" && !isAbsolute(agent.system_prompt_file)) {
+      agent.system_prompt_file = resolve(dir, agent.system_prompt_file);
+    }
+  }
+  return { obj, path };
+}
+
+/** Template then run: the run replaces whole agents by id and owns the ask. */
+function overlayRun(template: Record<string, unknown>, run: Record<string, unknown>): Record<string, unknown> {
+  for (const key of TEMPLATE_OWNED) {
+    if (run[key] !== undefined) {
+      fail(`config.${key} belongs to the template: a run may override the ask and its budgets, not the template's identity`);
+    }
+  }
+
+  const merged: Record<string, unknown> = { ...template };
+  for (const [key, value] of Object.entries(run)) {
+    if (key === "template") continue;
+    if (key === "lead") {
+      merged.lead = value; // whole-agent replacement, never a field merge
+      continue;
+    }
+    if (key === "agents") {
+      const base = Array.isArray(template.agents) ? [...(template.agents as unknown[])] : [];
+      const overrides = Array.isArray(value) ? value : [];
+      const overridden = new Map<string, unknown>();
+      for (const entry of overrides) {
+        const id = typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>).id : undefined;
+        if (typeof id === "string") overridden.set(id, entry);
+      }
+      const replaced = base.map((entry) => {
+        const id = typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>).id : undefined;
+        return typeof id === "string" && overridden.has(id) ? overridden.get(id) : entry;
+      });
+      const known = new Set(
+        base.map((entry) =>
+          typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>).id : undefined,
+        ),
+      );
+      const added = [...overridden].filter(([id]) => !known.has(id)).map(([, entry]) => entry);
+      merged.agents = [...replaced, ...added];
+      continue;
+    }
+    merged[key] = value;
+  }
+  return merged;
+}
+
+export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise<LoadedConfig> {
+  const sourcePath = resolve(cwd, yamlPath);
+  const own = await readRoomFile(sourcePath, "config", true);
+
+  let obj = own.obj;
+  const templateRef = own.obj.template;
+  if (templateRef !== undefined) {
+    const templatePath = resolve(dirname(sourcePath), assertString(templateRef, "config.template"));
+    // Read with the run key set so a nested `template:` reaches the check below,
+    // where the error can name the real problem instead of "unknown key".
+    const template = await readRoomFile(templatePath, "template", true);
+    if (template.obj.template !== undefined) {
+      fail(`a template cannot reference another template (${templatePath})`);
+    }
+    obj = overlayRun(template.obj, own.obj);
+    // Collateral for a run sits beside the ask unless the run says otherwise.
+    if (obj.room_dir === undefined) obj.room_dir = dirname(sourcePath);
+  }
 
   const name = assertString(obj.name, "config.name");
 

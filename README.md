@@ -29,13 +29,46 @@ The test suite includes deterministic unit/fake-seam tests and integration tests
 
 ## Run a room
 
-Run the coordinator from the terminal that should act as the shared room:
+A **template** owns a kind of room — how many agents, their models, tools and prompts. A **run** owns
+one ask. Templates are tracked, runs never are:
 
-```bash
-bun src/index.ts rooms/example-2.yaml
+```
+rooms/templates/<type>/template.yaml   # name, budgets, lead + agents, each with its prompt
+rooms/templates/<type>/prompts/*.md    # the prompts that template uses
+rooms/templates/<type>/launch.sh       # the only glue: prepare, worktree, boot
+_run/<slug>/                           # gitignored: the ask, the resolved config, prompts snapshot,
+                                       # room runtime, notes — everything this run produced or used
 ```
 
-Each agent gets a pane showing that agent's work as prose. The pane tails `rooms/<room>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.
+Start a room from its template, pointing at the repo whose code the agents will touch:
+
+```bash
+./rooms/templates/docs-audit/launch.sh --repo ~/dev/some-repo --slug 2026-11-20-audit --branch
+```
+
+That writes a skeleton `_run/<slug>/run.yaml` and stops; edit the ask, run it again, and it prepares
+`run.resolved.yaml` plus a snapshot of the prompts, creates a worktree at `../<repo>-<slug>` (branch
+`run/<slug>` with `--branch`, detached without, when the run produces nothing to check in), and boots
+the room there. Add `--dry-run` to prepare everything without booting.
+
+A run file carries only what is specific to it:
+
+```yaml
+template: /path/to/rooms/templates/docs-audit/template.yaml
+task: |
+  What this run should do.
+definition_of_done: |
+  What makes it done.
+max_hops: 20          # optional override; any template key except `name` may be overridden
+```
+
+An `agents:` entry in a run replaces the template's agent of that id **whole** (no field merge) and may
+add an agent the template does not have. A run may not set `name`.
+
+Nothing commits inside the room. After `DONE`, review the worktree, commit on `run/<slug>`, push, merge,
+and `git worktree remove` it. The `_run/<slug>/` collateral stays behind on the machine that ran it.
+
+Each agent gets a pane showing that agent's work as prose. The pane tails `<room_dir>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.
 
 The pane also shows one `[tool] …` line per tool call, so you see what the agent actually ran.
 
@@ -104,7 +137,7 @@ agents:
     tools: [read, bash, edit, write, grep]
 ```
 
-`system_prompt` and `system_prompt_file` are mutually exclusive. Handles must be quoted in YAML because `@` is reserved in an unquoted YAML scalar. See [`rooms/example-2.yaml`](rooms/example-2.yaml) for a runnable two-agent fixture and [`rooms/example.yaml`](rooms/example.yaml) for the default four-agent roster.
+`system_prompt` and `system_prompt_file` are mutually exclusive, and a prompt path resolves against the file that wrote it. Handles must be quoted in YAML because `@` is reserved in an unquoted YAML scalar. See [`rooms/templates/tiny-factory/template.yaml`](rooms/templates/tiny-factory/template.yaml) for a two-agent template and [`rooms/templates/docs-audit/template.yaml`](rooms/templates/docs-audit/template.yaml) for the three-agent audit room.
 
 ## Routing and completion
 

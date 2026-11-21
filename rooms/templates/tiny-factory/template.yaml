@@ -1,10 +1,5 @@
-name: tiny-factory-2
-task: |
-  Design and document a small service.
-definition_of_done: |
-  A README plus one tested module.
-max_hops: 8
-
+name: tiny-factory
+max_hops: 12
 lead:
   id: lead
   handle: "@lead"
@@ -14,7 +9,6 @@ lead:
   model: deepseek/deepseek-v4-pro
   thinking: medium
   tools: [read, bash, edit, write, grep]
-
 agents:
   - id: dev1
     handle: "@dev1"

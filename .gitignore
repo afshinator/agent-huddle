@@ -2,7 +2,9 @@ node_modules/
 .DS_Store
 *.log
 *.bak
-# Scratch probes (see AGENTS.md) and room runtime directories.
-# rooms/*.yaml stay tracked: only directories are ignored here.
+# Scratch probes (see AGENTS.md).
 probes/
-rooms/*/
+# Run collateral: the resolved config, prompt snapshot, notes and room runtime for one run.
+# Templates live in rooms/templates/ and are tracked; runs never are.
+_run/
+rooms/_run/

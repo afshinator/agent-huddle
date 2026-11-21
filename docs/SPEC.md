@@ -64,6 +64,26 @@ Data flow per message:
 
 Room-level fields plus one `lead` block and an `agents` list.
 
+A file may instead be a **run**: `template:` names a template file (one level only — a template may not
+reference another template) and the run supplies only what is specific to that run. The template
+provides `name`, `lead` and `agents`; the run may override `task`, `definition_of_done`, `max_hops`,
+`turn_timeout_ms`, `launch_guard` and `room_dir`, may replace an agent of the same id whole (never field
+by field) and may add an agent the template lacks. `name` in a run is an error. With a template, a
+missing `room_dir` defaults to the run file's own directory, so a run's collateral sits beside its ask.
+Every prompt path resolves against the file that wrote it, so a run's own agent can point at its own
+prompt directory without touching the template's.
+
+```yaml
+template: /path/to/rooms/templates/docs-audit/template.yaml
+task: |                    # the ask this run exists for
+  Audit the docs against the code.
+definition_of_done: |      # what makes this run done
+  docs/DOCS-AUDIT.md lists every tracked .md with a verdict and evidence.
+max_hops: 20               # optional overrides of the template's budgets
+```
+
+A standalone room file (no `template:`) is unchanged:
+
 ```yaml
 name: tiny-factory          # required, slug. default room_dir = <cwd>/rooms/<name>
 room_dir: ./rooms/tiny-factory   # optional override

@@ -1,0 +1,34 @@
+name: docs-audit
+# 12 hops is the default; two pushback rounds need more than one.
+max_hops: 16
+# An audit turn reads a lot of files: 10 minutes leaves room under the per-turn timeout.
+turn_timeout_ms: 600000
+# Supervised rooms belong in a linked worktree, which this guard leaves alone; `refuse` is
+# therefore safe here and it is the strictest setting if someone starts one in a checkout.
+launch_guard: refuse
+lead:
+  id: lead
+  handle: "@lead"
+  role: "Lead coordinator: dispatch, verify what comes back against the code, integrate. Never author the audit yourself."
+  system_prompt_file: prompts/lead.md
+  provider: commandcode
+  model: deepseek/deepseek-v4-pro
+  thinking: medium
+  tools: [read, grep, bash]
+agents:
+  - id: dev1
+    handle: "@dev1"
+    role: "Audit the docs against the code and write docs/DOCS-AUDIT.md."
+    system_prompt_file: prompts/dev1.md
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
+    thinking: high
+    tools: [read, grep, bash, write, edit]
+  - id: reviewer
+    handle: "@reviewer"
+    role: "Independently verify the audit's claims against the code. Do not edit files."
+    system_prompt_file: prompts/reviewer.md
+    provider: commandcode
+    model: gpt-5.6-luna
+    thinking: high
+    tools: [read, grep, bash]
