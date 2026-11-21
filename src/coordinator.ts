@@ -245,8 +245,8 @@ export class Coordinator {
       if (this.panes) {
         const paneId = await this.panes.openAgentPane({
           id: `agent-${agent.id}`,
-          // The pane's title is where the agent's name already is, so the colour goes there (#70).
-          title: paintHandle(agent.handle, (h) => this.colourFor(h)),
+          // Plain: herdr renders a pane title as text, so an escape shows up literally (#72).
+          title: agent.handle,
           command: ["sh", scriptPath],
           slot: agentIndex + 1,
           slots: this.config.allAgents.length,

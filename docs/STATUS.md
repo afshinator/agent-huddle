@@ -116,7 +116,7 @@ started.
 | The agent pane carries tool calls and lifecycle lines, never the agent's prose | `test/coordinator.test.ts`, `test/agent-stream.test.ts`, #65 |
 | Only a speaking message's prefix takes the agent's colour; a handle named in text stays plain | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, #70 |
 | A room note prints dim, so it cannot be read as somebody speaking | `test/coordinator.test.ts`, D19 |
-| An agent pane's title carries its agent's colour; herdr stores the escape, and how its UI renders it is unverified | `test/coordinator.test.ts`, `test/colors.test.ts`, D17 |
+| A pane title is plain: herdr prints it as text, so an escape shows literally — measured live | `test/coordinator.test.ts`, D17 |
 | A turn's settled text is every assistant message it contains, and a message boundary starts a new room line | `test/pi-protocol.test.ts` (two stubs), `docs/tickets/T11-settled-text-per-turn.md` |
 | `dispatch_scope: anyone` (default) dispatches every mention; `lead` makes a peer's mention context | `test/turn-loop.test.ts` (both scopes), `test/config.test.ts`, D18 |
 | The startup task prints as a brief block and notices as `·`, never as a participant's message | `test/coordinator.test.ts`, D19 |

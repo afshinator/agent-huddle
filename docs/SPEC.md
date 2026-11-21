@@ -509,7 +509,8 @@ pane: the room is the conversation, not the machine log.
 
 Every agent gets a colour, and the `[@handle]` prefix of the messages it speaks is printed in it; a
 handle named inside somebody's text stays plain, because colour marks the speaker and not the subject
-(#70). The colour of an agent's pane goes on its **title**, which already carries its name. The table lives in
+(#70). The agent panes carry no colour: herdr prints a pane title as text, so an escape there shows up
+literally, and `output.log` is a file. The colour is the room's, plus nothing else. The table lives in
 `src/colors.ts` and nowhere else (#66). Colours are 24-bit RGB so they do not
 change with the reader's terminal theme. `AH_COLOR=1` forces colour, `AH_COLOR=0` or `NO_COLOR` disables
 it, and the default is colour when the room's stdout is a terminal — decided by `src/index.ts`, because

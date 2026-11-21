@@ -5,7 +5,7 @@ max_hops: 6
 dispatch_scope: lead
 # The ask is an inventory, not a code audit: two minutes is generous, and a turn that
 # exceeds it is drifting rather than working.
-turn_timeout_ms: 120000
+turn_timeout_ms: 600000
 # Supervised rooms belong in a linked worktree, which this guard leaves alone; `refuse` is
 # therefore safe here and it is the strictest setting if someone starts one in a checkout.
 launch_guard: refuse

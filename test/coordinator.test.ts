@@ -307,7 +307,7 @@ describe("Agent colours in the room (#66)", () => {
     });
   }, 20_000);
 
-  test("the pane title carries the colour, because the title already carries the name", async () => {
+  test("a pane title stays plain: herdr prints it as text, not as a terminal", async () => {
     await harness({ task: "do the work", color: true }, async ({ coordinator, pi, panes }) => {
       pi.script("lead", [{ lastText: "Got it: start\nDONE" }]);
       await coordinator.boot();
@@ -315,8 +315,7 @@ describe("Agent colours in the room (#66)", () => {
       const titles = panes.calls
         .filter((c) => c.op === "open")
         .map((c) => (c.payload as { title: string }).title);
-      expect(titles).toContain("\u001b[38;2;230;170;80m@lead\u001b[0m");
-      expect(titles).toContain("\u001b[38;2;90;170;255m@dev1\u001b[0m");
+      expect(titles).toEqual(["@lead", "@dev1"]);
     });
   });
 

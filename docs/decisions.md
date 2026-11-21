@@ -418,10 +418,10 @@ is the one a human edits to change them.
 **Rejected:** herdr UI theming — the CLI has no per-pane or per-label colour (`herdr pane rename` accepts
 only `--clear`) and `[theme]` styles the UI, not an agent's identity. A probe confirmed the label is
 stored as a raw string (`label` came back as `\u001b[38;2;90;170;255m@dev1\u001b[0m`, 27 chars), so herdr
-keeps the escape; whether its UI renders it as colour or as literal characters is the one thing that
-cannot be measured from a CLI, and the room colours the title anyway because the title is where an
-agent's name already is. An earlier draft printed a coloured handle line at the top of each pane instead;
-that duplicated the title and was removed.
+keeps the escape; whether its UI renders it as colour or as literal characters cannot be measured from a CLI — and a live
+run answered it: the titles showed the escape as characters, so a pane title stays **plain**. Colour in a
+pane is not possible at all: the title is herdr's text, and `output.log` is a file. An earlier draft
+printed a coloured handle line at the top of each pane; that duplicated the title and was removed.
 
 **Amendment (#70):** colour marks the speaker, not the subject. Only a message's `[@handle]` prefix is
 painted; `@handle` named inside text is plain, as are the banner's handle list and the brief. The first
