@@ -10,8 +10,28 @@ export interface PaneSpec {
   slots?: number;
 }
 
+export interface PaneBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The shape the tab actually gave, measured after the agent region was laid out (#59).
+ * The room prints this before its first dispatch, so "the panes are unusable" is visible
+ * instead of guessed at from a screenshot.
+ */
+export interface PaneLayoutReport {
+  tab: { width: number; height: number };
+  orientation: "above" | "beside";
+  chat: PaneBox;
+  panes: Array<{ slot: number; paneId: PaneId; box: PaneBox }>;
+}
+
 export interface HerdrPaneManager {
   openAgentPane(spec: PaneSpec): Promise<PaneId>;       // one per agent
+  layoutReport?(): PaneLayoutReport | null;             // measured shape, once panes exist
   tailLog(paneId: PaneId, logFile: string): Promise<void>;
   readOutput(paneId: PaneId): Promise<string>;          // herdr pane read; tests assert
   close(paneId: PaneId): Promise<void>;                 // herdr pane close; hides pane, pi keeps running
@@ -34,6 +54,16 @@ export type FakePaneOp = "open" | "tail" | "close";
 export class FakeHerdrPaneManager implements HerdrPaneManager {
   readonly calls: PaneCall[] = [];
   readonly panes = new Map<PaneId, FakePane>();
+  private report: PaneLayoutReport | null = null;
+
+  layoutReport(): PaneLayoutReport | null {
+    return this.report;
+  }
+
+  /** Stand in for a real tab's measured geometry. */
+  setLayoutReport(report: PaneLayoutReport | null): void {
+    this.report = report;
+  }
   private readonly failures = new Map<FakePaneOp, unknown[]>();
 
   /** Reject the next `times` calls to `op` after `skip` successful ones. */

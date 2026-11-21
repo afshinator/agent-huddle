@@ -446,6 +446,19 @@ Rules:
 - **room pane** (the shared chat room): runs the coordinator process. Its stdout prints the room stream (each appended `messages.jsonl` entry, formatted); its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
 - **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes that agent's streamed prose + one-line lifecycle events to it; `log.jsonl` holds the JSON records for machines and no pane reads it. Writable by default (`pane_writable: false` gives a tail-only pane with a banner, §9.2); closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
 
+### 8.0 What the room prints before it works (#59)
+
+Before the first dispatch the coordinator prints a banner: the room's name, its handles, the run
+directory, the ask's first non-blank line, and the path of `room.log`. After the panes exist it prints
+the measured shape — `layout: tab 176x49 above · chat 176x25 · 2 panes 88x24` — read back from
+`HerdrPaneManager.layoutReport()`, so a shape nobody can read is visible instead of guessed at from a
+screenshot. A manager that reports nothing says so; the line is never silently absent. With
+`AH_DEBUG=1` each pane's `rect` is traced too.
+
+Every line the room prints also appends to `<room_dir>/room.log`. `messages.jsonl` stays the machine
+record (D3); `room.log` is the human transcript, so closing the pane does not lose the run. A
+transcript that cannot be written warns once on the terminal and never ends the room.
+
 ### 8.1 Seam (§9) is the only herdr touchpoint
 
 All herdr interaction goes through `HerdrPaneManager`. No coordinator code shells out to `herdr` directly.

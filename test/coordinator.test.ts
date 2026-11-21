@@ -61,6 +61,7 @@ async function harness(
     launchGuard?: "refuse" | "warn" | "off";
     agentStream?: AgentStream;
     inboxRead?: (path: string) => Promise<string>;
+    roomLogPath?: string;
     debug?: (message: string) => void;
   },
   fn: (h: Harness) => Promise<void>,
@@ -89,6 +90,7 @@ async function harness(
       inboxPollMs: 5,
       ...(opts.agentStream ? { agentStream: opts.agentStream } : {}),
       ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
+      ...(opts.roomLogPath ? { roomLogPath: opts.roomLogPath } : {}),
       ...(opts.debug ? { debug: opts.debug } : {}),
     });
     // Narrowed non-null locally: the `let` above exists only for the finally block, and a
@@ -123,6 +125,60 @@ async function harness(
     );
   }
 }
+
+describe("Coordinator boot banner (#59)", () => {
+  test("boot names the room, its handles, the run dir, the ask and the transcript before any agent speaks", async () => {
+    const logPath = join(tmpdir(), "ah-banner-room.log");
+    await harness({ task: "audit the docs\n\nsecond line", roomLogPath: logPath }, async ({ coordinator, dir, out }) => {
+      await coordinator.boot();
+
+      const lines = out.join("").split("\n").filter((line) => line !== "");
+      // headline first: a human watching the pane sees the room before it works
+      expect(lines[0]).toContain("room room");
+      expect(lines[0]).toContain("@lead");
+      expect(lines[0]).toContain("@dev1");
+      expect(lines[0]).toContain(dir);
+      // the banner is what precedes the first room message, and nothing else
+      const banner = lines.slice(0, lines.findIndex((line) => line.startsWith("[")));
+      expect(banner.join("\n")).toContain("ask: audit the docs");
+      expect(banner.join("\n")).not.toContain("second line");   // a pointer, not a transcript
+      expect(banner.join("\n")).toContain(`transcript: ${logPath}`);
+      expect(banner.join("\n")).toContain("layout: ");
+    });
+  });
+
+  test("the banner reports the measured tab and the plan, and traces each pane's rect", async () => {
+    const trace: string[] = [];
+    await harness({ task: "do it", debug: (m) => trace.push(m) }, async ({ coordinator, panes, out }) => {
+      // the report is measured after the region is laid out, so it is set before boot
+      panes.setLayoutReport({
+        tab: { width: 176, height: 49 },
+        orientation: "above",
+        chat: { x: 0, y: 0, width: 176, height: 25 },
+        panes: [
+          { slot: 1, paneId: "agent-lead", box: { x: 0, y: 25, width: 88, height: 24 } },
+          { slot: 2, paneId: "agent-dev1", box: { x: 88, y: 25, width: 88, height: 24 } },
+        ],
+      });
+      await coordinator.boot();
+
+      const text = out.join("");
+      expect(text).toContain("layout: tab 176x49 above · chat 176x25 · 2 panes 88x24");
+      // and the per-pane rects are there when someone asks for the trace
+      expect(trace.filter((line) => line.startsWith("pane agent-"))).toEqual([
+        "pane agent-lead slot 1 88x24 @ 0,25",
+        "pane agent-dev1 slot 2 88x24 @ 88,25",
+      ]);
+    });
+  });
+
+  test("a pane manager that reports no geometry says so, rather than printing nothing", async () => {
+    await harness({ task: "do it" }, async ({ coordinator, out }) => {
+      await coordinator.boot();
+      expect(out.join("")).toContain("layout: the pane manager reported no geometry");
+    });
+  });
+});
 
 describe("Coordinator (fakes)", () => {
   test("boot: startup task → lead → specialist → DONE, persists state and opens panes", async () => {

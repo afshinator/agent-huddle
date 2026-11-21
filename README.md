@@ -74,6 +74,8 @@ and `git worktree remove` it. The `_run/<NNN>-<slug>/` collateral stays behind o
 
 Each agent gets a pane showing that agent's work as prose. The pane tails `<room_dir>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.
 
+Before the first agent speaks the room prints a banner — its name, its handles, the run directory, the ask and where the transcript lives — followed by the measured tab shape it laid the panes out in. Every room line is also appended to `<room_dir>/room.log`, so closing the pane does not lose the run.
+
 The pane also shows one `[tool] …` line per tool call, so you see what the agent actually ran.
 
 Type in an agent's pane and the line becomes a public room message addressed to that agent (`@dev1 check the parser`): everyone sees it, only that agent runs. Set `pane_writable: false` on an agent to make its pane read-only behind a banner.

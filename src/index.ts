@@ -10,6 +10,7 @@ import { Coordinator } from "./coordinator";
 import { createShutdown } from "./shutdown";
 import { LaunchGuardError } from "./launch-guard";
 import { createDebug, debugEnabled } from "./debug";
+import { createRoomLog } from "./room-log";
 
 async function main(): Promise<void> {
   const yamlPath = process.argv[2];
@@ -28,7 +29,19 @@ async function main(): Promise<void> {
   const telemetry = new JsonlTelemetry(join(config.config.room_dir, "telemetry.jsonl"));
   const pi = new RealPiAgentClient({ roomDir: config.config.room_dir, debug });
   const panes = process.env.HERDR_ENV === "1" ? new HerdrPaneManagerReal({ cwd: process.cwd() }) : null;
-  const coordinator = new Coordinator({ config, store, pi, telemetry, panes, debug });
+  // The room's transcript, beside the JSONL record: the pane's scrollback is not a record
+  // and closing the pane used to lose the run (#59).
+  const roomLog = createRoomLog(join(config.config.room_dir, "room.log"));
+  const coordinator = new Coordinator({
+    config,
+    store,
+    pi,
+    telemetry,
+    panes,
+    debug,
+    stdout: roomLog,
+    roomLogPath: roomLog.path,
+  });
 
   const shutdown = createShutdown({
     shutdown: () => coordinator.shutdown(),

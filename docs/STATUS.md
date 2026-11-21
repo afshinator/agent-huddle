@@ -109,6 +109,7 @@ started.
 | The test harness fails a test that ends with a chain still running, naming it | `test/coordinator.test.ts`, #53 |
 | `AH_DEBUG=1` traces boot, the signal, each stop and each child's exit with code and signal | `test/debug.test.ts`, `test/pi-protocol.test.ts`, `test/coordinator.test.ts`, #55 |
 | A startup task that names agents dispatches only the lead, and pushes the text to the named agents as context | `test/turn-loop.test.ts`, #57 |
+| The room prints its banner (name, handles, run dir, ask, transcript) and the measured layout before dispatching, and appends every line to `room.log` | `test/coordinator.test.ts`, `test/room-log.test.ts`, #59 |
 | A room's `pi` children are spawned with `PI_TEST_INTEGRATION=0`, so an agent running the suite opens no panes | `test/pi-protocol.test.ts`, #58 |
 | A run overlays a template: ask from the run, agents from the template; an agent of the same id is replaced whole; a run may not set `name` | `test/config-template.test.ts`, D13 |
 | A run's collateral is self-contained: resolved config plus prompt snapshot reload to the same room | `test/room-run.test.ts`, `test/config-template.test.ts` |

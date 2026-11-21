@@ -332,5 +332,11 @@ by measured `rect` order.
 **Why:** the tab size is the only fact that decides whether a shape is readable, and it is measurable
 before the first split.
 
+**Amended 2026-11-21 (#59):** the seam exposes the measurement, not the decision:
+`HerdrPaneManager.layoutReport?()` returns the tab, the orientation, the chat box and each pane's
+`rect`. The room prints it in its boot banner, which is how the plan is checked against a real tab
+without a screenshot. It is optional so a manager that owns no geometry (a fake, a headless run) says
+nothing rather than inventing it.
+
 **Cost, accepted:** an unreadable tab now fails boot instead of producing panes nobody can read, and
 the constants are judgement values until a live run measures rows against a real tab.

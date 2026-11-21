@@ -17,6 +17,11 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 
+/** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
+function firstLine(text: string): string {
+  return text.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? "";
+}
+
 export interface CoordinatorDeps {
   config: LoadedConfig;
   store: RoomStore;
@@ -25,6 +30,8 @@ export interface CoordinatorDeps {
   panes?: HerdrPaneManager | null;
   cwd?: string;
   stdout?: { write(s: string): void };
+  /** Where the human-readable transcript lives, printed in the banner (#59). */
+  roomLogPath?: string;
   stderr?: { write(s: string): void };
   now?: () => string;
   inboxPollMs?: number;
@@ -50,6 +57,7 @@ export class Coordinator {
   private readonly panes: HerdrPaneManager | null;
   private readonly cwd: string;
   private readonly stdout: { write(s: string): void };
+  private readonly roomLogPath?: string;
   private readonly stderr: { write(s: string): void };
   private readonly now: () => string;
   private persistQueue: Promise<void> = Promise.resolve();
@@ -76,6 +84,7 @@ export class Coordinator {
     this.panes = deps.panes ?? null;
     this.cwd = deps.cwd ?? process.cwd();
     this.stdout = deps.stdout ?? process.stdout;
+    this.roomLogPath = deps.roomLogPath;
     this.stderr = deps.stderr ?? process.stderr;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.debug = deps.debug ?? (() => {});
@@ -130,6 +139,7 @@ export class Coordinator {
     const roomDir = this.config.config.room_dir;
     await mkdir(roomDir, { recursive: true });
     this.roomState = await this.loadOrCreateState();
+    this.printBanner();
 
     for (const [agentIndex, agent] of this.config.allAgents.entries()) {
       const rolePrompt = await buildRolePrompt(agent, this.config);
@@ -204,6 +214,7 @@ export class Coordinator {
       await this.persistState();
     }
 
+    this.printLayout();
     const result = await startRoom(this.config, this.loop);
     this.roomStatus = result?.status === "halted" ? "halted" : "idle";
     this.inbox.start();
@@ -436,6 +447,40 @@ export class Coordinator {
     const path = this.agentLogs.get(agentId);
     if (!path) return;
     await appendFile(path, JSON.stringify({ ts: this.now(), event, text }) + "\n", "utf8");
+  }
+
+  /** One line of room preamble: a human watching the pane should know what is running. */
+  private printLine(line: string): void {
+    this.stdout.write(`${line}\n`);
+  }
+
+  /** Before the first dispatch: what this room is, who is in it, and where it writes. */
+  private printBanner(): void {
+    const { name, room_dir: roomDir, task } = this.config.config;
+    const handles = this.config.allAgents.map((a) => a.handle).join(" ");
+    this.printLine(`── room ${name} · ${this.config.allAgents.length} agents ${handles} · run dir ${roomDir} ──`);
+    const ask = task === undefined ? "none — the room waits for your first message" : firstLine(task);
+    this.printLine(`ask: ${ask}`);
+    if (this.roomLogPath !== undefined) this.printLine(`transcript: ${this.roomLogPath}`);
+  }
+
+  /** What the tab gave, measured: a shape nobody can read is then visible, not guessed (#59). */
+  private printLayout(): void {
+    if (!this.panes) return;
+    const report = this.panes.layoutReport?.() ?? null;
+    if (report === null) {
+      this.printLine("layout: the pane manager reported no geometry");
+      return;
+    }
+    const first = report.panes[0]?.box;
+    const panes = first === undefined ? "" : ` · ${report.panes.length} panes ${first.width}x${first.height}`;
+    this.printLine(
+      `layout: tab ${report.tab.width}x${report.tab.height} ${report.orientation} · ` +
+        `chat ${report.chat.width}x${report.chat.height}${panes}`,
+    );
+    for (const pane of report.panes) {
+      this.debug(`pane ${pane.paneId} slot ${pane.slot} ${pane.box.width}x${pane.box.height} @ ${pane.box.x},${pane.box.y}`);
+    }
   }
 
   private printMessage(msg: RoomMessage): void {

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { HerdrPaneManager, PaneId, PaneSpec } from "../seams/herdr-pane-manager";
+import type { HerdrPaneManager, PaneId, PaneLayoutReport, PaneSpec } from "../seams/herdr-pane-manager";
 import { errorMessage } from "../errors";
 import { chooseLayout, sliceRatios } from "../layout";
 
@@ -30,6 +30,8 @@ export class HerdrPaneManagerReal implements HerdrPaneManager {
 
   /** Agent panes assigned to slots 1..n, in geometric order, once the region is laid out. */
   private assignment: PaneId[] | null = null;
+  /** What the tab gave, for the room's banner (#59). */
+  private report: PaneLayoutReport | null = null;
 
   private get bin(): string {
     return this.opts.herdrBin ?? "herdr";
@@ -134,6 +136,16 @@ export class HerdrPaneManagerReal implements HerdrPaneManager {
       throw new Error(`herdr pane layout: expected ${count} agent panes, herdr reports ${agentPanes.length}`);
     }
     this.assignment = agentPanes.map((pane) => pane.paneId);
+    this.report = {
+      tab: before.area,
+      orientation: plan.orientation,
+      chat: plan.chat,
+      panes: agentPanes.map((pane, index) => ({ slot: index + 1, paneId: pane.paneId, box: pane.rect })),
+    };
+  }
+
+  layoutReport(): PaneLayoutReport | null {
+    return this.report;
   }
 
   private async readLayout(): Promise<{
