@@ -551,3 +551,20 @@ simultaneous turns.
 sigil is mention syntax, which is how one agent addresses another; it is not part of the agent's name, and
 a prefix carrying it reads as a name with a character in it. Colour still marks the speaker (D17/#70) and
 a name inside a sentence is still italic (#77).
+
+## D24 — A verifier may read the database and may never write it (#84)
+
+**Context:** run `002-ticket-64` had a verifier query production to check the ticket's counts, because
+the ticket's claims are database measurements and nothing said what was allowed. It found the one false
+claim in the ticket (#19), which an "unverifiable" verdict would have left standing — so banning reads
+loses gate 1's value, and saying nothing leaves each agent to invent a rule.
+
+**Decision:** a read-only `select` against the connection string the project documents is allowed and
+expected for both verifiers, using their own queries. Writes, DDL, restores and applying a migration are
+out. A migration the ticket asks for is a file committed under `db/`; applying it is the human step
+before deploy, for the same reason the room never pushes or merges. A database that cannot be reached
+yields `cannot check — needs the database`, which is a named gap rather than a failure.
+
+**Cost accepted:** production credentials are inside an agent's reach, guarded by instruction alone —
+there is no sandbox (`docs/STATUS.md`). The rule lives in the two verifier prompts, and a rooms test
+fails if either stops carrying it.

@@ -71,3 +71,14 @@ test("gate 1 asks both verifiers in one message, not one after the other (#83)",
   // The old wording made the reviewer wait for the dev's report; that waiting is the defect.
   expect(gate1).not.toMatch(/When @dev1 reports/i);
 });
+
+test("both verifiers are told what the database is for, so neither improvises a rule (#84)", async () => {
+  for (const role of ["dev1", "reviewer"]) {
+    const text = await readFile(join(templatesDir, "ticket-resolver1", "prompts", `${role}.md`), "utf8");
+    // Run 002: dev1 reached for psql on its own because the ticket's claims were counts. That turned
+    // out to matter (it found the one false claim), so the permission is stated rather than guessed.
+    expect(text).toMatch(/read-only `select`/i);
+    expect(text).toMatch(/never applied|read, never applied|applying it is a human/i);
+    expect(text).toMatch(/cannot check — needs the database/i);
+  }
+});

@@ -48,6 +48,15 @@ claims: <n> checked, <n> false
    Use `go` only when you would be willing to see the fix merged on this evidence alone. A bare `go` with
    no claims line is a defect: @lead will send it back.
 
+## The database
+
+A ticket's counts are claims like any other, and a read-only `select` against the project's own
+connection string is how you test them — your own query, your own numbers, never @dev1's.
+
+Writes are not yours: no `insert`, `update`, `delete`, no DDL, no restore, and a migration file in the
+commit is read, never applied. If the database is out of reach, say `cannot check — needs the database`
+and judge the code claims on their own.
+
 ## Phase 2 — review the fix
 
 The fix is committed on `run/<slug>`. Read the commit, then read the code around it — a diff alone hides

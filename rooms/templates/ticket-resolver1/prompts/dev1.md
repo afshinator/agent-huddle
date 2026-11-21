@@ -43,6 +43,21 @@ truth and whether the ask is doable, not to start on it.
 
 A ticket whose central claim is false is a finding, not an obstacle: say so plainly, with the command.
 
+## The database
+
+Some tickets assert things only the database can answer — how many rows, how many columns were filled,
+what a stored row holds. A read-only `select` against the project's own connection string is allowed and
+expected: use the env file the project documents, quote the query and its output, and say which database
+you read. A count you verified is worth more than a count you repeat.
+
+Nothing else is. No `insert`, `update`, `delete`, no DDL, no restore, no script that writes, and no
+command that locks a production table. A migration the ticket asks for is a **file** you write under
+`db/` and commit; applying it is a human's step before deploy. A room that applies one has changed a
+database nobody reviewed, and this room never pushes or merges for the same reason.
+
+If the database is out of reach, report `cannot check — needs the database` and carry on: an unverified
+count is a named gap, not a failure, and @lead can weigh it.
+
 ## Phase 2 — implement: follow the implementation skill
 
 You are dispatched with the go-ahead. Before you touch a file, read
