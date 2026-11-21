@@ -38,8 +38,8 @@ while (true) {
       const text = sessionId === "lead" && command.message.includes("startup mission")
         ? "@dev1 implement the requested change"
         : sessionId === "dev1"
-          ? "@lead implementation complete"
-          : "verified\\nDONE";
+          ? "Got it: implement it\\n@lead implementation complete"
+          : "Got it: dev1 is done\\nverified\\nDONE";
       lastText = text;
       for (const part of text.match(/.{1,12}/g) ?? []) {
         out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: part } });

@@ -2,7 +2,7 @@ import { test, expect, describe } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TurnLoop, wrapUpPrompt, CONCLUDE_PROMPT, hasDoneSignal } from "../src/turn-loop";
+import { TurnLoop, wrapUpPrompt, CONCLUDE_PROMPT, hasDoneSignal, hasAck } from "../src/turn-loop";
 import { RoomStore } from "../src/store";
 import type { Telemetry } from "../src/telemetry";
 import { RecordingTelemetry } from "./recording-telemetry";
@@ -151,6 +151,104 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("a direct message answered without an acknowledgement produces one notice naming the agent", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      // the human addresses the lead directly, so the lead acknowledges first: only dev1 skips it
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 check the footer" }]);
+      pi.script("dev1", [{ lastText: "checked the footer, it is stale" }]);
+
+      await loop.submit("@lead start", "user");
+
+      const m = await msgs();
+      const notices = m.filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
+      expect(notices.length).toBe(1);
+      expect(notices[0]!.text).toContain("@dev1");
+    });
+  });
+
+  test("an acknowledgement is the reply's own first line, and silences the notice", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 check the footer" }]);
+      pi.script("dev1", [{ lastText: "\nGot it: check the footer for staleness\nchecked, it is stale" }]);
+
+      await loop.submit("@lead start", "user");
+
+      const m = await msgs();
+      expect(m.filter((x) => x.kind === "notice" && x.text.includes("Got it:")).length).toBe(0);
+      expect(m.find((x) => x.kind === "agent" && x.from === "dev1")!.text).toContain("Got it: check the footer");
+    });
+  });
+
+  test("a broadcast needs no acknowledgement, and a mention inside one still dispatches", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@all stand by" }]);
+      pi.script("dev1", [{ lastText: "standing by" }]);
+      pi.script("dev2", [{ lastText: "standing by too" }]);
+      pi.script("reviewer", [{ lastText: "standing by as well" }]);
+
+      await loop.submit("@lead start", "user");
+
+      const m = await msgs();
+      expect(m.filter((x) => x.kind === "notice" && x.text.includes("Got it:")).length).toBe(0);
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual([
+        "lead",
+        "dev1",
+        "dev2",
+        "reviewer",
+      ]);
+    });
+  });
+
+  test("naming two agents needs no acknowledgement from either", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 @dev2 compare notes" }]);
+      pi.script("dev1", [{ lastText: "compared" }]);
+      pi.script("dev2", [{ lastText: "compared too" }]);
+
+      await loop.submit("@lead start", "user");
+
+      expect((await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:")).length).toBe(0);
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "dev2"]);
+    });
+  });
+
+  test("the acknowledgement paragraph is required, and a mention inside it still dispatches", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 check it" }, { lastText: "noted\nDONE" }]);
+      // quoting the sender in the acknowledgement is exactly what the contract forbids: the
+      // router cannot tell a quotation from a hand-off, so it dispatches
+      pi.script("dev1", [{ lastText: "Got it: @lead sent me the footer\nchecked" }]);
+
+      await loop.submit("@lead start", "user");
+
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "lead"]);
+      expect((await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:")).length).toBe(1);
+    });
+  });
+
+  test("a human's direct message to the lead needs an acknowledgement as well", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "working on it" }]);
+
+      await loop.submit("@lead wire the layout", "user");
+
+      const notices = (await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
+      expect(notices.length).toBe(1);
+      expect(notices[0]!.text).toContain("@lead");
+    });
+  });
+
+  test("the startup task is a boot directive, so the lead owes it no acknowledgement", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "on it\nDONE" }]);
+
+      await loop.submit("audit the docs and reply DONE", "startup_task");
+
+      expect((await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:")).length).toBe(0);
+      expect(pi.calls.filter((c) => c.op === "prompt").length).toBe(1);
+    });
+  });
+
   test("a reply with no mention ends the chain idle rather than halting", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "@dev1 take a look" }]);
@@ -177,8 +275,11 @@ describe("TurnLoop", () => {
 
   test("mention propagation: lead hands off, dev replies, lead closes with DONE", async () => {
     await harness(async ({ loop, pi, msgs }) => {
-      pi.script("lead", [{ lastText: "@dev1 implement it" }, { lastText: "verified\nDONE" }]);
-      pi.script("dev1", [{ lastText: "@lead done, please verify" }]);
+      pi.script("lead", [
+        { lastText: "Got it: build it\n@dev1 implement it" },
+        { lastText: "Got it: verify dev1's report\nverified\nDONE" },
+      ]);
+      pi.script("dev1", [{ lastText: "Got it: implement it\n@lead done, please verify" }]);
 
       const result = await loop.submit("@lead build it");
       expect(result.status).toBe("completed");
@@ -449,8 +550,11 @@ describe("TurnLoop", () => {
   test("a failed context push is a notice, not a chain failure", async () => {
     await harness(async ({ loop, pi, msgs, telemetry }) => {
       pi.failOn("pushContext", new Error("bash rpc failed"), 99);
-      pi.script("lead", [{ lastText: "@dev1 go" }, { lastText: "verified\nDONE" }]);
-      pi.script("dev1", [{ lastText: "@lead ok" }]);
+      pi.script("lead", [
+        { lastText: "Got it: build it\n@dev1 go" },
+        { lastText: "Got it: dev1's ok\nverified\nDONE" },
+      ]);
+      pi.script("dev1", [{ lastText: "Got it: go\n@lead ok" }]);
 
       const result = await loop.submit("@lead build it");
 
@@ -477,5 +581,16 @@ describe("TurnLoop", () => {
       await expect(loop.submit("@lead go")).rejects.toThrow("disk full");
       expect(telemetry.chainDeltas).toEqual([1, -1]);
     });
+  });
+});
+
+describe("hasAck", () => {
+  test("only a first line that says what was understood counts", () => {
+    expect(hasAck("Got it: check the footer")).toBe(true);
+    expect(hasAck("\n\nGot it: check the footer\nworking")).toBe(true);
+    expect(hasAck("Got it:")).toBe(false);
+    expect(hasAck("Got it:\nworking")).toBe(false);
+    expect(hasAck("Sure.\nGot it: check the footer")).toBe(false);
+    expect(hasAck(null)).toBe(false);
   });
 });

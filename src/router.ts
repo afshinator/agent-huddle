@@ -60,6 +60,14 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
   return { targets, unknownHandles };
 }
 
+/** True when the text carries a broadcast token (`@all` / `@everyone`), whatever the roster size. */
+export function mentionsBroadcast(text: string): boolean {
+  for (const m of text.matchAll(MENTION_RE)) {
+    if (BROADCAST_TOKENS.has(m[0])) return true;
+  }
+  return false;
+}
+
 /** Routing entry point: explicit mentions, else nothing (§6.1/§6.4, D6). */
 export function extractMentions(text: string, config: LoadedConfig): string[] {
   return resolveMentions(text, config).targets;

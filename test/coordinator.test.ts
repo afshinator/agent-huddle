@@ -183,8 +183,11 @@ describe("Coordinator boot banner (#59)", () => {
 describe("Coordinator (fakes)", () => {
   test("boot: startup task → lead → specialist → DONE, persists state and opens panes", async () => {
     await harness({ task: "do the work" }, async ({ coordinator, store, pi, panes, out }) => {
-      pi.script("lead", [{ lastText: "@dev1 implement it" }, { lastText: "verified\nDONE" }]);
-      pi.script("dev1", [{ lastText: "@lead ready" }]);
+      pi.script("lead", [
+        { lastText: "Got it: do the work\n@dev1 implement it" },
+        { lastText: "Got it: dev1 is ready\nverified\nDONE" },
+      ]);
+      pi.script("dev1", [{ lastText: "Got it: implement it\n@lead ready" }]);
 
       const result = await coordinator.boot();
 

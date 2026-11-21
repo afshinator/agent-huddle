@@ -49,5 +49,8 @@ export function buildSocialContract(agent: AgentSpec, config: LoadedConfig): str
     "- If a message mentions only other agents, read it and stay quiet — do not reply.",
     "- If the lead addresses you directly, respond from your lane.",
     "- You may mention other agents with @handle to hand off work.",
+    "- A message that mentions you directly (one agent, not @all) gets one line back before",
+    "  you work: `Got it: <what you understood>`. Put no @handle in that line — a mention",
+    "  there would dispatch the agent you are only quoting.",
   ].join("\n");
 }

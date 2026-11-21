@@ -329,6 +329,22 @@ A **hop** = one dispatched agent turn (one `prompt` → `agent_settled`). `chain
 - A reply's mention of its **own author** is ignored by routing: "report to @lead" from the lead does not dispatch the lead again. The handle stays in `mentions[]` for the record; the queue drops it.
 - Broadcast: `@all` or `@everyone` targets every agent (lead + all specialists). Each dispatched agent is one hop.
 
+### 6.2b Acknowledgement of a direct message (#60)
+
+An agent dispatched by a **direct mention** (exactly one target, no `@all`) must begin its reply with
+one line saying what it understood: `Got it: <short phrase>`, the first non-blank line of its own text.
+A broadcast (`@all` / `@everyone`, or several named agents) and the startup task owe no
+acknowledgement — the first is not addressed to one agent, the second is a boot directive.
+
+The acknowledgement carries **no `@handle`**: the router cannot distinguish a quotation from a
+hand-off, so a mention inside it dispatches that agent. The social contract says so, and a test pins
+the hazard.
+
+Enforcement is the turn loop's, not the prompt's: after a dispatch triggered by a direct mention, a
+reply whose first line does not match `/^Got it:\s+\S/` appends one room notice naming the agent
+(`@dev1 answered a direct message without "Got it: …" — a silent pickup is indistinguishable from a
+miss`). The words in the room stay the agent's own; the room never acknowledges on its behalf.
+
 ### 6.3 Hop cap & finish-up nudge (D6)
 
 | Condition at dispatch time | Action |

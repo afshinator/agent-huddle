@@ -340,3 +340,31 @@ nothing rather than inventing it.
 
 **Cost, accepted:** an unreadable tab now fails boot instead of producing panes nobody can read, and
 the constants are judgement values until a live run measures rows against a real tab.
+
+## D15 — A direct message is acknowledged by the agent, and the room notices when it is not (#60)
+
+**Context.** A mention like `@dev1 check the footer` can sit unanswered for minutes while the agent
+works. A reader cannot tell a slow pickup from a lost message, and the first docs-audit launch showed
+how much a silent room costs.
+
+**Decision.** An agent dispatched by a direct mention begins its reply with `Got it: <what it
+understood>`, the first non-blank line of its own text. A broadcast (`@all`, or several named agents)
+and the startup task are exempt. The line carries no `@handle`, because the router cannot tell a
+quotation from a hand-off. The turn loop enforces it: a direct-mention reply whose first line fails
+`/^Got it:\s+\S/` appends one room notice naming the agent.
+
+**Rejected.**
+- *The coordinator writes the acknowledgement.* It would arrive instantly, but it puts words in an
+  agent's mouth, and a room whose transcript lies about who said what is worse than a slow one.
+- *A prompt rule with no check.* This repo has already paid for rules nobody verifies; a skipped
+  acknowledgement would look exactly like a prompt that was obeyed.
+- *Exempting a reply that ends in `DONE`.* Tempting, because a lead's closing verdict looks like an
+  answer. It is still a direct message answered without saying what was understood, so it is not
+  exempt; if that noise is unwanted in practice, the exemption is the thing to revisit, deliberately.
+
+**Why:** the cost of a missing acknowledgement is a reader guessing, and a guess costs more than one
+line per direct message.
+
+**Cost, accepted:** one line per direct reply and a notice per agent that ignores the rule, which is
+noisy when a model drifts. `hasAck` / `needsAck` in `src/turn-loop.ts`, the rule in
+`buildSocialContract` (`src/prompts.ts`).

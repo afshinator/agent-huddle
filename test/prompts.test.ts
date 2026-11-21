@@ -51,7 +51,10 @@ describe("buildSocialContract", () => {
         "- If a message mentions you (@dev1), respond from your lane: Implement features and tests..\n" +
         "- If a message mentions only other agents, read it and stay quiet — do not reply.\n" +
         "- If the lead addresses you directly, respond from your lane.\n" +
-        "- You may mention other agents with @handle to hand off work.",
+        "- You may mention other agents with @handle to hand off work.\n" +
+        "- A message that mentions you directly (one agent, not @all) gets one line back before\n" +
+        "  you work: `Got it: <what you understood>`. Put no @handle in that line — a mention\n" +
+        "  there would dispatch the agent you are only quoting.",
     );
   });
 });

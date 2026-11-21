@@ -4,7 +4,7 @@ import type { LoadedConfig } from "./config";
 import type { MessageKind, RoomMessage } from "./messages";
 import type { ChainState } from "./state";
 import type { RoomStore } from "./store";
-import { extractMentions, resolveMentions } from "./router";
+import { extractMentions, mentionsBroadcast, resolveMentions } from "./router";
 import { errorMessage } from "./errors";
 import type { PiAgentClient, SettledResult } from "./seams/pi-agent-client";
 import type { Telemetry } from "./telemetry";
@@ -24,6 +24,24 @@ export const CONCLUDE_PROMPT =
 export function hasDoneSignal(text: string | null): boolean {
   if (text === null) return false;
   return text.split("\n").some((line) => line.trim() === "DONE");
+}
+
+/**
+ * `Got it: …` on the first non-blank line of a reply (#60). Models start with a blank line
+ * often enough that "the first line" has to mean the first one with text in it.
+ */
+export function hasAck(text: string | null): boolean {
+  if (text === null) return false;
+  const first = text.split("\n").map((line) => line.trim()).find((line) => line !== "");
+  return first !== undefined && /^Got it:\s+\S/.test(first);
+}
+
+/**
+ * A direct message expects an acknowledgement; a broadcast does not, and neither does the
+ * startup task, which is a boot directive rather than a peer message (#60).
+ */
+function needsAck(kind: SubmitKind, targets: readonly string[], text: string): boolean {
+  return kind !== "startup_task" && targets.length === 1 && !mentionsBroadcast(text);
 }
 
 export type SubmitKind = "user" | "startup_task";
@@ -134,7 +152,11 @@ export class TurnLoop {
     const initialTargets =
       pinnedTargets ??
       (kind === "startup_task" ? [this.cfg.config.lead.id] : initialResolution.targets);
-    const queue: Array<{ agentId: string; text: string }> = initialTargets.map((agentId) => ({ agentId, text }));
+    const queue: Array<{ agentId: string; text: string; ackRequired: boolean }> = initialTargets.map((agentId) => ({
+      agentId,
+      text,
+      ackRequired: needsAck(kind, initialTargets, text),
+    }));
     await this.syncContext(chain, text, queue.map((t) => t.agentId));
 
     if (queue.length === 0) {
@@ -149,13 +171,23 @@ export class TurnLoop {
     }
 
     while (queue.length > 0) {
-      const { agentId, text: promptText } = queue.shift()!;
+      const { agentId, text: promptText, ackRequired } = queue.shift()!;
       if (chain.hopCount >= this.cfg.config.max_hops) {
         return this.wrapUp(chain);
       }
       const settled = await this.dispatch(chain, agentId, promptText, true);
       if (settled === null) return this.finish(chain, this.isStopping() ? "cancelled" : "halted");
 
+      if (ackRequired && !hasAck(settled.lastText)) {
+        const handle = this.cfg.agentById.get(agentId)?.handle ?? agentId;
+        await this.append(
+          chain,
+          "notice",
+          "room",
+          `${handle} answered a direct message without "Got it: …" — a silent pickup is indistinguishable from a miss`,
+          chain.hopCount,
+        );
+      }
       if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
 
       const reply = settled.lastText ?? "";
@@ -165,7 +197,9 @@ export class TurnLoop {
       }
       // A mention of the author is a note to others, not a dispatch to itself.
       const nextIds = resolution.targets.filter((id) => id !== agentId);
-      for (const nextId of nextIds) queue.push({ agentId: nextId, text: reply });
+      for (const nextId of nextIds) {
+        queue.push({ agentId: nextId, text: reply, ackRequired: needsAck("user", resolution.targets, reply) });
+      }
       await this.syncContext(chain, reply, nextIds, agentId);
     }
 
