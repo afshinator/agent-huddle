@@ -74,6 +74,20 @@ describe("extractMentions", () => {
     expect(extractMentions("@all @dev1", cfg)).toEqual(["lead", "dev1", "dev2", "reviewer"]);
   });
 
+  test("a scoped package name is not a mention", () => {
+    // `@testing-library/react` reads as `@testing-library` to the handle grammar, so a ticket room
+    // printed "unknown agent mention(s): @testing-library" three times in one run (#79).
+    expect(resolveMentions("check @testing-library/react and @types/node", cfg)).toEqual({
+      targets: [],
+      unknownHandles: [],
+    });
+    expect(extractMentions("@testing-library/react", cfg)).toEqual([]);
+  });
+
+  test("an email address is not a mention", () => {
+    expect(resolveMentions("write to dev1@example.com", cfg).unknownHandles).toEqual([]);
+  });
+
   test("mention adjacent to punctuation", () => {
     expect(extractMentions("@dev1, please check.", cfg)).toEqual(["dev1"]);
   });

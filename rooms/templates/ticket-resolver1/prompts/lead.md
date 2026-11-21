@@ -34,10 +34,11 @@ read it and use that vocabulary instead of guessing.
 
 **Gate 1 — is the ticket real?** Nobody writes code yet.
 
-1. Send @dev1 one message: verify every factual claim the ticket makes against the code — file paths,
-   line numbers, function names, the behaviour it says happens, the count it states — and answer whether
-   the ask is doable as written. Tell it to report true/false/cannot-check per claim with the command
-   behind each, and to edit nothing.
+1. Send @dev1 one message: read the ticket and verify every factual claim it makes against the code,
+   then answer whether the ask is doable as written. Tell it to report true/false/cannot-check per claim
+   with the command behind each, and to edit nothing. Name the ticket and what kind of claim to check;
+   do not list the claims yourself — an agent handed your paraphrase checks your paraphrase, and the
+   ticket's own wording is the thing under test.
 
    Every dispatch you send carries the ticket reference and what you want checked. The bar is already in
    their prompts; do not restate it, and do not invent a stricter one.

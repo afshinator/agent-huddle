@@ -3,7 +3,10 @@ import type { LoadedConfig } from "./config";
 /** Handle grammar: `@` plus word characters. Config validation uses it too. */
 const HANDLE_CHARS = "[A-Za-z0-9_-]+";
 export const HANDLE_RE = new RegExp(`^@${HANDLE_CHARS}$`);
-const MENTION_RE = new RegExp(`@${HANDLE_CHARS}`, "g");
+// A mention is `@handle` on its own: not the tail of an email (`dev1@example.com`) and not the head
+// of a scoped package (`@testing-library/react`, `@types/node`), which the handle grammar would
+// otherwise take for an agent and report as unknown (#79).
+const MENTION_RE = new RegExp(`(?<![A-Za-z0-9_.-])@${HANDLE_CHARS}`, "g");
 /** Tokens the router expands to the whole roster. */
 export const BROADCAST_TOKENS = new Set(["@all", "@everyone"]);
 /** Token the router resolves to the lead. */
@@ -44,6 +47,9 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
   const unknownHandles: string[] = [];
   for (const m of text.matchAll(MENTION_RE)) {
     const token = m[0];
+    // `@testing-library/react` stops at the slash; the rest of the path is what makes it a package
+    // rather than an agent, and a lookahead here backtracks into `@testing-librar` (#79).
+    if (text[m.index + token.length] === "/") continue;
     if (BROADCAST_TOKENS.has(token)) {
       for (const id of allIds) add(id);
       continue;
