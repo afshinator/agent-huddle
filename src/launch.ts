@@ -150,6 +150,43 @@ export function criteriaOf(body: string): Criteria {
   return text === "" ? { text: trimmed, source: "body" } : { text, source: "criteria" };
 }
 
+export interface Ticket {
+  number: number;
+  title: string;
+  state: string;
+  labels: readonly string[];
+  body: string;
+}
+
+/**
+ * The ask, built from the whole ticket.
+ *
+ * The first version of this carried the title and nothing else, so the constraints, the dependency
+ * edges and the out-of-scope list had to be typed in by hand — by the person with the least context
+ * about the code, which is the one place it should never come from (#81). The body is verbatim.
+ */
+export function askedFrom(ticket: Ticket): { task: string; definitionOfDone: string; source: "criteria" | "body" } {
+  const criteria = criteriaOf(ticket.body);
+  const task = [
+    `Resolve ticket #${ticket.number} in this repo: "${ticket.title}".`,
+    "",
+    "The ticket body follows verbatim. It is the spec: its acceptance criteria say what done means,",
+    "and its dependencies, constraints and out-of-scope sections bind this run.",
+    "",
+    `Run \`gh issue view ${ticket.number}\` if you want it fresh, but do not work from a summary.`,
+    "",
+    ticket.body.trim(),
+  ].join("\n");
+  return { task, definitionOfDone: criteria.text, source: criteria.source };
+}
+
+/** A blocker that is still open, named. Null when the ticket may be dispatched. */
+export function blockerReason(blockers: readonly { number: number; state: string }[]): string | null {
+  const open = blockers.filter((b) => b.state.toLowerCase() !== "closed");
+  if (open.length === 0) return null;
+  return `blocked by ${open.map((b) => `#${b.number} (${b.state})`).join(", ")}`;
+}
+
 export interface Eligibility {
   ok: boolean;
   state: string;
@@ -293,11 +330,37 @@ function cmdCheck(argv: string[]): number {
   if (issueMode) {
     const auth = trySh("gh", ["auth", "status"]) !== null;
     rows.push({ ok: auth, fatal: true, label: "gh authenticated", detail: auth ? "" : "run `gh auth login`" });
+    const issue = Number(args.get("issue"));
+    if (auth && Number.isFinite(issue)) {
+      try {
+        const blocked = blockerReason(blockedBy(repo, issue));
+        rows.push({ ok: blocked === null, fatal: true, label: `#${issue} unblocked`, detail: blocked ?? "" });
+      } catch (e) {
+        rows.push({ ok: false, fatal: true, label: `#${issue} unblocked`, detail: (e as Error).message });
+      }
+    }
   }
   for (const row of rows) {
     process.stderr.write(`launch: ${row.ok ? "ok  " : row.fatal ? "FAIL" : "warn"} ${row.label}${row.detail === "" ? "" : ` — ${row.detail}`}\n`);
   }
   return rows.some((r) => !r.ok && r.fatal) ? 1 : 0;
+}
+
+/**
+ * Native GitHub dependencies of an issue: the ones that must close first. Empty when none.
+ *
+ * Throws rather than returning empty on a failed read: "no blockers" and "could not ask" must not
+ * look the same, or the gate that exists to stop a blocked ticket lets it through when the API blips.
+ */
+function blockedBy(repo: string, issue: number): Array<{ number: number; state: string }> {
+  const slug = sh("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], repo);
+  const raw = trySh("gh", ["api", `repos/${slug}/issues/${issue}/dependencies/blocked_by`]);
+  if (raw === null) throw new Error(`could not read the dependencies of #${issue}`);
+  if (raw.trim() === "") return [];
+  const parsed = JSON.parse(raw) as Array<{ number?: unknown; state?: unknown }>;
+  return parsed
+    .filter((i) => typeof i.number === "number" && typeof i.state === "string")
+    .map((i) => ({ number: i.number as number, state: i.state as string }));
 }
 
 function cmdIssue(argv: string[]): number {
@@ -322,8 +385,21 @@ function cmdIssue(argv: string[]): number {
     );
     return 1;
   }
-  const criteria = criteriaOf(json.body);
-  if (criteria.source === "body") {
+  // A ticket can be triaged and still be unsafe to dispatch: its own body asks for another ticket
+  // first, and GitHub records that as a native dependency (#81).
+  let blocked: string | null;
+  try {
+    blocked = blockerReason(blockedBy(repo, json.number));
+  } catch (e) {
+    process.stderr.write(`launch: refusing — ${(e as Error).message}; dispatch needs to know its blockers\n`);
+    return 1;
+  }
+  if (blocked !== null && args.get("ignore-blockers") === undefined) {
+    process.stderr.write(`launch: refusing — #${json.number} is ${blocked}. Re-run with --ignore-blockers to override.\n`);
+    return 1;
+  }
+  const asked = askedFrom({ ...json, labels });
+  if (asked.source === "body") {
     process.stderr.write("launch: no acceptance-criteria heading in the body; the whole body is the bar\n");
   }
   const block = (label: string, text: string): string =>
@@ -337,12 +413,12 @@ function cmdIssue(argv: string[]): number {
   writeFileSync(
     out,
     `template: ${template}\n` +
-      block("task", `Resolve ticket #${json.number} in this repo: "${json.title}".\n\nRead it with \`gh issue view ${json.number}\`; its body is the spec.`) +
-      block("definition_of_done", criteria.text) +
-      // The ask is a starting point a human edits; the two lines below are the ones only a person can write.
-      `# Edit the task above: name the files in scope, the constraints the ticket states, and what is out of scope.\n`,
+      block("task", asked.task) +
+      block("definition_of_done", asked.definitionOfDone) +
+      `# Generated from #${json.number}: the whole body, and the bar taken from its ${asked.source === "criteria" ? "acceptance criteria" : "body"}.\n` +
+      `# Nothing here needs editing. Delete this file to regenerate it from the ticket.\n`,
   );
-  process.stderr.write(`launch: wrote the ask at ${out} (bar from the ticket's ${criteria.source})\n`);
+  process.stderr.write(`launch: wrote the ask at ${out} (whole body; bar from its ${asked.source})\n`);
   return 0;
 }
 

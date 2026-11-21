@@ -4,8 +4,9 @@
 #   ./rooms/launch.sh --template <name> --repo <path> --slug <slug> [--branch] [--run <run.yaml>]
 #   ./rooms/launch.sh --template ticket-resolver1 --repo <path> --issue 54 --slug ticket-54 --branch
 #
-#   --issue <n>   fetch the ticket and write the ask from it; refuses unless it is ready-for-agent
-#                 (--any-state overrides). The ask is a starting point: edit its `task:`.
+#   --issue <n>   fetch the ticket and write the ask from it: the whole body verbatim, the bar from
+#                 its acceptance criteria. Refuses unless it is ready-for-agent (--any-state) and
+#                 unless nothing open blocks it (--ignore-blockers). Nothing needs editing.
 #   --check       report every precondition and stop before creating anything
 #   --dry-run     prepare the collateral and the worktree without booting the room
 #   --no-warm     skip the dependency warm-up
@@ -39,6 +40,7 @@ CHECK_ONLY=0
 WARM=1
 ISSUE=""
 ANY_STATE=0
+IGNORE_BLOCKERS=0
 
 usage() {
   sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
@@ -56,6 +58,7 @@ while [ $# -gt 0 ]; do
     --run) RUN_FILE="${2:-}"; shift 2 ;;
     --issue) ISSUE="${2:-}"; shift 2 ;;
     --any-state) ANY_STATE=1; shift ;;
+    --ignore-blockers) IGNORE_BLOCKERS=1; shift ;;
     --branch) BRANCH=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --check) CHECK_ONLY=1; shift ;;
@@ -105,6 +108,7 @@ if [ -n "$ISSUE" ] && [ -z "$RUN_FILE" ]; then
   else
     ISSUE_ARGS=(--repo "$REPO" --issue "$ISSUE" --template "$TEMPLATE" --out "$RUN_FILE")
     [ "$ANY_STATE" = "1" ] && ISSUE_ARGS+=(--any-state)
+  [ "$IGNORE_BLOCKERS" = "1" ] && ISSUE_ARGS+=(--ignore-blockers)
     bun "$HUDDLE_ROOT/src/launch.ts" issue "${ISSUE_ARGS[@]}" || exit 1
   fi
 elif [ -z "$RUN_FILE" ]; then

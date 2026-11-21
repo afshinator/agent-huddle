@@ -1,5 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import {
+  askedFrom,
+  blockerReason,
   criteriaOf,
   eligibility,
   lockfileFor,
@@ -150,5 +152,64 @@ describe("is the ticket ready for an agent", () => {
 
   test("no labels at all reads as untriaged", () => {
     expect(eligibility([])).toEqual({ ok: false, state: "untriaged" });
+  });
+});
+
+describe("the ask is built from the whole ticket (#81)", () => {
+  const ticket = {
+    number: 54,
+    title: "detailParser: read the November markup",
+    state: "OPEN",
+    labels: ["bug", "ready-for-agent"],
+    body: [
+      "## What to build",
+      "Rewrite the parser.",
+      "",
+      "## Acceptance criteria",
+      "1. Every field.",
+      "",
+      "## Dependencies",
+      "- Needs before merge: #64 (open).",
+      "",
+      "## Out of scope",
+      "- The email parser.",
+    ].join("\n"),
+  };
+
+  test("the task carries the body verbatim, constraints and dependencies included", () => {
+    const asked = askedFrom(ticket);
+    expect(asked.task).toContain("Needs before merge: #64 (open).");
+    expect(asked.task).toContain("## Out of scope");
+    expect(asked.task).toContain("- The email parser.");
+    expect(asked.task).toContain('"detailParser: read the November markup"');
+    expect(asked.task).toContain("Resolve ticket #54");
+  });
+
+  test("the bar is the criteria section, not a paraphrase and not the whole body", () => {
+    const asked = askedFrom(ticket);
+    expect(asked.definitionOfDone).toBe("1. Every field.");
+    expect(asked.source).toBe("criteria");
+  });
+});
+
+describe("a blocked ticket is not dispatchable (#81)", () => {
+  test("an open blocker is named", () => {
+    expect(blockerReason([{ number: 64, state: "open" }, { number: 65, state: "closed" }])).toBe(
+      "blocked by #64 (open)",
+    );
+  });
+
+  test("only closed blockers: nothing blocks", () => {
+    expect(blockerReason([{ number: 65, state: "closed" }])).toBeNull();
+  });
+
+  test("no blockers at all: nothing blocks", () => {
+    expect(blockerReason([])).toBeNull();
+  });
+
+  test("two open blockers are both named", () => {
+    expect(blockerReason([{ number: 64, state: "open" }, { number: 67, state: "open" }])).toBe(
+      "blocked by #64 (open), #67 (open)",
+    );
   });
 });

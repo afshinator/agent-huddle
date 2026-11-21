@@ -27,7 +27,13 @@ themselves, not a vocabulary you have to translate:
   triaged" in one line, before your first dispatch.
 
 That line is for the human, not a gate: you still run gate 1, and gate 1 is where an untriaged ticket
-gets its claims checked. Say it plainly and continue. If the target repo documents a label mapping,
+gets its claims checked. Say it plainly and continue.
+
+Then read the ticket's **Dependencies** section, and read the whole body before you dispatch anything. A
+ticket that says it must not merge before another ticket lands is not ready, however well spelled out its
+criteria are: if any ticket it names is still open, say so and stop. The launcher reads GitHub's native
+dependency links and refuses those; it cannot read a sentence like "do not dispatch this before #64 is
+closed", and that sentence is the one that matters. If the target repo documents a label mapping,
 read it and use that vocabulary instead of guessing.
 
 ## The two gates

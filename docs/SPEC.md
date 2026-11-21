@@ -191,8 +191,8 @@ A run is created by one command, and the launcher owns the steps a human used to
 | Step | Who decides |
 |---|---|
 | repo is a git tree, `_run/` ignored, `gh` authed for a ticket run | launcher, `check` subcommand; fatal ones stop before anything is created |
-| the ask (`run.yaml`) | `--issue <n>` writes it from the ticket: `task:` from the title, `definition_of_done:` from the acceptance-criteria section verbatim, falling back to the whole body when there is no such heading — never to an empty bar |
-| may this ticket be handed to a room | `eligibility`: only `ready-for-agent` passes; `--any-state` overrides |
+| the ask (`run.yaml`) | `--issue <n>` writes the ticket's whole body verbatim into `task:` — constraints, dependencies and out-of-scope included — and its acceptance-criteria section into `definition_of_done:`, falling back to the whole body when there is no such heading, never to an empty bar (#81) |
+| may this ticket be handed to a room | `eligibility`: only `ready-for-agent` passes (`--any-state` overrides); `blockerReason`: a native GitHub dependency that is still open refuses the run and names it (`--ignore-blockers` overrides). A failed read of the dependencies refuses too — "no blockers" and "could not ask" must not look alike |
 | the worktree | `worktreeAction`: create, reuse, replace (behind, clean, branch merged), or refuse (behind and dirty, or behind and unmerged) |
 | dependencies | `warmPlan`: clone the launching checkout's `node_modules` when the lockfile hashes match; install when they differ or no source tree exists; refuse when two lockfiles disagree |
 

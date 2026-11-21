@@ -28,10 +28,18 @@ checkout is clean, whether `run/<slug>` is free, and whether `gh` is authenticat
 Then the same command with `--branch` (drop `--check`). It fetches the ticket, writes the ask, creates the
 worktree, warms the dependencies, and boots. `--dry-run` does everything except boot.
 
-**Edit the ask before booting when the ticket needs constraints.** `--issue` fills `task:` from the title
-and `definition_of_done:` from the ticket's acceptance-criteria section, verbatim. It cannot know what is
-out of scope. Read `_run/<run>/run.yaml` and add, under `task:`: the files in scope, the constraints the ticket
-states (no network, no database, do not touch X), and what is out of scope. Then edit-and-relaunch:
+The ask needs no editing. `--issue` writes the ticket's **whole body verbatim** into `task:` — its
+constraints, its dependencies, its out-of-scope list — and its acceptance-criteria section into
+`definition_of_done:`. Nothing about the ticket is left for you to retype.
+
+**Preconditions that refuse the run.** Beyond the label, the launcher reads GitHub's native dependencies:
+a ticket blocked by an open issue is refused, naming it (`blocked by #64 (open)`), and `--ignore-blockers`
+is the deliberate override. A ticket can be `ready-for-agent` and still be unsafe to dispatch — #54 is
+exactly that: triaged, and blocked by #64. The gate reads the tracker, not the prose in the body, so also
+read the ticket's own Dependencies section.
+
+**The ask, if you ever do need to change it.** Editing is optional, not a step. If you change
+`_run/<run>/run.yaml`, relaunch the same command — an existing ask is kept, never regenerated:
 
 ```sh
 # 1. write the ask and prepare everything, without booting

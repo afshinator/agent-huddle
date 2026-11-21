@@ -46,9 +46,10 @@ Start a room from its template, pointing at the repo whose code the agents will 
 ./rooms/launch.sh --template docs-audit --repo ~/dev/some-repo --slug 2026-11-20-audit --branch
 ```
 
-For a ticket room, name the ticket instead of writing the ask by hand — the launcher fetches it, writes
-`task:` from its title and `definition_of_done:` from its acceptance-criteria section, and refuses a
-ticket that is not `ready-for-agent`:
+For a ticket room, name the ticket instead of writing the ask by hand. The launcher fetches it, writes its
+**whole body** into `task:` (constraints, dependencies and out-of-scope included) and its
+acceptance-criteria section into `definition_of_done:`, and refuses a ticket that is not
+`ready-for-agent` or that GitHub lists as blocked by an open issue:
 
 ```bash
 # report every precondition and create nothing
@@ -59,7 +60,7 @@ ticket that is not `ready-for-agent`:
 ```
 
 `--dry-run` stops before booting, `--no-warm` skips the dependency warm-up, `--any-state` overrides the
-`ready-for-agent` refusal. The worktree is warmed by cloning the launching checkout's `node_modules` when
+`ready-for-agent` refusal, `--ignore-blockers` overrides the dependency refusal. The worktree is warmed by cloning the launching checkout's `node_modules` when
 the lockfile matches (measured 8.1 s for 763 MB against 42.7 s for `npm ci`) and installing when it does
 not. Every decision the launcher makes is tested in `src/launch.ts`; the operating procedure is
 [docs/RUNBOOK.md](docs/RUNBOOK.md).
@@ -68,10 +69,11 @@ The run directory is numbered in creation order (`001-docs-audit`, `002-…`), s
 history. Re-running the same `--slug` reuses that run's directory instead of starting a second one beside
 it.
 
-That writes a skeleton `_run/<NNN>-<slug>/run.yaml` and stops; edit the ask, run it again, and it prepares
+Without `--issue` it writes a skeleton `_run/<NNN>-<slug>/run.yaml` and stops so you can fill it in; with
+`--issue` the ask is generated and there is nothing to fill in. Either way it then prepares
 `run.resolved.yaml` plus a snapshot of the prompts, creates a worktree at `../<repo>-<slug>` (branch
-`run/<slug>` with `--branch`, detached without, when the run produces nothing to check in), and boots
-the room there. Add `--dry-run` to prepare everything without booting.
+`run/<slug>` with `--branch`, detached without, when the run produces nothing to check in), warms its
+dependencies, and boots the room there. Add `--dry-run` to prepare everything without booting.
 
 A run file carries only what is specific to it:
 
