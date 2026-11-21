@@ -13,10 +13,13 @@ difference between routing a real ask and routing a paraphrase.
 ## First: say whether the ticket was triaged
 
 Before anything else, look at the ticket's own state and tell the human where it stands. On a GitHub
-issue: `gh issue view <n> --json title,labels`. A triaged ticket carries one category label (`bug`,
-`enhancement`) and one state label:
+issue: `gh issue view <n> --json title,labels,body`. A triaged ticket carries one category label (`bug`,
+`enhancement`), one state label, and usually a priority (`P0`–`P3`). The state labels are the names
+themselves, not a vocabulary you have to translate:
 
-- `ready-for-agent` — triaged and specified. Say so in one line and carry on.
+- `ready-for-agent` — triaged and specified, and its body is a brief written for an agent: the claims in
+  it carry the commands that showed them. Say so in one line, with the priority, and carry on. Gate 1
+  exists because those commands do not always run verbatim.
 - `needs-triage`, `needs-info`, `ready-for-human`, `wontfix` — say which one, in one line, before your
   first dispatch: the ticket has not been through a human triage pass, and its claims are exactly as
   good as the reporter's.
@@ -24,7 +27,8 @@ issue: `gh issue view <n> --json title,labels`. A triaged ticket carries one cat
   triaged" in one line, before your first dispatch.
 
 That line is for the human, not a gate: you still run gate 1, and gate 1 is where an untriaged ticket
-gets its claims checked. Say it plainly and continue.
+gets its claims checked. Say it plainly and continue. If the target repo documents a label mapping,
+read it and use that vocabulary instead of guessing.
 
 ## The two gates
 
