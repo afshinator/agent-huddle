@@ -114,7 +114,7 @@ started.
 | An agent's pane stream belongs to one boot: truncated on open, `log.jsonl` still append-only, and the pane clears herdr's restored scrollback first | `test/agent-stream.test.ts`, `test/pane-command.test.ts`, `test/coordinator.test.ts`, #61 |
 | A pane opens with `@handle — idle, never dispatched · slot n/m` and marks `@handle — working` once per turn, so an unused pane cannot read as activity | `test/coordinator.test.ts`, #62 |
 | The agent pane carries tool calls and lifecycle lines, never the agent's prose | `test/coordinator.test.ts`, `test/agent-stream.test.ts`, #65 |
-| Only a speaking message's prefix takes the agent's colour; a handle named in text stays plain | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, #70 |
+| Only a speaking message's prefix takes the agent's colour; a handle named in text is italic instead | `test/chat-stream.test.ts`, `test/colors.test.ts`, #70, #77 |
 | A room note prints dim, so it cannot be read as somebody speaking | `test/coordinator.test.ts`, D19 |
 | A pane title starts with a coloured mark (`🟨 @lead`); an escape there shows literally — measured live | `test/coordinator.test.ts`, D17 |
 | A reply logs why it dispatched whom (`dispatch`: targets, queued, broadcast, self-mention) | `test/turn-loop.test.ts`, #73 |

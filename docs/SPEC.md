@@ -536,8 +536,9 @@ held, not broken; when a turn dies — timeout, abort, a notice — the open lin
 pane: the room is the conversation, not the machine log.
 
 Every agent gets a colour, and the `[@handle]` prefix of the messages it speaks is printed in it; a
-handle named inside somebody's text stays plain, because colour marks the speaker and not the subject
-(#70). The agent panes cannot carry an escape — herdr prints a pane title as text — so each title starts with a
+handle named inside somebody's text stays **uncoloured**, because colour marks the speaker and not the
+subject (#70) — it is **italic** instead, so `@reviewer verify this` reads as an address and not as a
+word (#77). Only handles the room knows are styled, and only where the `@` starts a word. The agent panes cannot carry an escape — herdr prints a pane title as text — so each title starts with a
 coloured mark instead (`🟨 @lead`), taken from the same table in `src/colors.ts`. `output.log` is a file
 and stays plain. The table lives in
 `src/colors.ts` and nowhere else (#66). Colours are 24-bit RGB so they do not

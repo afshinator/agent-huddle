@@ -83,7 +83,8 @@ the time in a run went, `bun src/timings.ts _run/<run>` prints per turn the firs
 inside tools, and the longest wait with what preceded it.
 
 Every agent has a colour and the `[@handle]` prefix of its messages is shown in it — a handle named
-inside a sentence stays plain, so colour means "this agent is speaking". Each pane's title starts with a coloured mark (`🟨 @lead`), because herdr prints a title as text and an
+inside a sentence is italic instead, so colour means "this agent is speaking" and italics mean "this is
+an address". Each pane's title starts with a coloured mark (`🟨 @lead`), because herdr prints a title as text and an
 escape would show literally. The table is `src/colors.ts`, one line per agent. `AH_COLOR=0` (or `NO_COLOR`) turns it off, and `room.log` is always plain text.
 
 An agent's pane says whether it has been used: `@reviewer — idle, never dispatched`, then

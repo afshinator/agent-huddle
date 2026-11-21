@@ -65,6 +65,20 @@ function toAnsi256([r, g, b]: Rgb): number {
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
 }
 
+/**
+ * Italicise every mentions of an agent inside a line of text.
+ *
+ * Colour marks who is speaking, so a name inside a sentence stays uncoloured (#70); italic marks that
+ * the name is an address rather than a word — `@reviewer verify this` reads as a hand-off (#77).
+ * Only handles the room knows, and only where the `@` starts a word, so `a@dev1.com` and `@dev12`
+ * are left alone.
+ */
+export function italicMentions(text: string, known: (handle: string) => boolean): string {
+  return text.replace(/(^|[^\w@])(@[A-Za-z0-9_-]+)/g, (match, lead: string, handle: string) => {
+    return known(handle) ? `${lead}\u001b[3m${handle}${RESET}` : match;
+  });
+}
+
 /** The `[@handle]` prefix a room message carries, coloured. */
 export function paintTag(handle: string, colour: (handle: string) => string | null): string {
   const code = colour(handle);

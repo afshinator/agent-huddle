@@ -427,6 +427,11 @@ printed a coloured handle line at the top of each pane; that duplicated the titl
 each title starts with a coloured mark from the same table (`🟨 @lead`): a square renders in a title where
 an escape does not, and the handle stays greppable beside it.
 
+**Amendment (#77):** a known `@handle` inside a sentence is italic, not coloured. Italic says "this is an
+address"; colour would say "this agent is speaking", which is what the prefix already says. Styling runs on
+the finished line, because a handle can arrive split across two deltas. `AH_COLOR=0` turns it off with the
+colour, and `room.log` stays plain.
+
 **Amendment (#70):** colour marks the speaker, not the subject. Only a message's `[@handle]` prefix is
 painted; `@handle` named inside text is plain, as are the banner's handle list and the brief. The first
 version painted every mention, which made a room where everybody's name was coloured and nobody's voice

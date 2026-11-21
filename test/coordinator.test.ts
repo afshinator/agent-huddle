@@ -340,9 +340,10 @@ describe("Agent colours in the room (#66)", () => {
       // the prefix of a message carries the sender's colour, which is its mark's colour
       expect(text).toContain(`\u001b[${colorOf("lead", 0)}m[@lead]\u001b[0m`);
       expect(text).toContain(`\u001b[${colorOf("dev1", 1)}m[@dev1]\u001b[0m`);
-      // a handle named inside somebody's text stays plain: colour marks who is speaking,
-      // not who is being talked about (#70)
+      // a handle named inside somebody's text stays uncoloured: colour marks who is speaking,
+      // not who is being talked about (#70) — but it is italic, so the address is visible (#77)
       expect(text).not.toContain(`\u001b[${colorOf("dev1", 1)}m@dev1\u001b[0m go`);
+      expect(text).toContain("\u001b[3m@dev1\u001b[0m go");
     });
   }, 20_000);
 

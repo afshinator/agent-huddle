@@ -17,7 +17,7 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream } from "./chat-stream";
-import { colorOf, markOf, paintTag } from "./colors";
+import { colorOf, italicMentions, markOf, paintTag } from "./colors";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -102,6 +102,7 @@ export class Coordinator {
       { write: (s) => this.stdout.write(s) },
       (agentId) => this.config.agentById.get(agentId)?.handle ?? agentId,
       (handle) => this.colourFor(handle),
+      (text) => this.style(text),
     );
     this.stderr = deps.stderr ?? process.stderr;
     this.now = deps.now ?? (() => new Date().toISOString());
@@ -613,7 +614,7 @@ export class Coordinator {
       return;
     }
     const prefix = paintTag(msg.handle, (h) => this.colourFor(h));
-    this.stdout.write(`${prefix} ${msg.text}\n`);
+    this.stdout.write(`${prefix} ${this.style(msg.text)}\n`);
   }
 
   /** The room's brief: a framed block, so it reads as background rather than a command. */
@@ -626,7 +627,13 @@ export class Coordinator {
   /** A settled reply whose turn streamed nothing: print it the way the room always has. */
   private printAgentText(handle: string, text: string | null): void {
     if (text === null || text.trim() === "") return;
-    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${text}\n`);
+    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${this.style(text)}\n`);
+  }
+
+  /** Mentions are italic when styling is on; with it off the text is untouched (#77). */
+  private style(text: string): string {
+    if (!this.color) return text;
+    return italicMentions(text, (handle) => this.colourFor(handle) !== null);
   }
 
   /** The SGR payload for a handle, or null when colour is off or the handle is unknown. */
