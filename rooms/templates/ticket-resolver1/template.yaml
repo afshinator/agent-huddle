@@ -1,0 +1,37 @@
+name: ticket-resolver1
+# Two gates before any code and one after it: 4 hops to agree the ticket is real, 4 to
+# implement and review, 4 more per pushback round. 16 = the whole flow plus one round.
+max_hops: 16
+# The lead routes. A report that names a peer is context; only the lead hands out work.
+dispatch_scope: lead
+# A turn here reads code, edits it and runs a suite: ten minutes is a floor, not a ceiling.
+turn_timeout_ms: 900000
+# A supervised room belongs in a linked worktree, which this guard leaves alone, so `refuse`
+# is safe here and is the strictest setting if someone starts one in a checkout.
+launch_guard: refuse
+lead:
+  id: lead
+  handle: "@lead"
+  role: "Lead: settle whether the ticket is real and doable, then gate the fix on review. Never edits a file."
+  system_prompt_file: prompts/lead.md
+  provider: commandcode
+  model: deepseek/deepseek-v4-pro
+  thinking: medium
+  tools: [read, grep, bash]
+agents:
+  - id: dev1
+    handle: "@dev1"
+    role: "Check the ticket's claims against the code, then implement the smallest correct fix with a test."
+    system_prompt_file: prompts/dev1.md
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
+    thinking: high
+    tools: [read, grep, bash, write, edit]
+  - id: reviewer
+    handle: "@reviewer"
+    role: "Check the ticket independently, then review the diff and run the check yourself. Never edits a file."
+    system_prompt_file: prompts/reviewer.md
+    provider: commandcode
+    model: gpt-5.6-luna
+    thinking: high
+    tools: [read, grep, bash]

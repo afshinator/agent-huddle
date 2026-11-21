@@ -135,8 +135,8 @@ A room's `room_dir` contains:
 The smallest useful template has a lead and specialist agents:
 
 ```yaml
-name: tiny-factory
-room_dir: ./rooms/tiny-factory
+name: my-room
+room_dir: ./rooms/my-room
 max_hops: 8
 
 definition_of_done: |
@@ -166,7 +166,7 @@ agents:
     tools: [read, bash, edit, write, grep]
 ```
 
-`system_prompt` and `system_prompt_file` are mutually exclusive, and a prompt path resolves against the file that wrote it. Handles must be quoted in YAML because `@` is reserved in an unquoted YAML scalar. See [`rooms/templates/tiny-factory/template.yaml`](rooms/templates/tiny-factory/template.yaml) for a two-agent template and [`rooms/templates/docs-audit/template.yaml`](rooms/templates/docs-audit/template.yaml) for the three-agent audit room.
+`system_prompt` and `system_prompt_file` are mutually exclusive, and a prompt path resolves against the file that wrote it. Handles must be quoted in YAML because `@` is reserved in an unquoted YAML scalar. Two three-agent templates ship, each with a `launch.sh`: [`rooms/templates/docs-audit/template.yaml`](rooms/templates/docs-audit/template.yaml) for an inventory room, and [`rooms/templates/ticket-resolver1/template.yaml`](rooms/templates/ticket-resolver1/template.yaml) for a room that verifies a ticket, fixes it, and has the fix reviewed.
 
 ## Routing and completion
 
