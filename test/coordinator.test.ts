@@ -91,12 +91,21 @@ async function harness(
       ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
       ...(opts.debug ? { debug: opts.debug } : {}),
     });
-    await fn({ dir, err, coordinator, store, pi, panes, telemetry, out });
+    // Narrowed non-null locally: the `let` above exists only for the finally block, and a
+    // closure passed to waitUntil cannot narrow it.
+    const room = coordinator;
+    await fn({ dir, err, coordinator: room, store, pi, panes, telemetry, out });
 
     // A test that returns mid-chain leaves writes for whatever runs next: the room dir is
     // removed below, so the write lands as an ENOENT in a later test (#53). Drain first, so
     // nothing can write into a removed dir, then fail this test on what it left behind.
-    if (coordinator.workInFlight()) {
+    //
+    // Give the room a moment to quiesce: a submit the room started itself (a pane line, a
+    // chain finishing) is not work the test leaked, and which of the two the counter shows is
+    // a race. Work that never finishes — a held turn, a chain waiting on a model — stays and
+    // fails, which is the case this guard exists for.
+    await waitUntil(() => !room.workInFlight(), 2000).catch(() => undefined);
+    if (room.workInFlight()) {
       const state = await store.readState().catch(() => null);
       const chain = state?.chain;
       leaked = chain
@@ -524,6 +533,24 @@ describe("Coordinator (fakes)", () => {
     expect(ends.sort()).toEqual(["agent stop end dev1", "agent stop end lead"]);
     // every stop is announced before any of them completes: the ordering #51 depended on
     expect(lines.lastIndexOf("room stop start")).toBeLessThan(lines.indexOf("agent stop end dev1"));
+  });
+
+  test("the room is quiet as soon as boot() resolves", async () => {
+    // The counter has to settle with the promise a caller awaits, not one microtask later,
+    // or a caller that asks "is it idle" right after boot() sees a phantom boot (#53, CI).
+    await harness({ task: undefined }, async ({ coordinator }) => {
+      await coordinator.boot();
+      expect(coordinator.workInFlight()).toBe(false);
+    });
+  });
+
+  test("the room is quiet as soon as submit() resolves", async () => {
+    await harness({ task: undefined }, async ({ coordinator, pi }) => {
+      await coordinator.boot();
+      pi.script("lead", [{ lastText: "DONE" }]);
+      await coordinator.submit("@lead wrap up");
+      expect(coordinator.workInFlight()).toBe(false);
+    });
   });
 
   test("the harness fails a test that ends with a chain still running", async () => {

@@ -112,11 +112,13 @@ export class Coordinator {
     // directory it refuses to write into (abortBoot would, via its state write).
     await this.checkLaunchDir();
     try {
-      const run = this.bootRoom();
       this.inFlight += 1;
-      this.bootRun = run.catch(() => undefined).finally(() => {
+      // The counter comes back to zero inside the promise the caller awaits: a caller that
+      // asks "is the room quiet" right after boot() must not see a phantom boot (#53, CI).
+      const run = this.bootRoom().finally(() => {
         this.inFlight -= 1;
       });
+      this.bootRun = run.catch(() => undefined);
       return await run;
     } catch (e) {
       await this.abortBoot(e);
@@ -221,10 +223,11 @@ export class Coordinator {
       }
       await this.persistState();
       return result;
-    });
-    this.submitQueue = run.catch(() => undefined).finally(() => {
+    }).finally(() => {
+      // Same rule as boot(): the counter settles with the promise the caller awaits.
       this.inFlight -= 1;
     });
+    this.submitQueue = run.catch(() => undefined);
     return run;
   }
 
