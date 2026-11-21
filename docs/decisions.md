@@ -40,6 +40,10 @@ turn is checkable and is the lead's own judgement, which is the only judgement a
 **Cost, accepted:** a chain can end "completed" with the DoD unmet, and a lead that never writes the
 line runs to the hop cap. `hasDoneSignal` in `src/turn-loop.ts`.
 
+**Amendment (#78):** the DoD prose is appended to *every* agent's system prompt (`buildDonePrompt`),
+not only the lead's. It was lead-only until a ticket room needed a dev and a reviewer to work to the
+same bar; a peer measured against a bar it cannot read invents one. The lead alone still certifies.
+
 ## D3 — unmentioned context is pushed over an isolated seam
 
 **Decision:** an agent not targeted by a message still receives it as context through

@@ -25,16 +25,23 @@ export async function buildRolePrompt(
   const custom = await readSystemPrompt(agent);
   if (custom !== null) parts.push(custom);
   if (agent.id === config.config.lead.id) parts.push(buildLeadPrompt(config));
+  // Every agent is measured against the same bar, so every agent is told what it is; a dev that
+  // has to guess it builds to its own (#78).
+  parts.push(buildDonePrompt(config));
   return parts.join("\n\n");
 }
 
-/** Lead-only block: coordinator instructions + definition of done + DONE signal. */
-export function buildLeadPrompt(config: LoadedConfig): string {
+/** The run's own bar, appended to every agent's prompt. */
+export function buildDonePrompt(config: LoadedConfig): string {
   const dod = config.config.definition_of_done ?? "(none specified)";
+  return `The definition of done for this run is: ${dod}`;
+}
+
+/** Lead-only block: coordinator instructions + the DONE signal. */
+export function buildLeadPrompt(config: LoadedConfig): string {
   return [
     "You are the lead coordinator. Decompose the task, assign work via @handle,",
     "and integrate results. Do the specialist work yourself only as a last resort.",
-    `The definition of done is: ${dod}`,
     "When the definition of done is satisfied, end your reply with the line: DONE",
   ].join("\n");
 }

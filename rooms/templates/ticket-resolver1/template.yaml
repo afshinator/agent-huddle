@@ -1,7 +1,8 @@
 name: ticket-resolver1
 # Two gates before any code and one after it: 4 hops to agree the ticket is real, 4 to
-# implement and review, 4 more per pushback round. 16 = the whole flow plus one round.
-max_hops: 16
+# implement and review, 4 more per pushback round. 20 = the whole flow, two rounds, and a
+# re-check of a claim that turned out false.
+max_hops: 20
 # The lead routes. A report that names a peer is context; only the lead hands out work.
 dispatch_scope: lead
 # A turn here reads code, edits it and runs a suite: ten minutes is a floor, not a ceiling.

@@ -85,11 +85,11 @@ max_hops: 20               # optional overrides of the template's budgets
 A standalone room file (no `template:`) is unchanged:
 
 ```yaml
-name: tiny-factory          # required, slug. default room_dir = <cwd>/rooms/<name>
-room_dir: ./rooms/tiny-factory   # optional override
+name: my-room              # required, slug. default room_dir = <cwd>/rooms/<name>
+room_dir: ./rooms/my-room   # optional override
 task: |                    # optional initial mission (D2). omit -> idle start.
   Design and document a small service.
-definition_of_done: |      # optional, advisory to lead (D2). omit -> none.
+definition_of_done: |      # optional, one bar every agent is told (D2). omit -> none.
   A README plus one tested module.
 max_hops: 12               # D6. default 12.
 turn_timeout_ms: 300000    # how long one agent turn may take. default 300000.
@@ -161,7 +161,7 @@ export interface RoomConfig {
   name: string;
   room_dir: string;              // absolute after load
   task?: string;                 // D2 optional startup task
-  definition_of_done?: string;   // D2 optional
+  definition_of_done?: string;   // D2 optional; appended to every agent's prompt (#78)
   max_hops: number;              // default 12
   turn_timeout_ms: number;       // default 300000
   launch_guard?: "refuse" | "warn" | "off";  // default warn
@@ -283,9 +283,17 @@ Lead additionally gets (in its role prompt):
 ```
 You are the lead coordinator. Decompose the task, assign work via @handle,
 and integrate results. Do the specialist work yourself only as a last resort.
-The definition of done is: {definition_of_done}
 When the definition of done is satisfied, end your reply with the line: DONE
 ```
+
+and every agent's prompt ends with the run's own bar:
+
+```
+The definition of done for this run is: {definition_of_done}
+```
+
+A peer that is measured against the bar is told the bar (#78): a dev that has to infer it builds to
+its own, and a reviewer cannot rule on whether it was met. The lead alone still self-certifies.
 
 ---
 

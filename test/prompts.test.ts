@@ -69,40 +69,45 @@ describe("buildSocialContract", () => {
 });
 
 describe("buildLeadPrompt", () => {
-  test("golden text with DoD", () => {
+  test("golden text", () => {
     expect(buildLeadPrompt(cfg({ dod: "A README plus one tested module." }))).toBe(
       "You are the lead coordinator. Decompose the task, assign work via @handle,\n" +
         "and integrate results. Do the specialist work yourself only as a last resort.\n" +
-        "The definition of done is: A README plus one tested module.\n" +
         "When the definition of done is satisfied, end your reply with the line: DONE",
     );
-  });
-
-  test("absent DoD uses placeholder", () => {
-    expect(buildLeadPrompt(cfg())).toContain("The definition of done is: (none specified)");
   });
 });
 
 describe("buildRolePrompt", () => {
-  test("non-lead: role + inline system_prompt", async () => {
+  test("non-lead: role + system_prompt + the definition of done", async () => {
     expect(await buildRolePrompt(dev1, cfg())).toBe(
-      "Implement features and tests.\n\nYou write code and tests.",
+      "Implement features and tests.\n\nYou write code and tests.\n\n" +
+        "The definition of done for this run is: (none specified)",
     );
   });
 
-  test("non-lead without custom prompt: role only", async () => {
-    const d: AgentSpec = { id: "dev2", handle: "@dev2", role: "Review changes." };
-    expect(await buildRolePrompt(d, cfg({ agents: [d] }))).toBe("Review changes.");
+  test("non-lead knows the run's definition of done", async () => {
+    // The lead is not the only agent measured against the bar: a dev that has to guess it
+    // builds to its own, and a reviewer cannot say whether the bar was met (#78).
+    const result = await buildRolePrompt(dev1, cfg({ dod: "A test that fails first." }));
+    expect(result).toContain("The definition of done for this run is: A test that fails first.");
   });
 
-  test("lead: role + lead block", async () => {
+  test("non-lead without custom prompt: role, then the bar", async () => {
+    const d: AgentSpec = { id: "dev2", handle: "@dev2", role: "Review changes." };
+    expect(await buildRolePrompt(d, cfg({ agents: [d] }))).toBe(
+      "Review changes.\n\nThe definition of done for this run is: (none specified)",
+    );
+  });
+
+  test("lead: role + lead block + the definition of done", async () => {
     const result = await buildRolePrompt(lead, cfg({ lead, agents: [] }));
     expect(result).toBe(
       "Lead coordinator: decompose, assign, integrate. Never do specialist work.\n\n" +
         "You are the lead coordinator. Decompose the task, assign work via @handle,\n" +
         "and integrate results. Do the specialist work yourself only as a last resort.\n" +
-        "The definition of done is: (none specified)\n" +
-        "When the definition of done is satisfied, end your reply with the line: DONE",
+        "When the definition of done is satisfied, end your reply with the line: DONE\n\n" +
+        "The definition of done for this run is: (none specified)",
     );
   });
 
@@ -113,7 +118,7 @@ describe("buildRolePrompt", () => {
       await writeFile(file, "You are a careful dev.", "utf8");
       const d: AgentSpec = { id: "dev2", handle: "@dev2", role: "Dev", system_prompt_file: file };
       expect(await buildRolePrompt(d, cfg({ agents: [d] }))).toBe(
-        "Dev\n\nYou are a careful dev.",
+        "Dev\n\nYou are a careful dev.\n\nThe definition of done for this run is: (none specified)",
       );
     } finally {
       await rm(dir, { recursive: true, force: true });

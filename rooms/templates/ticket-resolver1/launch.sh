@@ -11,8 +11,9 @@
 #                                    detached otherwise: this is where the room's output goes
 #   3. the room itself, whose agents write in that worktree
 #
-# Nothing commits inside the room. After DONE the supervisor commits on the branch, pushes
-# it, merges it, and removes the worktree.
+# The room commits its work on the branch itself: @dev1 makes one commit per change and the
+# reviewer approves it there. Nothing is pushed and nothing reaches the base branch from
+# inside a room; merging the run branch and removing the worktree stay with a human.
 set -euo pipefail
 
 TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
