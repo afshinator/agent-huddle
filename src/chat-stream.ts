@@ -10,6 +10,8 @@
  * rest of the text following unprefixed), and a partial line is only ever held, never printed with
  * an invented newline.
  */
+import { paintTag } from "./colors";
+
 export interface ChatSink {
   write(s: string): void;
 }
@@ -25,6 +27,8 @@ export class ChatStream {
   constructor(
     private readonly sink: ChatSink,
     private readonly handleOf: (agentId: string) => string,
+    /** SGR payload for a handle, or null when colour is off: only the prefix is painted (#70). */
+    private readonly colourOf: (handle: string) => string | null = () => null,
   ) {}
 
   delta(agentId: string, text: string): void {
@@ -59,7 +63,7 @@ export class ChatStream {
   }
 
   private writeLines(agentId: string, text: string): void {
-    const prefix = this.printed.has(agentId) ? "" : `[${this.handleOf(agentId)}] `;
+    const prefix = this.printed.has(agentId) ? "" : `${paintTag(this.handleOf(agentId), this.colourOf)} `;
     this.printed.add(agentId);
     this.sink.write(prefix + text);
   }

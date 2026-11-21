@@ -17,6 +17,19 @@ describe("ChatStream", () => {
     expect(out).toEqual(["[@dev1] Got it: check the footer\n"]);
   });
 
+  test("the prefix is painted with the agent's colour, and the prose is not", () => {
+    const out: string[] = [];
+    const chat = new ChatStream(
+      { write: (s) => out.push(s) },
+      (id) => `@${id}`,
+      (handle) => (handle === "@dev1" ? "38;2;90;170;255" : null),
+    );
+    chat.delta("dev1", "Got it: plain prose naming @dev1\n");
+
+    // colour marks the speaker; the mention inside the sentence stays plain (#70)
+    expect(out).toEqual(["\u001b[38;2;90;170;255m[@dev1]\u001b[0m Got it: plain prose naming @dev1\n"]);
+  });
+
   test("further lines of one turn are not prefixed again", () => {
     const { chat, out } = make();
     chat.delta("dev1", "Got it: x\nsecond line\nthird\n");

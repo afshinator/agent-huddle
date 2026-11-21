@@ -289,22 +289,25 @@ describe("What a room message is allowed to look like (§room)", () => {
 describe("Agent colours in the room (#66)", () => {
   test("a mention and its prefix take the agent's colour when colour is on", async () => {
     await harness({ task: "do the work", color: true }, async ({ coordinator, pi, out }) => {
-      pi.script("lead", [{ lastText: "Got it: start\n@dev1 go\nDONE" }]);
+      // No DONE: the lead must actually dispatch dev1 for its prefix to appear.
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 go" }]);
       pi.script("dev1", [{ lastText: "Got it: go\nwent" }]);
 
       await coordinator.boot();
 
       const text = out.join("");
-      // the lead's mention of dev1, painted with dev1's row from src/colors.ts
-      expect(text).toContain("\u001b[38;2;90;170;255m@dev1\u001b[0m");
-      // and the prefix of a message carries the sender's colour
+      // the prefix of a message carries the sender's colour
       expect(text).toContain("\u001b[38;2;230;170;80m[@lead]\u001b[0m");
+      expect(text).toContain("\u001b[38;2;90;170;255m[@dev1]\u001b[0m");
+      // a handle named inside somebody's text stays plain: colour marks who is speaking,
+      // not who is being talked about (#70)
+      expect(text).not.toContain("\u001b[38;2;90;170;255m@dev1\u001b[0m go");
     });
   }, 20_000);
 
   test("with colour off the room is plain text", async () => {
     await harness({ task: "do the work", color: false }, async ({ coordinator, pi, out }) => {
-      pi.script("lead", [{ lastText: "Got it: start\n@dev1 go\nDONE" }]);
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 go" }]);
       pi.script("dev1", [{ lastText: "Got it: go\nwent" }]);
 
       await coordinator.boot();

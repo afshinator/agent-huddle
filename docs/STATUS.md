@@ -114,7 +114,8 @@ started.
 | An agent's pane stream belongs to one boot: truncated on open, `log.jsonl` still append-only, and the pane clears herdr's restored scrollback first | `test/agent-stream.test.ts`, `test/pane-command.test.ts`, `test/coordinator.test.ts`, #61 |
 | A pane opens with `@handle — idle, never dispatched · slot n/m` and marks `@handle — working` once per turn, so an unused pane cannot read as activity | `test/coordinator.test.ts`, #62 |
 | The agent pane carries tool calls and lifecycle lines, never the agent's prose | `test/coordinator.test.ts`, `test/agent-stream.test.ts`, #65 |
-| Every `@handle` and message prefix takes its agent's colour from `src/colors.ts`; `room.log` stays plain | `test/colors.test.ts`, `test/room-log.test.ts`, `test/coordinator.test.ts`, #66 |
+| Only a speaking message's prefix takes the agent's colour; a handle named in text stays plain | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, #70 |
+| A pane opens with its own handle in the agent's colour; herdr pane titles cannot be coloured | `test/pane-command.test.ts`, `test/colors.test.ts`, D17 |
 | A turn's settled text is every assistant message it contains, and a message boundary starts a new room line | `test/pi-protocol.test.ts` (two stubs), `docs/tickets/T11-settled-text-per-turn.md` |
 | `dispatch_scope: anyone` (default) dispatches every mention; `lead` makes a peer's mention context | `test/turn-loop.test.ts` (both scopes), `test/config.test.ts`, D18 |
 | The startup task prints as a brief block and notices as `·`, never as a participant's message | `test/coordinator.test.ts`, D19 |

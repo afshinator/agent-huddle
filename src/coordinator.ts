@@ -17,7 +17,7 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream } from "./chat-stream";
-import { colorOf, paintHandles, paintTag } from "./colors";
+import { colorOf, paintHandle, paintTag } from "./colors";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -98,8 +98,10 @@ export class Coordinator {
     this.roomLogPath = deps.roomLogPath;
     this.color = deps.color;
     this.chat = new ChatStream(
-      { write: (s) => this.stdout.write(this.paint(s)) },
+      // Agent prose prints plain: colour marks who speaks, not who is named (#70).
+      { write: (s) => this.stdout.write(s) },
       (agentId) => this.config.agentById.get(agentId)?.handle ?? agentId,
+      (handle) => this.colourFor(handle),
     );
     this.stderr = deps.stderr ?? process.stderr;
     this.now = deps.now ?? (() => new Date().toISOString());
@@ -202,7 +204,8 @@ export class Coordinator {
       // The pane runs a script file, not an inline `sh -c`: herdr types the command
       // into the pane shell one word per argument, which strips inline quoting.
       const scriptPath = join(agentDir, "pane.sh");
-      await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath }), "utf8");
+      const header = paintHandle(agent.handle, (h) => this.colourFor(h));
+      await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath, header }), "utf8");
 
       const markWorking = (): void => {
         if (this.working.has(agent.id)) return;
@@ -496,7 +499,7 @@ export class Coordinator {
   /** Before the first dispatch: what this room is, who is in it, and where it writes. */
   private printBanner(): void {
     const { name, room_dir: roomDir, task } = this.config.config;
-    const handles = this.paint(this.config.allAgents.map((a) => a.handle).join(" "));
+    const handles = this.config.allAgents.map((a) => a.handle).join(" ");
     this.printLine(`── room ${name} · ${this.config.allAgents.length} agents ${handles} · run dir ${roomDir} ──`);
     const ask = task === undefined ? "none — the room waits for your first message" : firstLine(task);
     this.printLine(`ask: ${ask}`);
@@ -538,24 +541,24 @@ export class Coordinator {
       this.chat.endAll("interrupted");
       // The room's own note, not a participant's message: a bare `·` marks it as out-of-band,
       // and no agent ever receives it as context (#68).
-      this.stdout.write(`· ${this.paint(msg.text)}\n`);
+      this.stdout.write(`· ${msg.text}\n`);
       return;
     }
     const prefix = paintTag(msg.handle, (h) => this.colourFor(h));
-    this.stdout.write(`${prefix} ${this.paint(msg.text)}\n`);
+    this.stdout.write(`${prefix} ${msg.text}\n`);
   }
 
   /** The room's brief: a framed block, so it reads as background rather than a command. */
   private printBrief(text: string): void {
     this.printLine("── brief ── background: what this room was launched to do");
-    for (const line of text.split("\n")) this.printLine(line === "" ? "" : `  ${this.paint(line)}`);
+    for (const line of text.split("\n")) this.printLine(line === "" ? "" : `  ${line}`);
     this.printLine("── end brief ──");
   }
 
   /** A settled reply whose turn streamed nothing: print it the way the room always has. */
   private printAgentText(handle: string, text: string | null): void {
     if (text === null || text.trim() === "") return;
-    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${this.paint(text)}\n`);
+    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${text}\n`);
   }
 
   /** The SGR payload for a handle, or null when colour is off or the handle is unknown. */
@@ -565,10 +568,5 @@ export class Coordinator {
     if (!agent) return null;
     const slot = this.config.allAgents.indexOf(agent);
     return colorOf(agent.id, slot);
-  }
-
-  /** Every `@handle` in a line takes its agent's colour; with colour off this is identity. */
-  private paint(text: string): string {
-    return this.color ? paintHandles(text, (h) => this.colourFor(h)) : text;
   }
 }

@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { AGENT_RGB, FALLBACK_RGB, colorOf, paintHandles, paintTag, stripAnsi, colorEnabled } from "../src/colors";
+import { AGENT_RGB, FALLBACK_RGB, colorOf, paintHandle, paintTag, stripAnsi, colorEnabled } from "../src/colors";
 
 const RED = "\u001b[38;2;255;0;0m";
 const BLUE = "\u001b[38;2;0;0;255m";
@@ -22,39 +22,17 @@ describe("colorOf", () => {
   });
 });
 
-describe("paintHandles", () => {
-  const colors = (handle: string): string | null =>
-    handle === "@lead" ? "38;2;255;0;0" : handle === "@dev1" ? "38;2;0;0;255" : null;
-
-  test("a known handle is wrapped, everything else is untouched", () => {
-    expect(paintHandles("@lead please look", colors)).toBe(`${RED}@lead${RESET} please look`);
-  });
-
-  test("every mention of the same agent gets the same colour", () => {
-    const out = paintHandles("@dev1 and again @dev1", colors);
-    expect(out).toBe(`${BLUE}@dev1${RESET} and again ${BLUE}@dev1${RESET}`);
-  });
-
-  test("an unknown handle is left alone rather than given a colour", () => {
-    expect(paintHandles("@nobody here", colors)).toBe("@nobody here");
-  });
-
-  test("boundaries: a longer handle, an email and punctuation are not mangled", () => {
-    expect(paintHandles("@dev12 x", colors)).toBe("@dev12 x");
-    expect(paintHandles("mail a@dev1.com", colors)).toBe("mail a@dev1.com");
-    expect(paintHandles("ask @dev1, then stop", colors)).toBe(`ask ${BLUE}@dev1${RESET}, then stop`);
-  });
-
-  test("disabled or empty input is returned untouched", () => {
-    expect(paintHandles("@lead hi", () => null)).toBe("@lead hi");
-    expect(paintHandles("", colors)).toBe("");
-  });
-});
-
 describe("paintTag", () => {
   test("the message prefix takes the agent's colour", () => {
     expect(paintTag("@lead", () => "38;2;255;0;0")).toBe(`${RED}[@lead]${RESET}`);
     expect(paintTag("@lead", () => null)).toBe("[@lead]");
+  });
+});
+
+describe("paintHandle", () => {
+  test("a bare handle takes its colour, and stays plain with colour off", () => {
+    expect(paintHandle("@dev1", () => "38;2;90;170;255")).toBe("\u001b[38;2;90;170;255m@dev1\u001b[0m");
+    expect(paintHandle("@dev1", () => null)).toBe("@dev1");
   });
 });
 

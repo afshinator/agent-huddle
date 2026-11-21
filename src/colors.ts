@@ -1,9 +1,10 @@
 /**
  * Agent colours: the one file to edit.
  *
- * Each agent gets an RGB triple, and every `@handle` in the room is printed in that colour, so a
- * reader can tell who is speaking without parsing the prefix. Nothing else in the repo restates
- * these values.
+ * Each agent gets an RGB triple, and the `[@handle]` prefix of its messages is printed in that
+ * colour, so a reader can tell who is speaking without parsing the prefix. A handle named inside
+ * somebody's text stays plain: colour marks the speaker, never the subject (#70). Nothing else in
+ * the repo restates these values.
  *
  * RGB rather than the 16-colour names on purpose: a named colour resolves against the reader's
  * terminal theme, so `red` is one thing in a light theme and another in a dark one. A 24-bit
@@ -43,14 +44,10 @@ function toAnsi256([r, g, b]: Rgb): number {
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
 }
 
-/** Colours every known `@handle` in the text. Unknown handles and non-mentions are untouched. */
-export function paintHandles(text: string, colour: (handle: string) => string | null): string {
-  // `@` must start a word, and the handle ends at the first non-handle character, so
-  // `a@dev1.com` and `@dev12` are left alone.
-  return text.replace(/(^|[^\w@])@([A-Za-z0-9_-]+)/g, (match, lead: string, handle: string) => {
-    const code = colour(`@${handle}`);
-    return code === null ? match : `${lead}\u001b[${code}m@${handle}${RESET}`;
-  });
+/** A bare `@handle`, coloured: what a pane opens with, and the only place a mention is painted. */
+export function paintHandle(handle: string, colour: (handle: string) => string | null): string {
+  const code = colour(handle);
+  return code === null ? handle : `\u001b[${code}m${handle}${RESET}`;
 }
 
 /** The `[@handle]` prefix a room message carries, coloured. */

@@ -416,9 +416,15 @@ is the one a human edits to change them.
 24-bit triple looks the same in every herdr session.
 
 **Rejected:** herdr UI theming — the CLI has no per-pane or per-label colour (`herdr pane rename` accepts
-only `--clear`) and `[theme]` styles the UI, not an agent's identity. Also rejected: colouring the agent
-panes, because `output.log` is a file agents and tests read and herdr strips escapes on `pane read`
-anyway; the room is where a reader needs to tell voices apart.
+only `--clear`) and `[theme]` styles the UI, not an agent's identity. A probe confirmed the label is
+stored as a raw string (`label` came back as `\u001b[38;2;90;170;255m@dev1\u001b[0m`, 27 chars), so an
+escape there would show as junk in a UI that does not parse it; that is why the pane's handle is printed
+as its first *line* instead, through `pane.sh`, leaving `output.log` plain.
+
+**Amendment (#70):** colour marks the speaker, not the subject. Only a message's `[@handle]` prefix is
+painted; `@handle` named inside text is plain, as are the banner's handle list and the brief. The first
+version painted every mention, which made a room where everybody's name was coloured and nobody's voice
+was.
 
 **Cost, accepted:** a terminal without truecolor shows the escapes literally, which is why
 `PALETTE_MODE` exists (`rgb` or `256`); and `room.log` is stripped of colour, so the archive and the

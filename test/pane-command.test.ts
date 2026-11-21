@@ -29,6 +29,18 @@ describe("paneCommand", () => {
     }
   });
 
+  test("the pane opens with its own handle, coloured when the room has colour", () => {
+    const script = paneScript({
+      stream: "/r/agents/dev1/output.log",
+      inbox: "/r/agents/dev1/inbox",
+      header: "\u001b[38;2;90;170;255m@dev1\u001b[0m",
+    });
+
+    // before the tail starts, so it is the first thing a reader sees
+    expect(script.indexOf("@dev1")).toBeLessThan(script.indexOf("tail -f"));
+    expect(script).toContain("38;2;90;170;255");
+  });
+
   test("a path with a space or a quote cannot break out of the quotes", () => {
     const script = paneScript({ stream: "/r/a b/it's.log", inbox: "/r/a b/it's.inbox" });
 

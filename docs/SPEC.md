@@ -506,8 +506,11 @@ held, not broken; when a turn dies — timeout, abort, a notice — the open lin
 `[handle] (interrupted)` so the transcript never stops mid-sentence. Tool calls stay in the agent's own
 pane: the room is the conversation, not the machine log.
 
-Every agent gets a colour and every `@handle` in the room is printed in it, as is the `[@handle]`
-prefix; the table lives in `src/colors.ts` and nowhere else (#66). Colours are 24-bit RGB so they do not
+Every agent gets a colour, and the `[@handle]` prefix of the messages it speaks is printed in it; a
+handle named inside somebody's text stays plain, because colour marks the speaker and not the subject
+(#70). Each pane prints its own handle, coloured, as its first line — herdr has no colour for a pane
+title — and `output.log` stays plain, because that line lives in `pane.sh`. The table lives in
+`src/colors.ts` and nowhere else (#66). Colours are 24-bit RGB so they do not
 change with the reader's terminal theme. `AH_COLOR=1` forces colour, `AH_COLOR=0` or `NO_COLOR` disables
 it, and the default is colour when the room's stdout is a terminal — decided by `src/index.ts`, because
 the coordinator receives a wrapped `stdout` and cannot see one (#67) — so a piped run and the test
