@@ -108,3 +108,25 @@ describe("AgentStream", () => {
     });
   });
 });
+
+describe("AgentStream across boots", () => {
+  test("opening an agent's stream again starts a clean file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-stream-boot-"));
+    try {
+      const path = join(dir, "output.log");
+      const stream = new AgentStream();
+      stream.open("dev1", path);
+      await stream.line("dev1", "[started] pid=1");
+      await stream.line("dev1", "[exited]");
+
+      // a second boot, same room directory
+      stream.open("dev1", path);
+      await stream.line("dev1", "[started] pid=2");
+
+      const text = await readFile(path, "utf8");
+      expect(text).toBe("[started] pid=2\n");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -111,6 +111,7 @@ started.
 | A startup task that names agents dispatches only the lead, and pushes the text to the named agents as context | `test/turn-loop.test.ts`, #57 |
 | The room prints its banner (name, handles, run dir, ask, transcript) and the measured layout before dispatching, and appends every line to `room.log` | `test/coordinator.test.ts`, `test/room-log.test.ts`, #59 |
 | An agent's prose reaches the room from the stream deltas, before the turn settles; the settled text is not printed twice, and a dying turn closes the line | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, #63 |
+| An agent's pane stream belongs to one boot: truncated on open, `log.jsonl` still append-only, and the pane clears herdr's restored scrollback first | `test/agent-stream.test.ts`, `test/pane-command.test.ts`, `test/coordinator.test.ts`, #61 |
 | A direct mention must be acknowledged with `Got it: …` (scope `lead` by default, `anyone` on request); a broadcast or the startup task need not, and a missing acknowledgement appends one notice naming the agent | `test/turn-loop.test.ts`, `test/prompts.test.ts`, #60 |
 | A room's `pi` children are spawned with `PI_TEST_INTEGRATION=0`, so an agent running the suite opens no panes | `test/pi-protocol.test.ts`, #58 |
 | A run overlays a template: ask from the run, agents from the template; an agent of the same id is replaced whole; a run may not set `name` | `test/config-template.test.ts`, D13 |

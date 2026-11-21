@@ -1,4 +1,4 @@
-import { appendFile } from "node:fs/promises";
+import { appendFile, writeFile } from "node:fs/promises";
 
 /** Tool arguments on one line, short enough to read in a pane. */
 function oneLine(args: unknown): string {
@@ -30,11 +30,23 @@ export class AgentStream {
    */
   private readonly queues = new Map<string, Promise<void>>();
 
-  constructor(private readonly write: typeof appendFile = appendFile) {}
+  constructor(
+    private readonly write: typeof appendFile = appendFile,
+    private readonly truncate: typeof writeFile = writeFile,
+  ) {}
 
-  /** Register an agent's stream file. Creates it on first write. */
+  /**
+   * Register an agent's stream file and start it from empty (#61).
+   *
+   * The pane tails this file, and herdr restores a pane's old scrollback, so an appended
+   * stream showed every earlier boot's lifecycle lines under the new ones. The truncation is
+   * queued on the same per-agent chain as the writes, so it always lands first; `log.jsonl`
+   * is untouched and stays the machine record.
+   */
   open(agentId: string, path: string): void {
     this.paths.set(agentId, path);
+    const next = this.truncate(path, "", "utf8");
+    this.queues.set(agentId, next.catch(() => undefined));
   }
 
   async delta(agentId: string, text: string): Promise<void> {

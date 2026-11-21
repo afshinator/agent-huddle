@@ -16,11 +16,14 @@ import { shellWord } from "./shell";
  * loses its quoting and the pane runs garbage — measured, not assumed.
  */
 export function paneScript(opts: { stream: string; inbox: string | null }): string {
+  // herdr restores a pane's terminal session, so without clearing, the previous boot's lines
+  // sit above this one's and a fresh pane looks busy (#61).
+  const clear = `printf '\\033[2J\\033[H'`;
   const tail = `exec tail -f ${shellWord(opts.stream)}`;
   if (opts.inbox === null) {
-    return `printf '%s\\n' 'read-only - type in the chat pane'\n${tail}\n`;
+    return `${clear}\nprintf '%s\\n' 'read-only - type in the chat pane'\n${tail}\n`;
   }
   const follower = `tail -f ${shellWord(opts.stream)} &`;
   const reader = `while IFS= read -r line; do printf '%s\\n' "$line" >> ${shellWord(opts.inbox)}; done`;
-  return `${follower}\n${reader}\n`;
+  return `${clear}\n${follower}\n${reader}\n`;
 }

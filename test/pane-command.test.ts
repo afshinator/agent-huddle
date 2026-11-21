@@ -20,6 +20,15 @@ describe("paneCommand", () => {
     expect(script).not.toContain("read -r line");
   });
 
+  test("both scripts clear the pane first, so herdr's restored scrollback is gone", () => {
+    // herdr restores a pane's terminal session: without this the previous boot's lines
+    // sit above the live tail and a fresh pane looks busy (#61)
+    for (const inbox of ["/r/agents/dev1/inbox", null]) {
+      const script = paneScript({ stream: "/r/agents/dev1/output.log", inbox });
+      expect(script.startsWith("printf '\\033[2J\\033[H'\n")).toBe(true);
+    }
+  });
+
   test("a path with a space or a quote cannot break out of the quotes", () => {
     const script = paneScript({ stream: "/r/a b/it's.log", inbox: "/r/a b/it's.inbox" });
 

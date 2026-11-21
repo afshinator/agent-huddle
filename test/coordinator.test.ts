@@ -191,6 +191,22 @@ describe("Coordinator chat stream (#63)", () => {
   }, 20_000);
 });
 
+describe("A boot's pane stream is its own (#61)", () => {
+  test("output.log holds this boot's lifecycle lines and nothing older", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
+      pi.script("lead", [{ lastText: "done\nDONE" }]);
+      await coordinator.boot();
+      await coordinator.shutdown();
+
+      const text = await readFile(join(dir, "agents", "lead", "output.log"), "utf8");
+      // one start, and the exit this boot wrote: the header still comes after the truncation
+      expect(text.split("[started]").length - 1).toBe(1);
+      expect(text.startsWith("[started] pid=")).toBe(true);
+      expect(text.split("[exited]").length - 1).toBe(1);
+    });
+  }, 20_000);
+});
+
 describe("Coordinator boot banner (#59)", () => {
   test("boot names the room, its handles, the run dir, the ask and the transcript before any agent speaks", async () => {
     const logPath = join(tmpdir(), "ah-banner-room.log");
