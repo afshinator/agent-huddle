@@ -46,7 +46,10 @@ done
 
 REPO="${REPO:-$PWD}"
 REPO="$(cd "$REPO" && pwd)"
-SLUG="${SLUG:-$(date +%Y-%m-%d-%H%M%S)}"
+REQUESTED="${SLUG:-$(date +%Y-%m-%d-%H%M%S)}"
+# Run names start with an ordinal so `ls _run/` shows creation order; an existing run keeps it.
+SLUG="$(bun "$HUDDLE_ROOT/src/run-slug.ts" next "$REPO/_run" "$REQUESTED")"
+[ -n "$SLUG" ] || { echo "launch: could not name the run" >&2; exit 1; }
 RUN_DIR="$REPO/_run/$SLUG"
 WORKTREE="$(dirname "$REPO")/$(basename "$REPO")-$SLUG"
 NAME="$(basename "$TEMPLATE_DIR")"

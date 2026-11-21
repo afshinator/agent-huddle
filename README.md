@@ -36,7 +36,7 @@ one ask. Templates are tracked, runs never are:
 rooms/templates/<type>/template.yaml   # name, budgets, lead + agents, each with its prompt
 rooms/templates/<type>/prompts/*.md    # the prompts that template uses
 rooms/templates/<type>/launch.sh       # the only glue: prepare, worktree, boot
-_run/<slug>/                           # gitignored: the ask, the resolved config, prompts snapshot,
+_run/<NNN>-<slug>/                     # gitignored: the ask, the resolved config, prompts snapshot,
                                        # room runtime, notes — everything this run produced or used
 ```
 
@@ -46,7 +46,11 @@ Start a room from its template, pointing at the repo whose code the agents will 
 ./rooms/templates/docs-audit/launch.sh --repo ~/dev/some-repo --slug 2026-11-20-audit --branch
 ```
 
-That writes a skeleton `_run/<slug>/run.yaml` and stops; edit the ask, run it again, and it prepares
+The run directory is numbered in creation order (`001-docs-audit`, `002-…`), so `ls _run/` reads as a
+history. Re-running the same `--slug` reuses that run's directory instead of starting a second one beside
+it.
+
+That writes a skeleton `_run/<NNN>-<slug>/run.yaml` and stops; edit the ask, run it again, and it prepares
 `run.resolved.yaml` plus a snapshot of the prompts, creates a worktree at `../<repo>-<slug>` (branch
 `run/<slug>` with `--branch`, detached without, when the run produces nothing to check in), and boots
 the room there. Add `--dry-run` to prepare everything without booting.
@@ -66,7 +70,7 @@ An `agents:` entry in a run replaces the template's agent of that id **whole** (
 add an agent the template does not have. A run may not set `name`.
 
 Nothing commits inside the room. After `DONE`, review the worktree, commit on `run/<slug>`, push, merge,
-and `git worktree remove` it. The `_run/<slug>/` collateral stays behind on the machine that ran it.
+and `git worktree remove` it. The `_run/<NNN>-<slug>/` collateral stays behind on the machine that ran it.
 
 Each agent gets a pane showing that agent's work as prose. The pane tails `<room_dir>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.
 
