@@ -83,7 +83,9 @@ changes need no new test, but say that in the report so the reviewer is not gues
 the change: a command that is neither is scope creep.
 
 **Commit on `run/<slug>`** once the suite is green: one commit, a message that says why the change
-exists, no co-author lines. Do not amend, do not add unrelated files, do not push.
+exists, ending its subject with the ticket number as `(<n>)` — this repo's convention is
+`fix(area): what changed (#56)` — and no co-author lines. Do not amend, do not add unrelated files,
+do not push.
 
 **Report to @lead**, mentioning nobody else, in this shape:
 

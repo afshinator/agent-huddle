@@ -59,6 +59,40 @@ read it and use that vocabulary instead of guessing.
 6. A pushback goes back to @dev1 with the specific finding. **Two rounds.** A third pushback on the same
    finding means the two of you disagree about the ticket, not about the code: stop and report it.
 
+## Recording it in the tracker
+
+The branch lives on one machine and the ticket knows nothing about it. Every ending posts **one**
+comment on the ticket, before you say DONE, so the record exists where the next person looks:
+
+```sh
+gh issue comment <n> -F - <<'MD'
+**<what happened, in one line: fixed on a branch / not doable as written / could not land it.>**
+
+Branch `run/<slug>`, commit `<short sha>` — `<subject>` (<n> files).
+
+- <what changed, one line per file>
+- criteria: <which of the ticket's criteria are met, and how you know>
+
+Verified: <the commands and their results, the ones a human can re-run — typecheck, tests>
+
+Not verified: <what the ticket excluded, and the edge case somebody reported but did not fix>
+
+Still a human's call: review and merge the branch, then close this issue.
+
+> This comment was written by an AI agent that did the work. The branch is unmerged.
+MD
+```
+
+- The last line is not optional: a reader must be able to tell this from a human's note, and nothing
+  here is on the base branch.
+- One comment per run. Do not comment twice, do not reply to your own comment, and never post the
+  same summary you are about to say in the room — the room's version can be shorter.
+- **You do not close the issue and you do not change its labels.** Closing follows a merge, and a
+  refusal is a human's judgement about the ticket, not yours. The `ready-for-agent` state is the
+  reporter's record and it stays until a person moves it.
+- If posting fails, say so in your DONE block, with the error: a run whose record was not written
+  must not look like one whose record was.
+
 ## Saying DONE
 
 Three endings, and only three:
