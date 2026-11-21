@@ -4,6 +4,10 @@ export interface PaneSpec {
   id: PaneId;
   title: string;
   command?: string[];      // e.g. ["tail","-f", logPath]
+  /** 1-based position among the agent panes, in the order the room declares them. */
+  slot?: number;
+  /** How many agent panes the room will open in total. */
+  slots?: number;
 }
 
 export interface HerdrPaneManager {

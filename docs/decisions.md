@@ -300,3 +300,29 @@ inferred from a config key. Templates are the thing worth sharing; a run is one 
 config (default `<cwd>/rooms/<name>`) and a run (default the run file's directory). The resolved snapshot
 is what a run is reproducible from, so a template edited later silently stops describing past runs — which
 is the point, but it means the snapshot is the evidence, not the template.
+
+## D14 — The pane shape is computed from the tab, not fixed
+
+**Context.** The manager split the current pane once per agent with herdr's default ratio, so the room
+pane halved itself repeatedly and the last agent landed furthest from the chat. `herdr` only accepts a
+`--ratio` per split, and a probe elsewhere measured exactly this failure: repeated 0.5 splits produce a
+staircase (29/14/7/4/2/1 rows), while equal bands come from splitting one base pane with
+`(n-k)/(n-k+1)` (probe notes in `pi-herdr-panes/SPEC.md`, F6/F7).
+
+**Decision.** `src/layout.ts` owns the geometry: six named constants at the top of that one file, and
+`chooseLayout` tests both orientations and every grid shape against two floors (a pane needs 64x8, the
+chat 100x24), scoring survivors by worst aspect against 3.0. The manager reads the tab from
+`herdr pane layout`, carves the chat pane once, splits the region with those ratios, and assigns slots
+by measured `rect` order.
+
+**Rejected alternatives.**
+- *Keep one split per agent with the default ratio.* That is the staircase; the chat ends at 1/8.
+- *Three or four equal columns always.* At 176 columns each pane would be 58 wide, under the floor.
+- *Assign slots in creation order.* The probes measured slice sizes, not which end a split lands on;
+  sorting by `rect` makes the question moot.
+
+**Why:** the tab size is the only fact that decides whether a shape is readable, and it is measurable
+before the first split.
+
+**Cost, accepted:** an unreadable tab now fails boot instead of producing panes nobody can read, and
+the constants are judgement values until a live run measures rows against a real tab.

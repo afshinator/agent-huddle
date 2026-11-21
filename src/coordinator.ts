@@ -131,7 +131,7 @@ export class Coordinator {
     await mkdir(roomDir, { recursive: true });
     this.roomState = await this.loadOrCreateState();
 
-    for (const agent of this.config.allAgents) {
+    for (const [agentIndex, agent] of this.config.allAgents.entries()) {
       const rolePrompt = await buildRolePrompt(agent, this.config);
       const socialContract = buildSocialContract(agent, this.config);
       const info = await this.pi.spawn(agent, {
@@ -196,6 +196,8 @@ export class Coordinator {
           id: `agent-${agent.id}`,
           title: agent.handle,
           command: ["sh", scriptPath],
+          slot: agentIndex + 1,
+          slots: this.config.allAgents.length,
         });
         if (this.roomState) this.roomState.agents[agent.id].paneId = paneId;
       }

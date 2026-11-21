@@ -427,6 +427,17 @@ Layout (agent panes created at boot, via `herdr pane split` / `run` / `rename`; 
 └──────────────────────────┴──────────────────────────┘
 ```
 
+The drawing above is an illustration, not a promise: the actual shape follows the tab. The manager
+reads `herdr pane layout --current` for the tab's size in cells and asks `src/layout.ts`
+(`chooseLayout`) for a plan, which keeps the room pane at or above `MIN_CHAT_COLS` x `MIN_CHAT_ROWS`
+and every agent pane at or above `MIN_PANE_COLS` x `MIN_PANE_ROWS`, preferring shapes whose cells
+come closest to `TARGET_ASPECT`. Those constants live only in `src/layout.ts`. The room pane is carved
+**once** (the ratio is what it keeps); the agent region is then split into bands and each band into
+panes using herdr's measured rule that the pane being split keeps `(n-k)/(n-k+1)`, never repeated
+`--ratio 0.5` halving. Slots are assigned by measured `rect` position, sorted by `(y, x)`, so the
+order does not depend on which end a split lands on. If the tab cannot satisfy the floors, boot fails
+with one line naming the size and the agent count (#56).
+
 Rules:
 
 - **room pane** (the shared chat room): runs the coordinator process. Its stdout prints the room stream (each appended `messages.jsonl` entry, formatted); its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
