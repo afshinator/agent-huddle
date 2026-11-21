@@ -7,23 +7,18 @@ function oneLine(args: unknown): string {
 }
 
 /**
- * Human-readable per-agent stream (D7): the pane tails this file instead of `log.jsonl`.
+ * The per-agent pane stream: tool calls and lifecycle lines, never the agent's prose (#65).
  *
- * Rules, in one place so the pane's appearance is testable without a coordinator:
- * - prose is written verbatim, so streamed deltas read as paragraphs, not fragments;
- * - a turn ends with a blank line, so turns stay visually separate;
- * - a turn that streamed nothing writes its settled text instead (a provider may send
- *   `text_end` without `text_delta`), so the pane never loses a turn;
- * - lifecycle events get their own prefixed line, and close an open paragraph first.
+ * The conversation lives in the room pane, in one place, which is the point of a chat room;
+ * a pane that repeated it showed every reply twice and made the room harder to follow. What
+ * a pane is for is the machine-adjacent detail the room deliberately does not carry: which
+ * tool ran with what arguments, when the process started, when it exited, what went wrong.
  *
- * `log.jsonl` is unaffected: it stays the machine record.
+ * `log.jsonl` is unaffected: it stays the machine record, deltas included.
  */
 export class AgentStream {
   private readonly paths = new Map<string, string>();
-  /** Agents whose current line has text on it, so a lifecycle line starts clean. */
-  private readonly midLine = new Set<string>();
-  /** Agents that streamed deltas since their last settle. */
-  private readonly streamed = new Set<string>();
+
   /**
    * One write chain per agent. Concurrent `appendFile` calls complete out of order:
    * three deltas arrived as "Answered prose.\nin ", so the pane would show scrambled text.
@@ -49,24 +44,6 @@ export class AgentStream {
     this.queues.set(agentId, next.catch(() => undefined));
   }
 
-  async delta(agentId: string, text: string): Promise<void> {
-    if (text === "") return;
-    this.streamed.add(agentId);
-    if (text.endsWith("\n")) this.midLine.delete(agentId);
-    else this.midLine.add(agentId);
-    await this.append(agentId, text);
-  }
-
-  /** End of turn: fall back to the settled text when nothing streamed, then break the line. */
-  async settle(agentId: string, lastText: string | null): Promise<void> {
-    const streamed = this.streamed.delete(agentId) === true;
-    if (!streamed && lastText) {
-      await this.delta(agentId, lastText);
-    }
-    if (this.midLine.delete(agentId)) await this.append(agentId, "\n");
-    await this.append(agentId, "\n");
-  }
-
   /** One line per tool call: `[tool] bash {"command":"ls"}`. */
   async tool(agentId: string, tool: { name: string; args: unknown }): Promise<void> {
     await this.line(agentId, `[tool] ${tool.name} ${oneLine(tool.args)}`);
@@ -74,9 +51,6 @@ export class AgentStream {
 
   /** One lifecycle line, e.g. `[error] pi process exited` or `[exited]`. */
   async line(agentId: string, text: string): Promise<void> {
-    // Does not touch `streamed`: a tool line lands mid-turn, and the turn's own
-    // settle must still know whether prose was streamed.
-    if (this.midLine.delete(agentId)) await this.append(agentId, "\n");
     await this.append(agentId, `${text}\n`);
   }
 

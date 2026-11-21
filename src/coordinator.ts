@@ -17,6 +17,7 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream } from "./chat-stream";
+import { colorEnabled, colorOf, paintHandles, paintTag } from "./colors";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -33,6 +34,8 @@ export interface CoordinatorDeps {
   stdout?: { write(s: string): void };
   /** Where the human-readable transcript lives, printed in the banner (#59). */
   roomLogPath?: string;
+  /** Force colour on or off; default is "on when the room's own output is a terminal" (#66). */
+  color?: boolean;
   stderr?: { write(s: string): void };
   now?: () => string;
   inboxPollMs?: number;
@@ -63,6 +66,8 @@ export class Coordinator {
   private readonly chat: ChatStream;
   /** Agents that have shown activity this turn, so the "working" marker is written once. */
   private readonly working = new Set<string>();
+  /** On unless the output is not a terminal; `AH_COLOR` and `NO_COLOR` override (#66). */
+  private readonly color: boolean;
   private readonly stderr: { write(s: string): void };
   private readonly now: () => string;
   private persistQueue: Promise<void> = Promise.resolve();
@@ -90,8 +95,9 @@ export class Coordinator {
     this.cwd = deps.cwd ?? process.cwd();
     this.stdout = deps.stdout ?? process.stdout;
     this.roomLogPath = deps.roomLogPath;
+    this.color = deps.color ?? colorEnabled(process.env, this.stdout === process.stdout && process.stdout.isTTY === true);
     this.chat = new ChatStream(
-      { write: (s) => this.stdout.write(s) },
+      { write: (s) => this.stdout.write(this.paint(s)) },
       (agentId) => this.config.agentById.get(agentId)?.handle ?? agentId,
     );
     this.stderr = deps.stderr ?? process.stderr;
@@ -206,7 +212,6 @@ export class Coordinator {
       this.pi.on("stream", agent.id, (delta) => {
         markWorking();
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
-        this.watchFailure("agent pane write", agent.id, this.agentStream.delta(agent.id, delta));
         // The room sees the prose as it is written, not when the turn ends (#63).
         this.chat.delta(agent.id, delta);
       });
@@ -225,7 +230,6 @@ export class Coordinator {
           runtime.lastActivityAt = this.now();
         }
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
-        this.watchFailure("agent pane write", agent.id, this.agentStream.settle(agent.id, r.lastText));
         // A provider may settle with text and no deltas; then the room still needs the words.
         if (!this.chat.end(agent.id)) this.printAgentText(agent.handle, r.lastText);
         this.working.delete(agent.id);
@@ -491,7 +495,7 @@ export class Coordinator {
   /** Before the first dispatch: what this room is, who is in it, and where it writes. */
   private printBanner(): void {
     const { name, room_dir: roomDir, task } = this.config.config;
-    const handles = this.config.allAgents.map((a) => a.handle).join(" ");
+    const handles = this.paint(this.config.allAgents.map((a) => a.handle).join(" "));
     this.printLine(`── room ${name} · ${this.config.allAgents.length} agents ${handles} · run dir ${roomDir} ──`);
     const ask = task === undefined ? "none — the room waits for your first message" : firstLine(task);
     this.printLine(`ask: ${ask}`);
@@ -525,13 +529,27 @@ export class Coordinator {
     // transcript never ends mid-sentence with no indication why.
     if (msg.kind === "notice" || msg.kind === "hop_limit_reached") this.chat.endAll("interrupted");
     const prefix =
-      msg.kind === "notice" || msg.kind === "hop_limit_reached" ? "[room]" : `[${msg.handle}]`;
-    this.stdout.write(`${prefix} ${msg.text}\n`);
+      msg.kind === "notice" || msg.kind === "hop_limit_reached" ? "[room]" : paintTag(msg.handle, (h) => this.colourFor(h));
+    this.stdout.write(`${prefix} ${this.paint(msg.text)}\n`);
   }
 
   /** A settled reply whose turn streamed nothing: print it the way the room always has. */
   private printAgentText(handle: string, text: string | null): void {
     if (text === null || text.trim() === "") return;
-    this.stdout.write(`[${handle}] ${text}\n`);
+    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${this.paint(text)}\n`);
+  }
+
+  /** The SGR payload for a handle, or null when colour is off or the handle is unknown. */
+  private colourFor(handle: string): string | null {
+    if (!this.color) return null;
+    const agent = this.config.allAgents.find((a) => a.handle === handle);
+    if (!agent) return null;
+    const slot = this.config.allAgents.indexOf(agent);
+    return colorOf(agent.id, slot);
+  }
+
+  /** Every `@handle` in a line takes its agent's colour; with colour off this is identity. */
+  private paint(text: string): string {
+    return this.color ? paintHandles(text, (h) => this.colourFor(h)) : text;
   }
 }

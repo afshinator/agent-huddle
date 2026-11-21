@@ -471,7 +471,7 @@ Rules:
   prefix per turn (`[handle] `), never waiting for the turn to settle (D16, #63). The settled record
   goes to `messages.jsonl` and is **not** printed a second time; a turn that streams no deltas prints
   its settled text once. Its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
-- **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes that agent's streamed prose + one-line lifecycle events to it; `log.jsonl` holds the JSON records for machines and no pane reads it. Writable by default (`pane_writable: false` gives a tail-only pane with a banner, §9.2); closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
+- **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes tool calls (`[tool] <name> <args>`) and lifecycle lines to it, never the agent's prose — the conversation lives in the room, once (#65). `log.jsonl` holds the JSON records for machines, deltas included, and no pane reads it. Writable by default (`pane_writable: false` gives a tail-only pane with a banner, §9.2); closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
 
 ### 8.0 What the room prints before it works (#59)
 
@@ -488,6 +488,12 @@ settled record is that same text: the turn's own streamed text wins, with the pr
 held, not broken; when a turn dies — timeout, abort, a notice — the open line is closed with
 `[handle] (interrupted)` so the transcript never stops mid-sentence. Tool calls stay in the agent's own
 pane: the room is the conversation, not the machine log.
+
+Every agent gets a colour and every `@handle` in the room is printed in it, as is the `[@handle]`
+prefix; the table lives in `src/colors.ts` and nowhere else (#66). Colours are 24-bit RGB so they do not
+change with the reader's terminal theme. `AH_COLOR=1` forces colour, `AH_COLOR=0` or `NO_COLOR` disables
+it, and the default is colour when the room's own output is a terminal — so a piped run and the test
+suite are plain. `room.log` is written without escapes, so the archive stays greppable.
 
 Every line the room prints also appends to `<room_dir>/room.log`. `messages.jsonl` stays the machine
 record (D3); `room.log` is the human transcript, so closing the pane does not lose the run. A

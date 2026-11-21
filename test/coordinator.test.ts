@@ -64,6 +64,7 @@ async function harness(
     inboxRead?: (path: string) => Promise<string>;
     roomLogPath?: string;
     turnTimeoutMs?: number;
+    color?: boolean;
     debug?: (message: string) => void;
   },
   fn: (h: Harness) => Promise<void>,
@@ -94,6 +95,7 @@ async function harness(
       ...(opts.agentStream ? { agentStream: opts.agentStream } : {}),
       ...(opts.inboxRead ? { inboxRead: opts.inboxRead } : {}),
       ...(opts.roomLogPath ? { roomLogPath: opts.roomLogPath } : {}),
+      ...(opts.color !== undefined ? { color: opts.color } : {}),
       ...(opts.debug ? { debug: opts.debug } : {}),
     });
     // Narrowed non-null locally: the `let` above exists only for the finally block, and a
@@ -253,6 +255,34 @@ describe("A boot's pane stream is its own (#61)", () => {
       expect(text.split("[started]").length - 1).toBe(1);
       expect(text.startsWith("[started] pid=")).toBe(true);
       expect(text.split("[exited]").length - 1).toBe(1);
+    });
+  }, 20_000);
+});
+
+describe("Agent colours in the room (#66)", () => {
+  test("a mention and its prefix take the agent's colour when colour is on", async () => {
+    await harness({ task: "do the work", color: true }, async ({ coordinator, pi, out }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 go\nDONE" }]);
+      pi.script("dev1", [{ lastText: "Got it: go\nwent" }]);
+
+      await coordinator.boot();
+
+      const text = out.join("");
+      // the lead's mention of dev1, painted with dev1's row from src/colors.ts
+      expect(text).toContain("\u001b[38;2;90;170;255m@dev1\u001b[0m");
+      // and the prefix of a message carries the sender's colour
+      expect(text).toContain("\u001b[38;2;230;170;80m[@lead]\u001b[0m");
+    });
+  }, 20_000);
+
+  test("with colour off the room is plain text", async () => {
+    await harness({ task: "do the work", color: false }, async ({ coordinator, pi, out }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 go\nDONE" }]);
+      pi.script("dev1", [{ lastText: "Got it: go\nwent" }]);
+
+      await coordinator.boot();
+
+      expect(out.join("")).not.toContain("\u001b[");
     });
   }, 20_000);
 });
@@ -783,21 +813,28 @@ describe("Coordinator (fakes)", () => {
     });
   });
 
-  test("the agent pane tails readable prose, while log.jsonl keeps the JSON records", async () => {
-    await harness({ task: undefined }, async ({ dir, coordinator, pi, panes }) => {
+  test("the agent pane carries tools and lifecycle lines, never the agent's prose", async () => {
+    await harness({ task: undefined }, async ({ dir, coordinator, pi, panes, out }) => {
       await coordinator.boot();
       // The pane must tail the readable file, not the JSON log.
       const opened = panes.calls.find((c) => c.op === "open");
       expect(await readFile((opened!.payload as { command: string[] }).command[1], "utf8")).toContain("output.log");
-      pi.script("lead", [{ deltas: ["Answered ", "in ", "prose."], lastText: "Answered in prose.\nDONE" }]);
+      pi.script("lead", [
+        {
+          tools: [{ name: "bash", args: { command: "ls" } }],
+          deltas: ["Answered ", "in ", "prose."],
+          lastText: "Answered in prose.\nDONE",
+        },
+      ]);
       await coordinator.submit("@lead go");
 
-      // The coordinator does not await the pane write, so poll rather than sleep.
-      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "Answered in prose.");
-      expect(stream).toContain("Answered in prose.");
-      expect(stream).not.toContain("{");
-      expect(stream).not.toContain("delta");
-      // The machine record is unchanged: one JSON line per event.
+      // Prose belongs to the room (#65): the pane shows the machine-adjacent lines only.
+      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "[tool] bash");
+      expect(stream).not.toContain("Answered in prose.");
+      expect(stream).toContain("@lead — working");
+      // The room got the prose instead.
+      await waitUntil(() => out.join("").includes("Answered in prose."), 2000);
+      // The machine record is unchanged: one JSON line per event, prose included.
       const log = await readFile(join(dir, "agents", "lead", "log.jsonl"), "utf8");
       expect(log.trim().split("\n")[0]).toStartWith('{"ts":');
       expect(log).toContain('"event":"delta"');
@@ -949,17 +986,16 @@ describe("Coordinator (fakes)", () => {
   test("a tool call reaches the pane as one [tool] line", async () => {
     await harness({ task: undefined }, async ({ dir, coordinator, pi }) => {
       await coordinator.boot();
-      // The settled text is deliberately different from anything streamed, so the
-      // order of tool line and settled text is observable.
       pi.script("lead", [
         { tools: [{ name: "bash", args: { command: "ls" } }], lastText: "settled after the tool\nDONE" },
       ]);
       await coordinator.submit("@lead go");
 
-      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "settled after the tool");
+      const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "[tool] bash");
       expect(stream).toContain('[tool] bash {"command":"ls"}\n');
       expect(stream).not.toContain("tool_execution_start");
-      expect(stream.indexOf("[tool] bash")).toBeLessThan(stream.indexOf("settled after the tool"));
+      // The pane never repeats the agent's words (#65).
+      expect(stream).not.toContain("settled after the tool");
     });
   });
 
