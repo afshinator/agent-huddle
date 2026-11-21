@@ -1,15 +1,16 @@
 name: docs-audit
-# 12 hops is the default; two pushback rounds need more than one.
-max_hops: 16
-# An audit turn reads a lot of files: 10 minutes leaves room under the per-turn timeout.
-turn_timeout_ms: 600000
+# A tally needs four hops: lead dispatch, dev report, reviewer check, lead DONE.
+max_hops: 6
+# The ask is an inventory, not a code audit: two minutes is generous, and a turn that
+# exceeds it is drifting rather than working.
+turn_timeout_ms: 120000
 # Supervised rooms belong in a linked worktree, which this guard leaves alone; `refuse` is
 # therefore safe here and it is the strictest setting if someone starts one in a checkout.
 launch_guard: refuse
 lead:
   id: lead
   handle: "@lead"
-  role: "Lead coordinator: dispatch, verify what comes back against the code, integrate. Never author the audit yourself."
+  role: "Lead coordinator: dispatch the tally, check the row count, decide when it is done. Never author the table yourself."
   system_prompt_file: prompts/lead.md
   provider: commandcode
   model: deepseek/deepseek-v4-pro
@@ -18,7 +19,7 @@ lead:
 agents:
   - id: dev1
     handle: "@dev1"
-    role: "Audit the docs against the code and write docs/DOCS-AUDIT.md."
+    role: "Tally every tracked .md file into docs/DOCS-AUDIT.md: path, lines, last change, heading, kind."
     system_prompt_file: prompts/dev1.md
     provider: commandcode
     model: deepseek/deepseek-v4.1-flash
@@ -26,7 +27,7 @@ agents:
     tools: [read, grep, bash, write, edit]
   - id: reviewer
     handle: "@reviewer"
-    role: "Independently verify the audit's claims against the code. Do not edit files."
+    role: "Verify the tally: row count against git ls-files, two rows sampled. Do not edit files."
     system_prompt_file: prompts/reviewer.md
     provider: commandcode
     model: gpt-5.6-luna
