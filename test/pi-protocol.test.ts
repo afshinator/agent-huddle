@@ -152,3 +152,34 @@ describe("RealPiAgentClient child stderr", () => {
     });
   }, 20_000);
 });
+
+describe("RealPiAgentClient child environment", () => {
+  test("a room child cannot reach the live adapters, whatever the coordinator's own env says", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-child-env-"));
+    const dump = join(dir, "child-env.txt");
+    const stub = join(dir, "fake-pi");
+    // dump the environment this child was actually given, then linger so the spawn settles
+    await writeFile(stub, `#!/bin/sh\nenv > '${dump}'\nexec cat\n`, "utf8");
+    await chmod(stub, 0o755);
+    const client = new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } });
+    const saved = { integration: process.env.PI_TEST_INTEGRATION, herdr: process.env.HERDR_ENV };
+    process.env.PI_TEST_INTEGRATION = "1";
+    process.env.HERDR_ENV = "1";
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      await waitUntil(() => Bun.file(dump).size > 0, 5000);
+      const env = await Bun.file(dump).text();
+      // the live adapter tests open real panes; a room's agent must never reach them
+      expect(env).toContain("PI_TEST_INTEGRATION=0");
+      // panes are the room's own business, so the herdr gate passes through untouched
+      expect(env).toContain("HERDR_ENV=1");
+    } finally {
+      if (saved.integration === undefined) delete process.env.PI_TEST_INTEGRATION;
+      else process.env.PI_TEST_INTEGRATION = saved.integration;
+      if (saved.herdr === undefined) delete process.env.HERDR_ENV;
+      else process.env.HERDR_ENV = saved.herdr;
+      await client.shutdown("dev1").catch(() => undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+});

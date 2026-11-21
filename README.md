@@ -25,7 +25,7 @@ bun run typecheck
 bun test
 ```
 
-The test suite includes deterministic unit/fake-seam tests and integration tests for the real `pi` and `herdr` adapters. Set `PI_TEST_INTEGRATION=0` to skip live integration tests.
+The test suite includes deterministic unit/fake-seam tests and integration tests for the real `pi` and `herdr` adapters. Set `PI_TEST_INTEGRATION=0` to skip live integration tests. A room's own `pi` children are always spawned with `PI_TEST_INTEGRATION=0`, so an agent that runs the suite inside a room never opens real herdr panes (#58).
 
 ## Run a room
 

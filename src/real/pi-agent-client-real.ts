@@ -125,6 +125,8 @@ export class RealPiAgentClient implements PiAgentClient {
     const child = spawn(this.piBin, args, {
       cwd: spawnOpts.cwd,
       stdio: ["pipe", "pipe", "pipe"],
+      // the live adapter tests open real herdr panes; a room's agent must never reach them (#58)
+      env: { ...process.env, PI_TEST_INTEGRATION: "0" },
     });
 
     const info: AgentProcessInfo = { sessionDir, pid: child.pid ?? 0 };

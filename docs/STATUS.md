@@ -134,6 +134,10 @@ started.
 
 ## Known limits
 
+- **An agent cannot run the live adapter tests from inside a room.** Every `pi` child is spawned with
+  `PI_TEST_INTEGRATION=0` (#58), so a `bun test` inside a room skips the `herdr`/`pi` integration
+  tests. That is deliberate: those tests open real panes, and one launch showed them appearing
+  beside the room.
 - **No sandbox.** Agents inherit the coordinator's cwd and write real files there: run #2's specialist
   created `src/rate-limiter.ts`, `test/rate-limiter.test.ts` and a `shrink/` directory in the repo and
   ran `bun run check` against them (all removed since). `launch_guard` warns about the repository root but does not prevent
