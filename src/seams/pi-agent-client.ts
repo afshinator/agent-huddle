@@ -173,7 +173,6 @@ export class FakePiAgentClient implements PiAgentClient {
     a.settle = { promise, resolve: resolveSettle, reject: rejectSettle };
 
     queueMicrotask(() => {
-      if (turn.hold) return;
       if (turn.error) {
         this.bus.emit(agentId, "error", turn.error);
         a.lastText = null;
@@ -186,6 +185,9 @@ export class FakePiAgentClient implements PiAgentClient {
       for (const delta of turn.deltas ?? []) {
         this.bus.emit(agentId, "stream", delta);
       }
+      // A held turn means the settle never arrives, not that the model said nothing:
+      // production streams deltas before it settles, so the fake must too (#63).
+      if (turn.hold) return;
       const result: SettledResult = {
         aborted: turn.aborted ?? false,
         lastText: turn.lastText ?? null,

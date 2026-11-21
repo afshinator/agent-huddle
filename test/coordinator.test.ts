@@ -63,6 +63,7 @@ async function harness(
     agentStream?: AgentStream;
     inboxRead?: (path: string) => Promise<string>;
     roomLogPath?: string;
+    turnTimeoutMs?: number;
     debug?: (message: string) => void;
   },
   fn: (h: Harness) => Promise<void>,
@@ -72,6 +73,7 @@ async function harness(
   let coordinator: Coordinator | null = null;
   try {
     const config = makeConfig(dir, opts);
+    if (opts.turnTimeoutMs !== undefined) config.config.turn_timeout_ms = opts.turnTimeoutMs;
     const store = new RoomStore(dir);
     const pi = new FakePiAgentClient();
     const panes = new FakeHerdrPaneManager();
@@ -126,6 +128,68 @@ async function harness(
     );
   }
 }
+
+describe("Coordinator chat stream (#63)", () => {
+  test("an agent's prose reaches the room while its turn is still running", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, out }) => {
+      // first turn settles and hands off; the second never settles, so anything the room
+      // shows about it came from the stream rather than from a settled message
+      pi.script("lead", [{ deltas: ["Got it: start\n", "@dev1 check the footer\n"], lastText: "Got it: start\n@dev1 check the footer" }]);
+      pi.script("dev1", [{ deltas: ["Got it: checking\n", "the footer now\n"], hold: true }]);
+
+      const boot = coordinator.boot();
+      await waitUntil(() => out.join("").includes("the footer now"), 3000);
+
+      expect(out.join("")).toContain("[@dev1] Got it: checking\nthe footer now");
+      await coordinator.shutdown();
+      await boot.catch(() => undefined);
+    });
+  }, 20_000);
+
+  test("the settled text is not printed a second time", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, out }) => {
+      pi.script("lead", [
+        { deltas: ["Got it: start\n", "@dev1 go\n"], lastText: "Got it: start\n@dev1 go" },
+        { deltas: ["done\n"], lastText: "done\nDONE" },
+      ]);
+      pi.script("dev1", [{ deltas: ["Got it: go\n", "worked\n"], lastText: "Got it: go\nworked" }]);
+
+      await coordinator.boot();
+
+      const text = out.join("");
+      expect(text.split("@dev1 go").length - 1).toBe(1);
+      expect(text.split("worked").length - 1).toBe(1);
+    });
+  }, 20_000);
+
+  test("a turn with no deltas still lands in the room, once", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, out }) => {
+      pi.script("lead", [{ lastText: "silent provider\nDONE" }]);
+
+      await coordinator.boot();
+
+      const text = out.join("");
+      expect(text.split("silent provider").length - 1).toBe(1);
+      expect(text).toContain("[@lead] silent provider");
+    });
+  }, 20_000);
+
+  test("a turn that dies mid-sentence closes the line and says why", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, out }) => {
+      pi.script("lead", [{ deltas: ["Got it: start\n", "@dev1 check\n"], lastText: "Got it: start\n@dev1 check" }]);
+      // prose arrives, then the wait for the settle fails: the notice must not leave a line hanging
+      pi.script("dev1", [{ deltas: ["reading the footer"], hold: true }]);
+      pi.failOn("waitForSettled", new Error("settle timeout after 80ms"), 1, 1);
+
+      await coordinator.boot();
+
+      const text = out.join("");
+      expect(text).toContain("[@dev1] reading the footer\n");
+      expect(text).toContain("[@dev1] (interrupted)");
+      expect(text).toContain("settle timeout");
+    });
+  }, 20_000);
+});
 
 describe("Coordinator boot banner (#59)", () => {
   test("boot names the room, its handles, the run dir, the ask and the transcript before any agent speaks", async () => {

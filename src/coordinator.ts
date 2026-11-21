@@ -16,6 +16,7 @@ import type { Debug } from "./debug";
 import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "./launch-guard";
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
+import { ChatStream } from "./chat-stream";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -58,6 +59,8 @@ export class Coordinator {
   private readonly cwd: string;
   private readonly stdout: { write(s: string): void };
   private readonly roomLogPath?: string;
+  /** Agent prose as it arrives, so the room reads like a chat rather than minutes (#63). */
+  private readonly chat: ChatStream;
   private readonly stderr: { write(s: string): void };
   private readonly now: () => string;
   private persistQueue: Promise<void> = Promise.resolve();
@@ -85,6 +88,10 @@ export class Coordinator {
     this.cwd = deps.cwd ?? process.cwd();
     this.stdout = deps.stdout ?? process.stdout;
     this.roomLogPath = deps.roomLogPath;
+    this.chat = new ChatStream(
+      { write: (s) => this.stdout.write(s) },
+      (agentId) => this.config.agentById.get(agentId)?.handle ?? agentId,
+    );
     this.stderr = deps.stderr ?? process.stderr;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.debug = deps.debug ?? (() => {});
@@ -183,6 +190,8 @@ export class Coordinator {
       this.pi.on("stream", agent.id, (delta) => {
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
         this.watchFailure("agent pane write", agent.id, this.agentStream.delta(agent.id, delta));
+        // The room sees the prose as it is written, not when the turn ends (#63).
+        this.chat.delta(agent.id, delta);
       });
       this.pi.on("tool", agent.id, (tool) => {
         this.watchFailure("agent pane write", agent.id, this.agentStream.tool(agent.id, tool));
@@ -196,8 +205,11 @@ export class Coordinator {
         }
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "settled", r.lastText ?? ""));
         this.watchFailure("agent pane write", agent.id, this.agentStream.settle(agent.id, r.lastText));
+        // A provider may settle with text and no deltas; then the room still needs the words.
+        if (!this.chat.end(agent.id)) this.printAgentText(agent.handle, r.lastText);
       });
       this.pi.on("error", agent.id, (e) => {
+        this.chat.end(agent.id, "turn failed");
         this.watchFailure("agent error handling", agent.id, this.handleAgentError(agent.id, e));
       });
       this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "spawned", `pid=${info.pid}`));
@@ -484,8 +496,20 @@ export class Coordinator {
   }
 
   private printMessage(msg: RoomMessage): void {
+    // An agent's text already reached the room as it streamed; printing the settled
+    // record again would show every reply twice (#63).
+    if (msg.kind === "agent") return;
+    // A notice means something happened outside a turn: close any line left open, so the
+    // transcript never ends mid-sentence with no indication why.
+    if (msg.kind === "notice" || msg.kind === "hop_limit_reached") this.chat.endAll("interrupted");
     const prefix =
       msg.kind === "notice" || msg.kind === "hop_limit_reached" ? "[room]" : `[${msg.handle}]`;
     this.stdout.write(`${prefix} ${msg.text}\n`);
+  }
+
+  /** A settled reply whose turn streamed nothing: print it the way the room always has. */
+  private printAgentText(handle: string, text: string | null): void {
+    if (text === null || text.trim() === "") return;
+    this.stdout.write(`[${handle}] ${text}\n`);
   }
 }

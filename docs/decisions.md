@@ -373,3 +373,34 @@ line per direct message.
 **Cost, accepted:** one line per direct reply and a notice per agent that ignores the rule, which is
 noisy when a model drifts. `hasAck` / `needsAck` in `src/turn-loop.ts`, the rule in
 `buildSocialContract` (`src/prompts.ts`).
+
+## D16 — The room prints an agent's words as it writes them (#63)
+
+**Context.** The room printed a message when it was appended to `messages.jsonl`, and a message is
+appended when a turn settles. A ten-minute turn was therefore ten minutes of silence followed by a wall
+of text, and the acknowledgement (`Got it: …`, D15) reached the room at the end of the very turn it was
+meant to prove had been picked up. The 2026-11-21 launch showed this directly: dev1 worked for ten
+minutes, the room said nothing, and the first thing it printed was a timeout.
+
+**Decision.** The coordinator prints each agent's prose from the `stream` deltas as it arrives,
+coalesced per line, with one `[handle] ` prefix per turn. `messages.jsonl` remains the record and the
+settled text is not printed again; a turn that streams no deltas prints its settled text once, because
+some providers send `text_end` without deltas. A partial line is held rather than terminated with an
+invented newline, and an open line is closed with `[handle] (interrupted)` when a notice, an abort or an
+error ends the turn.
+
+**Rejected.**
+- *Keep printing on append and tell users to read the agent's pane.* That is what the room was, and it
+  is why the operator could not follow the conversation. The pane also shows tool calls, so it is not a
+  readable conversation either.
+- *Print a "working…" ticker instead of the text.* It says an agent is alive without saying anything,
+  and a stalled turn would look identical.
+- *Print every delta verbatim, including tool calls.* The room would be buried in shell commands.
+
+**Why:** the room's job is to be followable while it runs. Latency to first visible word is the measure,
+and it is now one delta rather than one whole turn.
+
+**Cost, accepted:** two agents streaming at once interleave in one pane; the prefix keeps them
+separable, and interleaving is the honest appearance of two people talking. Partial lines also mean the
+screen updates mid-sentence, which a log-file reader will not see — `room.log` gets the same writes.
+`src/chat-stream.ts`, wired in `src/coordinator.ts`.
