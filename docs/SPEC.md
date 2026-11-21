@@ -301,8 +301,11 @@ Router.extractMentions(message)
         ├─ has @mentions ──► targets = mentioned agent ids (dedup, order preserved)
         │                     (mention of "lead"/lead.handle maps to lead id)
         │
-        └─ no @mentions ───► targets = []   // v1.1: nobody is activated (D6);
-        │                     startup_task targets the lead explicitly
+        └─ no @mentions ───► targets = []   // v1.1: nobody is activated (D6)
+
+startup_task overrides both branches: targets = [lead], always (#57, D6). A boot
+directive names the agents it is about, so its mentions are recorded and pushed as
+context but never choose the first targets — the lead decides who works.
         │
         ▼
 TurnLoop: dispatch each target in order, one at a time

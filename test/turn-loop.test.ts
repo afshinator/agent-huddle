@@ -133,6 +133,24 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("a startup task that names agents dispatches the lead, and gives the named agents the text as context", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "understood\nDONE" }]);
+
+      // A boot directive is about agents, so it names them. Naming them must not
+      // dispatch them: the lead decides who works (#57).
+      const result = await loop.submit("Dispatch @dev1 first, then @reviewer verifies.", "startup_task");
+
+      expect(result.hopCount).toBe(1);
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead"]);
+      // everyone who was not dispatched gets the directive as context (§6.6), named or not
+      expect(pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId).sort()).toEqual(["dev1", "dev2", "reviewer"]);
+      const m = await msgs();
+      expect(m[0].mentions).toEqual(["dev1", "reviewer"]);
+      expect(m.map((x) => `${x.kind}:${x.from}`)).toEqual(["startup_task:room", "agent:lead"]);
+    });
+  });
+
   test("a reply with no mention ends the chain idle rather than halting", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "@dev1 take a look" }]);

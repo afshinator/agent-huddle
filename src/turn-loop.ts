@@ -129,14 +129,11 @@ export class TurnLoop {
       await this.append(chain, "notice", "room", `unknown agent mention(s): ${initialResolution.unknownHandles.join(", ")}`, 0);
     }
     // D6: no mention activates nobody. The startup task is a boot directive, not a
-    // chat message, so it addresses the lead or the room would boot silent.
+    // chat message, so it addresses the lead — even when it names agents (#57): the
+    // named agents receive it as context, and the lead decides who works.
     const initialTargets =
       pinnedTargets ??
-      (initialResolution.targets.length > 0
-        ? initialResolution.targets
-        : kind === "startup_task"
-          ? [this.cfg.config.lead.id]
-          : []);
+      (kind === "startup_task" ? [this.cfg.config.lead.id] : initialResolution.targets);
     const queue: Array<{ agentId: string; text: string }> = initialTargets.map((agentId) => ({ agentId, text }));
     await this.syncContext(chain, text, queue.map((t) => t.agentId));
 

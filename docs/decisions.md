@@ -88,6 +88,11 @@ empty list, every agent still ingests the text as context (§6.6), and the chain
 as `idle`. The startup `task:` is the one exception — it targets the lead, because a boot directive is
 not a chat message.
 
+**Amended 2026-11-21 (#57):** the exception is unconditional. A `task:` that names `@dev1` and
+`@reviewer` still dispatches only the lead; those mentions are recorded and pushed to those agents as
+context. Before this, mentions were consulted first, so the first docs-audit launch sent the lead's
+instructions to two specialists and never started the lead at all.
+
 **Rejected:** the v1 rule, where an unaddressed message fell back to the lead.
 
 **Why:** this is a chat room, not a request queue. A supervisor or a lead must be able to say
@@ -97,7 +102,10 @@ decided not to", which is a bad state for a human to debug.
 
 **Cost, accepted:** a silent room is now reachable. A human who forgets the `@handle` sees nothing
 happen, so a message with no targets must produce a room notice saying so rather than nothing.
-`src/router.ts` (`extractMentions`), `src/turn-loop.ts` (chain start, #35).
+**Cost, accepted (added #57):** a `task:` cannot start several agents at once. That is the point:
+one boot directive, one accountable lead.
+
+`src/router.ts` (`extractMentions`), `src/turn-loop.ts` (chain start, #35, #57).
 
 ---
 
