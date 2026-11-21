@@ -95,6 +95,7 @@ max_hops: 12               # D6. default 12.
 turn_timeout_ms: 300000    # how long one agent turn may take. default 300000.
 launch_guard: warn         # refuse|warn|off. default warn. (#38, §10)
 ack_scope: lead            # lead|anyone. default lead: whose direct mention needs `Got it:` (#60, §6.2b)
+dispatch_scope: anyone     # anyone|lead. default anyone: whose mention may start a turn (D18)
 
 lead:                      # D5. required.
   id: lead
@@ -165,6 +166,7 @@ export interface RoomConfig {
   turn_timeout_ms: number;       // default 300000
   launch_guard?: "refuse" | "warn" | "off";  // default warn
   ack_scope: "lead" | "anyone";  // default lead: whose direct mention needs `Got it:`
+  dispatch_scope: "anyone" | "lead"; // default anyone: whose mention may start a turn
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -476,9 +478,12 @@ Rules:
 
 ### 7.9 Who a mention dispatches (D18, #68)
 
-An agent's reply starts a turn for the **lead** only, or for anyone when the author **is** the lead. Any
-other mention — a report naming a peer — is recorded and pushed to that agent as context and starts
-nothing. The router holds this, not the prompts: the failure that produced it was mechanical.
+`dispatch_scope` decides, per room. `anyone` (the default) makes every mention a dispatch, exactly as v1
+routed. `lead` makes an agent's reply start a turn only for the **lead**, or for anyone when the author
+**is** the lead; any other mention — a report naming a peer — is recorded and pushed to that agent as
+context and starts nothing. The room config holds this, not the prompts: the failure that produced it was
+mechanical. `dispatch_scope: lead` is the docs-audit template's choice, because a tally report that ends
+"@reviewer count is 28" must not summon the reviewer before the lead asks.
 
 ### 8.0 What the room prints before it works (#59)
 

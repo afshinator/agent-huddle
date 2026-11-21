@@ -117,6 +117,24 @@ describe("loadConfig", () => {
     });
   });
 
+  test("dispatch_scope defaults to anyone, and accepts lead", async () => {
+    await withConfig(`name: r\n${LEAD}`, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      // v1's rule stays the default: every mention dispatches (D18).
+      expect(loaded.config.dispatch_scope).toBe("anyone");
+    });
+    await withConfig(`name: r\ndispatch_scope: lead\n${LEAD}`, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      expect(loaded.config.dispatch_scope).toBe("lead");
+    });
+  });
+
+  test("an unknown dispatch_scope fails load naming the field", async () => {
+    await withConfig(`name: r\ndispatch_scope: peers\n${LEAD}`, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/config\.dispatch_scope must be one of/);
+    });
+  });
+
   test("an unknown ack_scope fails load naming the field", async () => {
     await withConfig(`name: r\nack_scope: nobody\n${LEAD}`, async (p, cwd) => {
       await expect(loadConfig(p, cwd)).rejects.toThrow(/config\.ack_scope must be one of/);

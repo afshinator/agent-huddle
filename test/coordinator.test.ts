@@ -31,6 +31,7 @@ function makeConfig(
       max_hops: opts?.maxHops ?? 12,
       turn_timeout_ms: 300_000,
       ack_scope: "lead",
+    dispatch_scope: "anyone",
       ...(opts?.launchGuard ? { launch_guard: opts.launchGuard } : {}),
       lead,
       agents: [agent],

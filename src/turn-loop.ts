@@ -205,12 +205,14 @@ export class TurnLoop {
       if (resolution.unknownHandles.length > 0) {
         await this.append(chain, "notice", "room", `unknown agent mention(s): ${resolution.unknownHandles.join(", ")}`, chain.hopCount);
       }
-      // D18: work is handed out by the lead, and reports go back to it. A peer's mention is
-      // context — dev1's report ending "@reviewer count is 28" must not start a verification
-      // nobody asked for. A mention of the author is a note to others, not a dispatch to itself.
+      // D18: with `dispatch_scope: lead`, work is handed out by the lead and reports go back to it,
+      // so dev1's report ending "@reviewer count is 28" cannot start a verification nobody asked
+      // for. `anyone` (the default) keeps every mention a dispatch. A mention of the author is a
+      // note to others, not a dispatch to itself.
+      const leadOnly = this.cfg.config.dispatch_scope === "lead";
       const leadId = this.cfg.config.lead.id;
       const nextIds = resolution.targets.filter(
-        (id) => id !== agentId && (agentId === leadId || id === leadId),
+        (id) => id !== agentId && (!leadOnly || agentId === leadId || id === leadId),
       );
       for (const nextId of nextIds) {
         queue.push({

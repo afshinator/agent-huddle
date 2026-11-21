@@ -116,7 +116,7 @@ started.
 | The agent pane carries tool calls and lifecycle lines, never the agent's prose | `test/coordinator.test.ts`, `test/agent-stream.test.ts`, #65 |
 | Every `@handle` and message prefix takes its agent's colour from `src/colors.ts`; `room.log` stays plain | `test/colors.test.ts`, `test/room-log.test.ts`, `test/coordinator.test.ts`, #66 |
 | A turn's settled text is every assistant message it contains, and a message boundary starts a new room line | `test/pi-protocol.test.ts` (two stubs), `docs/tickets/T11-settled-text-per-turn.md` |
-| Only the lead's mention dispatches; a peer mention is context | `test/turn-loop.test.ts` (two fixtures), D18 |
+| `dispatch_scope: anyone` (default) dispatches every mention; `lead` makes a peer's mention context | `test/turn-loop.test.ts` (both scopes), `test/config.test.ts`, D18 |
 | The startup task prints as a brief block and notices as `·`, never as a participant's message | `test/coordinator.test.ts`, D19 |
 | The caller decides colour; the coordinator cannot see a terminal through a wrapped stdout | `src/index.ts`, `test/coordinator.test.ts`, #67 |
 | A direct mention must be acknowledged with `Got it: …` (scope `lead` by default, `anyone` on request); a broadcast or the startup task need not, and a missing acknowledgement appends one notice naming the agent | `test/turn-loop.test.ts`, `test/prompts.test.ts`, #60 |

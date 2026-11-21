@@ -1,6 +1,8 @@
 name: docs-audit
 # A tally needs four hops: lead dispatch, dev report, reviewer check, lead DONE.
 max_hops: 6
+# The lead routes: a report naming a peer must not summon it (#68).
+dispatch_scope: lead
 # The ask is an inventory, not a code audit: two minutes is generous, and a turn that
 # exceeds it is drifting rather than working.
 turn_timeout_ms: 120000

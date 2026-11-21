@@ -14,7 +14,12 @@ const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 const dev2: AgentSpec = { id: "dev2", handle: "@dev2", role: "dev" };
 const reviewer: AgentSpec = { id: "reviewer", handle: "@reviewer", role: "review" };
 
-function makeConfig(maxHops = 12, agents: AgentSpec[] = [dev1, dev2, reviewer], ackScope: "lead" | "anyone" = "lead"): LoadedConfig {
+function makeConfig(
+  maxHops = 12,
+  agents: AgentSpec[] = [dev1, dev2, reviewer],
+  ackScope: "lead" | "anyone" = "lead",
+  dispatchScope: "anyone" | "lead" = "anyone",
+): LoadedConfig {
   const allAgents = [lead, ...agents];
   return {
     config: {
@@ -24,6 +29,7 @@ function makeConfig(maxHops = 12, agents: AgentSpec[] = [dev1, dev2, reviewer], 
       max_hops: maxHops,
       turn_timeout_ms: 300_000,
       ack_scope: ackScope,
+    dispatch_scope: dispatchScope,
       lead,
       agents,
     },
@@ -41,10 +47,19 @@ interface Harness {
   msgs: () => Promise<Array<{ kind: string; from: string; text: string; hop: number; mentions: string[] }>>;
 }
 
-async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: number; agents?: AgentSpec[]; turnTimeoutMs?: number; ackScope?: "lead" | "anyone" }): Promise<void> {
+async function harness(
+  fn: (h: Harness) => Promise<void>,
+  opts?: {
+    maxHops?: number;
+    agents?: AgentSpec[];
+    turnTimeoutMs?: number;
+    ackScope?: "lead" | "anyone";
+    dispatchScope?: "anyone" | "lead";
+  },
+): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-loop-"));
   try {
-    const config = makeConfig(opts?.maxHops, opts?.agents, opts?.ackScope);
+    const config = makeConfig(opts?.maxHops, opts?.agents, opts?.ackScope, opts?.dispatchScope);
     const store = new RoomStore(dir);
     const pi = new FakePiAgentClient();
     const telemetry = new RecordingTelemetry();
@@ -120,7 +135,7 @@ describe("TurnLoop", () => {
     });
   });
 
-  test("a non-lead's mention is context, not a dispatch: only the lead hands out work", async () => {
+  test("dispatch_scope: lead — a non-lead's mention is context, not a dispatch", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       // The live run: dev1's report said "@reviewer count is 28", and the reviewer started
       // verifying on its own initiative mid-report. A report is not an assignment.
@@ -135,11 +150,23 @@ describe("TurnLoop", () => {
       expect(prompted).toEqual(["dev1", "lead"]);
       // The reviewer still sees it — as context, which is what a report is worth to it.
       expect(pi.calls.filter((c) => c.op === "pushContext").map((c) => c.agentId)).toContain("reviewer");
+    }, { dispatchScope: "lead" });
+  });
+
+  test("dispatch_scope: anyone (the default) — a peer's mention still starts a turn", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("dev1", [{ lastText: "Got it: tally\n@reviewer count is 28, ready" }]);
+      pi.script("reviewer", [{ lastText: "Got it: verify\ncount matches" }]);
+
+      await loop.submit("@dev1 tally the docs", "user");
+
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["dev1", "reviewer"]);
     });
   });
 
-  test("the lead's mention does dispatch the agent it names", async () => {
-    await harness(async ({ loop, pi }) => {
+  test("the lead's mention dispatches the agent it names under either scope", async () => {
+    for (const dispatchScope of ["anyone", "lead"] as const) {
+      await harness(async ({ loop, pi }) => {
       pi.script("dev1", [{ lastText: "Got it: tally\n28 rows\n@lead done" }]);
       pi.script("lead", [{ lastText: "Got it: check\n@reviewer verify the count" }, { lastText: "count confirmed\nDONE" }]);
       pi.script("reviewer", [{ lastText: "Got it: verify\ncount is 28\n@lead go" }]);
@@ -152,7 +179,8 @@ describe("TurnLoop", () => {
         "reviewer",
         "lead",
       ]);
-    });
+      }, { dispatchScope });
+    }
   });
 
   test("a startup task targets the lead even without a mention", async () => {
@@ -263,7 +291,7 @@ describe("TurnLoop", () => {
     });
   });
 
-  test("a peer mention is context, so no acknowledgement is owed for one", async () => {
+  test("dispatch_scope: lead — a peer mention is context, so no acknowledgement is owed", async () => {
     await harness(async ({ loop, pi, msgs }) => {
       pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }]);
       // dev1 mentions a peer; under D18 that is a note to the room, not an assignment.
@@ -274,7 +302,7 @@ describe("TurnLoop", () => {
       const ackNotices = (await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
       expect(ackNotices.length).toBe(0);
       expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1"]);
-    });
+    }, { dispatchScope: "lead" });
   }, 20_000);
 
   test("ack_scope: anyone makes a peer mention owe an acknowledgement too", async () => {

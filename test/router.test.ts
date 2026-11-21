@@ -15,6 +15,7 @@ function makeConfig(leadHandle = "@lead"): LoadedConfig {
       max_hops: 12,
       turn_timeout_ms: 300_000,
       ack_scope: "lead",
+    dispatch_scope: "anyone",
       lead,
       agents: [dev1, dev2, reviewer],
     },

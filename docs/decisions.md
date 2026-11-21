@@ -424,21 +424,28 @@ anyway; the room is where a reader needs to tell voices apart.
 `PALETTE_MODE` exists (`rgb` or `256`); and `room.log` is stripped of colour, so the archive and the
 screen can differ in appearance but not in content.
 
-## D18 — Work is handed out by the lead; a peer's mention is context (#68)
+## D18 — Who a mention dispatches is the room's choice (#68)
 
-**Decision.** An agent's reply dispatches only the lead, or only where the author already is the lead. Any
-other mention is recorded and pushed to that agent as context, and starts nothing.
+**Decision.** `dispatch_scope: anyone | lead`, default **anyone**. `anyone` keeps v1's rule: every mention
+dispatches. `lead` restricts it — an agent's reply dispatches only the lead, or anyone when the author is
+the lead; every other mention is recorded and pushed to that agent as context and starts nothing. The
+docs-audit template sets `lead`.
 
 **Why:** a live run had dev1's report end `@reviewer count is 28 rows …` and the reviewer began verifying
 on its own initiative, mid-report, before the lead had asked for anything. A report is not an assignment,
 and a mention inside a report must not be read as one. Reports go to the lead because that is the one
 edge the loop needs.
 
-**Rejected:** keeping peer-to-peer dispatch and asking prompts not to name peers — the failure was
-mechanical, not textual, so the router has to hold it. Also rejected: a notice when a peer mention is
-ignored; the lead already has the text as context and the room is noisy enough.
+**Why a key and not the only rule:** the first version of this made `lead` unconditional. That is a
+policy a room may want either way — a factory of peer agents is not a lead-led audit — so the rule lives
+in config and the template that needs it opts in.
 
-**Cost, accepted:** a two-agent handoff that does not involve the lead now needs the lead to relay it.
+**Rejected:** asking prompts not to name peers — the failure was mechanical, not textual, so the router
+has to hold it whichever scope a room picks. Also rejected: a notice when a mention is ignored under
+`lead`; the lead already has the text as context and the room is noisy enough.
+
+**Cost, accepted:** under `lead`, a two-agent handoff that does not involve the lead needs the lead to
+relay it.
 
 ## D19 — The brief is background, and notices are the room's own voice (#68)
 
