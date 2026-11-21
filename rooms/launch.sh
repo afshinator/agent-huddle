@@ -2,7 +2,13 @@
 # Launch a room template against a repo.
 #
 #   ./rooms/launch.sh --template <name> --repo <path> --slug <slug> [--branch] [--run <run.yaml>]
-#   Add --dry-run to prepare the collateral and the worktree without booting the room.
+#   ./rooms/launch.sh --template ticket-resolver1 --repo <path> --issue 54 --slug ticket-54 --branch
+#
+#   --issue <n>   fetch the ticket and write the ask from it; refuses unless it is ready-for-agent
+#                 (--any-state overrides). The ask is a starting point: edit its `task:`.
+#   --check       report every precondition and stop before creating anything
+#   --dry-run     prepare the collateral and the worktree without booting the room
+#   --no-warm     skip the dependency warm-up
 #
 # What it creates, in this order:
 #   1. <repo>/_run/<slug>/          run collateral: run.yaml (the ask), run.resolved.yaml,
@@ -10,6 +16,11 @@
 #   2. <repo>/../<repo-name>-<slug> a linked worktree, on branch run/<slug> with --branch,
 #                                    detached otherwise: this is where the room's output goes
 #   3. the room itself, whose agents write in that worktree
+#
+# The decisions that used to be a checklist live in src/launch.ts, where they are tested (#80):
+# whether the existing worktree is at the base commit or must be replaced, whether dependencies are
+# cloned from the checkout you launched from or installed, and whether the ticket may be handed to a
+# room at all. Forgetting any of them used to fail silently.
 #
 # The launcher neither commits nor pushes. Whether a room commits its work on the branch is the
 # template's own contract, stated in its prompts; merging the run branch stays with a human.
@@ -24,9 +35,13 @@ SLUG=""
 BRANCH=0
 RUN_FILE=""
 DRY_RUN=0
+CHECK_ONLY=0
+WARM=1
+ISSUE=""
+ANY_STATE=0
 
 usage() {
-  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
   if [ -d "$ROOMS_DIR/templates" ]; then
     echo "templates: $(ls "$ROOMS_DIR/templates" | tr '\n' ' ')"
   fi
@@ -39,8 +54,12 @@ while [ $# -gt 0 ]; do
     --repo) REPO="${2:-}"; shift 2 ;;
     --slug) SLUG="${2:-}"; shift 2 ;;
     --run) RUN_FILE="${2:-}"; shift 2 ;;
+    --issue) ISSUE="${2:-}"; shift 2 ;;
+    --any-state) ANY_STATE=1; shift ;;
     --branch) BRANCH=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --check) CHECK_ONLY=1; shift ;;
+    --no-warm) WARM=0; shift ;;
     -h|--help) usage ;;
     *) echo "launch: unknown argument $1" >&2; usage ;;
   esac
@@ -64,7 +83,31 @@ RUN_DIR="$REPO/_run/$SLUG"
 WORKTREE="$(dirname "$REPO")/$(basename "$REPO")-$SLUG"
 NAME="$TEMPLATE_NAME"
 
-if [ -z "$RUN_FILE" ]; then
+# Preconditions: a repo, `_run/` ignored, gh when a ticket is involved. Fatal ones stop before
+# anything is created — a run half-set-up is worse than a run that never started.
+CHECK_ARGS=(--repo "$REPO" --slug "$SLUG")
+[ -n "$ISSUE" ] && CHECK_ARGS+=(--issue "$ISSUE")
+if ! bun "$HUDDLE_ROOT/src/launch.ts" check "${CHECK_ARGS[@]}"; then
+  echo "launch: stopping before anything was created" >&2
+  exit 1
+fi
+if [ "$CHECK_ONLY" = "1" ]; then
+  echo "launch: check only, nothing created" >&2
+  exit 0
+fi
+
+# The ask: from the ticket when one is named, a skeleton otherwise.
+if [ -n "$ISSUE" ] && [ -z "$RUN_FILE" ]; then
+  RUN_FILE="$RUN_DIR/run.yaml"
+  if [ -f "$RUN_FILE" ]; then
+    # An edited ask is the human's wording; regenerating it would silently drop the constraints.
+    echo "launch: reusing the ask at $RUN_FILE — delete it to regenerate it from #$ISSUE" >&2
+  else
+    ISSUE_ARGS=(--repo "$REPO" --issue "$ISSUE" --template "$TEMPLATE" --out "$RUN_FILE")
+    [ "$ANY_STATE" = "1" ] && ISSUE_ARGS+=(--any-state)
+    bun "$HUDDLE_ROOT/src/launch.ts" issue "${ISSUE_ARGS[@]}" || exit 1
+  fi
+elif [ -z "$RUN_FILE" ]; then
   mkdir -p "$RUN_DIR"
   RUN_FILE="$RUN_DIR/run.yaml"
   if [ ! -f "$RUN_FILE" ]; then
@@ -81,25 +124,36 @@ YAML
   fi
 fi
 
-# `_run/` must not be committed: it holds runtime files and a prompt snapshot per run.
-if [ ! -d "$REPO/.git" ] && [ ! -f "$REPO/.git" ]; then
-  echo "launch: $REPO is not a git working tree; a room's output needs a branch or a worktree" >&2
-  exit 1
-fi
-if ! git -C "$REPO" check-ignore -q _run/; then
-  echo "launch: warning: _run/ is not gitignored in $REPO; add it before the room writes there" >&2
-fi
-
 CONFIG="$(bun "$HUDDLE_ROOT/src/room-run.ts" prepare "$RUN_FILE" --out "$RUN_DIR")"
 [ -f "$CONFIG" ] || { echo "launch: prepare did not produce a resolved config" >&2; exit 1; }
 
-if [ -d "$WORKTREE" ]; then
-  echo "launch: reusing existing worktree $WORKTREE" >&2
-elif [ "$BRANCH" = "1" ]; then
-  git -C "$REPO" worktree add -b "run/$SLUG" "$WORKTREE" >&2
-else
-  # No branch: this run produces nothing to check in, so nothing should be mergeable.
-  git -C "$REPO" worktree add --detach "$WORKTREE" >&2
+WORKTREE_ACTION="$(bun "$HUDDLE_ROOT/src/launch.ts" worktree --repo "$REPO" --slug "$SLUG")" || exit 1
+
+add_worktree() {
+  if [ "$BRANCH" = "1" ]; then
+    git -C "$REPO" worktree add -b "run/$SLUG" "$WORKTREE" >&2
+  else
+    # No branch: this run produces nothing to check in, so nothing should be mergeable.
+    git -C "$REPO" worktree add --detach "$WORKTREE" >&2
+  fi
+}
+
+case "$WORKTREE_ACTION" in
+  reuse) ;;
+  replace)
+    git -C "$REPO" worktree remove --force "$WORKTREE" >&2
+    git -C "$REPO" worktree prune
+    if [ -n "$(git -C "$REPO" branch --list "run/$SLUG")" ]; then
+      git -C "$REPO" branch -D "run/$SLUG" >&2
+    fi
+    add_worktree
+    ;;
+  create) add_worktree ;;
+  *) echo "launch: worktree action '$WORKTREE_ACTION' is not something this script does" >&2; exit 1 ;;
+esac
+
+if [ "$WARM" = "1" ]; then
+  bun "$HUDDLE_ROOT/src/launch.ts" warm --repo "$REPO" --worktree "$WORKTREE" || exit 1
 fi
 
 echo "launch: template=$NAME run=$RUN_DIR worktree=$WORKTREE branch=$([ "$BRANCH" = 1 ] && echo "run/$SLUG" || echo detached)" >&2

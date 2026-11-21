@@ -46,6 +46,24 @@ Start a room from its template, pointing at the repo whose code the agents will 
 ./rooms/launch.sh --template docs-audit --repo ~/dev/some-repo --slug 2026-11-20-audit --branch
 ```
 
+For a ticket room, name the ticket instead of writing the ask by hand — the launcher fetches it, writes
+`task:` from its title and `definition_of_done:` from its acceptance-criteria section, and refuses a
+ticket that is not `ready-for-agent`:
+
+```bash
+# report every precondition and create nothing
+./rooms/launch.sh --template ticket-resolver1 --repo ~/dev/some-repo --issue 54 --slug ticket-54 --check
+
+# write the ask, create the worktree, warm the dependencies, boot
+./rooms/launch.sh --template ticket-resolver1 --repo ~/dev/some-repo --issue 54 --slug ticket-54 --branch
+```
+
+`--dry-run` stops before booting, `--no-warm` skips the dependency warm-up, `--any-state` overrides the
+`ready-for-agent` refusal. The worktree is warmed by cloning the launching checkout's `node_modules` when
+the lockfile matches (measured 8.1 s for 763 MB against 42.7 s for `npm ci`) and installing when it does
+not. Every decision the launcher makes is tested in `src/launch.ts`; the operating procedure is
+[docs/RUNBOOK.md](docs/RUNBOOK.md).
+
 The run directory is numbered in creation order (`001-docs-audit`, `002-…`), so `ls _run/` reads as a
 history. Re-running the same `--slug` reuses that run's directory instead of starting a second one beside
 it.

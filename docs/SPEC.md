@@ -184,6 +184,22 @@ export interface LoadedConfig {
 
 ---
 
+### 3.2 Launching a run (`rooms/launch.sh`, #80)
+
+A run is created by one command, and the launcher owns the steps a human used to remember:
+
+| Step | Who decides |
+|---|---|
+| repo is a git tree, `_run/` ignored, `gh` authed for a ticket run | launcher, `check` subcommand; fatal ones stop before anything is created |
+| the ask (`run.yaml`) | `--issue <n>` writes it from the ticket: `task:` from the title, `definition_of_done:` from the acceptance-criteria section verbatim, falling back to the whole body when there is no such heading — never to an empty bar |
+| may this ticket be handed to a room | `eligibility`: only `ready-for-agent` passes; `--any-state` overrides |
+| the worktree | `worktreeAction`: create, reuse, replace (behind, clean, branch merged), or refuse (behind and dirty, or behind and unmerged) |
+| dependencies | `warmPlan`: clone the launching checkout's `node_modules` when the lockfile hashes match; install when they differ or no source tree exists; refuse when two lockfiles disagree |
+
+The decisions live in `src/launch.ts` and are unit-tested; the shell script keeps the git and gh calls.
+Nothing is silently reused: a worktree cut from an older commit is replaced or refused, because a run
+quietly based on last week's commit looks healthy and is not.
+
 ## 4. Room persistence schemas (D3)
 
 ### 4.1 `messages.jsonl` — append-only room log
