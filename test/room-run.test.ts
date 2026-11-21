@@ -84,6 +84,30 @@ describe("prepareRun", () => {
     }
   });
 
+  test("every room setting survives the snapshot: nothing silently defaults", async () => {
+    const { root, template, runDir, runPath } = await scaffold();
+    try {
+      // The template the room actually runs: the docs-audit one, with the settings that matter.
+      const withSettings = (await readFile(template, "utf8")) +
+        "task: \"\"\nturn_timeout_ms: 600000\nack_scope: anyone\ndispatch_scope: lead\n";
+      await writeFile(template, withSettings, "utf8");
+
+      const prepared = await prepareRun(runPath);
+      const original = (await loadConfig(template)).config;
+      const replay = (await loadConfig(prepared.configPath)).config;
+
+      // A run that dropped `dispatch_scope` would silently route every mention, which is what
+      // happened to the docs-audit room: the template said `lead`, the snapshot said nothing (#74).
+      expect(replay.dispatch_scope).toBe(original.dispatch_scope);
+      expect(replay.ack_scope).toBe(original.ack_scope);
+      expect(replay.max_hops).toBe(original.max_hops);
+      expect(replay.turn_timeout_ms).toBe(original.turn_timeout_ms);
+      expect(replay.launch_guard).toBe(original.launch_guard);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("re-preparing keeps the notes a human wrote", async () => {
     const { root, runDir, runPath } = await scaffold();
     try {

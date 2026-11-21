@@ -39,8 +39,12 @@ function roomForSnapshot(config: RoomConfig, roomDir: string, prompts: Map<strin
   for (const key of ["task", "definition_of_done"] as const) {
     if (config[key] !== undefined) out[key] = config[key];
   }
+  // Every room setting that changes behaviour, or the room silently runs a default: a snapshot
+  // without `dispatch_scope` routed every mention in a room whose template said `lead` (#74).
   out.max_hops = config.max_hops;
   out.turn_timeout_ms = config.turn_timeout_ms;
+  out.ack_scope = config.ack_scope;
+  out.dispatch_scope = config.dispatch_scope;
   if (config.launch_guard !== undefined) out.launch_guard = config.launch_guard;
   out.lead = agentForSnapshot(config.lead, prompts.get(config.lead.id) ?? null);
   out.agents = config.agents.map((agent) => agentForSnapshot(agent, prompts.get(agent.id) ?? null));
