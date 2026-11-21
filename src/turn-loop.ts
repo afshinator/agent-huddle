@@ -39,9 +39,16 @@ export function hasAck(text: string | null): boolean {
 /**
  * A direct message expects an acknowledgement; a broadcast does not, and neither does the
  * startup task, which is a boot directive rather than a peer message (#60).
+ *
+ * `ack_scope` decides whose direct mention counts (default `lead`): by default only the lead
+ * and the supervisor, because a peer's hand-off is ordinary work; `anyone` widens it to every
+ * agent. `sender` is the agent id that wrote the text, or `"supervisor"` for human input.
  */
-function needsAck(kind: SubmitKind, targets: readonly string[], text: string): boolean {
-  return kind !== "startup_task" && targets.length === 1 && !mentionsBroadcast(text);
+function needsAck(cfg: LoadedConfig, kind: SubmitKind, targets: readonly string[], text: string, sender: string): boolean {
+  if (kind === "startup_task") return false;
+  if (targets.length !== 1 || mentionsBroadcast(text)) return false;
+  if (cfg.config.ack_scope === "anyone") return true;
+  return sender === "supervisor" || sender === cfg.config.lead.id;
 }
 
 export type SubmitKind = "user" | "startup_task";
@@ -152,11 +159,14 @@ export class TurnLoop {
     const initialTargets =
       pinnedTargets ??
       (kind === "startup_task" ? [this.cfg.config.lead.id] : initialResolution.targets);
-    const queue: Array<{ agentId: string; text: string; ackRequired: boolean }> = initialTargets.map((agentId) => ({
-      agentId,
-      text,
-      ackRequired: needsAck(kind, initialTargets, text),
-    }));
+    const queue: Array<{ agentId: string; text: string; from: string; ackRequired: boolean }> = initialTargets.map(
+      (agentId) => ({
+        agentId,
+        text,
+        from: "supervisor",
+        ackRequired: needsAck(this.cfg, kind, initialTargets, text, "supervisor"),
+      }),
+    );
     await this.syncContext(chain, text, queue.map((t) => t.agentId));
 
     if (queue.length === 0) {
@@ -198,7 +208,12 @@ export class TurnLoop {
       // A mention of the author is a note to others, not a dispatch to itself.
       const nextIds = resolution.targets.filter((id) => id !== agentId);
       for (const nextId of nextIds) {
-        queue.push({ agentId: nextId, text: reply, ackRequired: needsAck("user", resolution.targets, reply) });
+        queue.push({
+          agentId: nextId,
+          text: reply,
+          from: agentId,
+          ackRequired: needsAck(this.cfg, "user", resolution.targets, reply, agentId),
+        });
       }
       await this.syncContext(chain, reply, nextIds, agentId);
     }

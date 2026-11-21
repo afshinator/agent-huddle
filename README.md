@@ -75,8 +75,9 @@ and `git worktree remove` it. The `_run/<NNN>-<slug>/` collateral stays behind o
 Each agent gets a pane showing that agent's work as prose. The pane tails `<room_dir>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.
 
 An agent addressed with a direct `@handle` answers with one line before it works — `Got it: <what it
-understood>` — so a pickup is visible. Broadcasts (`@all`) and the startup task need no such line, and
-a reply that skips it earns a room notice naming the agent.
+understood>` — so a pickup is visible. By default that applies to the lead and the supervisor; set
+`ack_scope: anyone` in the room config to require it for peer mentions too. Broadcasts (`@all`) and the
+startup task need no such line, and a reply that skips it earns a room notice naming the agent.
 
 Before the first agent speaks the room prints a banner — its name, its handles, the run directory, the ask and where the transcript lives — followed by the measured tab shape it laid the panes out in. Every room line is also appended to `<room_dir>/room.log`, so closing the pane does not lose the run.
 

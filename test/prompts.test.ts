@@ -34,6 +34,7 @@ function cfg(overrides?: {
       ...(overrides?.dod !== undefined ? { definition_of_done: overrides.dod } : {}),
       max_hops: 12,
       turn_timeout_ms: 300_000,
+      ack_scope: "lead",
       lead: l,
       agents: a,
     },
@@ -52,10 +53,17 @@ describe("buildSocialContract", () => {
         "- If a message mentions only other agents, read it and stay quiet — do not reply.\n" +
         "- If the lead addresses you directly, respond from your lane.\n" +
         "- You may mention other agents with @handle to hand off work.\n" +
-        "- A message that mentions you directly (one agent, not @all) gets one line back before\n" +
-        "  you work: `Got it: <what you understood>`. Put no @handle in that line — a mention\n" +
-        "  there would dispatch the agent you are only quoting.",
+        "- When the lead or the supervisor mentions you directly (one agent, not @all), begin\n" +
+        "  your reply with one line: `Got it: <what you understood>`. Put no @handle in that\n" +
+        "  line — a mention there would dispatch the agent you are only quoting.",
     );
+  });
+
+  test("ack_scope: anyone widens the acknowledgement rule to peers", () => {
+    const c = cfg();
+    const contract = buildSocialContract(dev1, { ...c, config: { ...c.config, ack_scope: "anyone" } });
+    expect(contract).toContain("When any agent mentions you directly");
+    expect(contract).not.toContain("the lead or the supervisor mentions you directly");
   });
 });
 

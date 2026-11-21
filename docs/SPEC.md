@@ -94,6 +94,7 @@ definition_of_done: |      # optional, advisory to lead (D2). omit -> none.
 max_hops: 12               # D6. default 12.
 turn_timeout_ms: 300000    # how long one agent turn may take. default 300000.
 launch_guard: warn         # refuse|warn|off. default warn. (#38, §10)
+ack_scope: lead            # lead|anyone. default lead: whose direct mention needs `Got it:` (#60, §6.2b)
 
 lead:                      # D5. required.
   id: lead
@@ -163,6 +164,7 @@ export interface RoomConfig {
   max_hops: number;              // default 12
   turn_timeout_ms: number;       // default 300000
   launch_guard?: "refuse" | "warn" | "off";  // default warn
+  ack_scope: "lead" | "anyone";  // default lead: whose direct mention needs `Got it:`
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -335,6 +337,11 @@ An agent dispatched by a **direct mention** (exactly one target, no `@all`) must
 one line saying what it understood: `Got it: <short phrase>`, the first non-blank line of its own text.
 A broadcast (`@all` / `@everyone`, or several named agents) and the startup task owe no
 acknowledgement — the first is not addressed to one agent, the second is a boot directive.
+
+**Whose mention counts is configurable** (`ack_scope`, default `lead`): `lead` means a direct mention
+from the lead or the supervisor (the human) needs the acknowledgement, and a peer's hand-off is
+ordinary work; `anyone` makes every agent's direct mention need one. The value reaches the agents
+too — the social contract states the rule in the same scope the turn loop enforces (§9.1).
 
 The acknowledgement carries **no `@handle`**: the router cannot distinguish a quotation from a
 hand-off, so a mention inside it dispatches that agent. The social contract says so, and a test pins

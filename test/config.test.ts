@@ -106,6 +106,23 @@ describe("loadConfig", () => {
     });
   });
 
+  test("ack_scope defaults to lead, and accepts anyone", async () => {
+    await withConfig(`name: r\n${LEAD}`, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      expect(loaded.config.ack_scope).toBe("lead");
+    });
+    await withConfig(`name: r\nack_scope: anyone\n${LEAD}`, async (p, cwd) => {
+      const loaded = await loadConfig(p, cwd);
+      expect(loaded.config.ack_scope).toBe("anyone");
+    });
+  });
+
+  test("an unknown ack_scope fails load naming the field", async () => {
+    await withConfig(`name: r\nack_scope: nobody\n${LEAD}`, async (p, cwd) => {
+      await expect(loadConfig(p, cwd)).rejects.toThrow(/config\.ack_scope must be one of/);
+    });
+  });
+
   test("launch_guard accepts refuse, warn or off", async () => {
     for (const value of ["refuse", "warn", "off"]) {
       await withConfig(`name: r\nlaunch_guard: ${value}\n${LEAD}`, async (p, cwd) => {

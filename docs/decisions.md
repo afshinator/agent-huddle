@@ -349,7 +349,12 @@ how much a silent room costs.
 
 **Decision.** An agent dispatched by a direct mention begins its reply with `Got it: <what it
 understood>`, the first non-blank line of its own text. A broadcast (`@all`, or several named agents)
-and the startup task are exempt. The line carries no `@handle`, because the router cannot tell a
+and the startup task are exempt.
+
+**Scope (added the same day, at the user's request).** `ack_scope` decides whose direct mention counts:
+`lead` (default) — the lead or the supervisor — or `anyone`. The default is `lead` because a peer's
+hand-off is ordinary work and the acknowledgement is a receipt for instructions, not for conversation.
+The social contract reads the same key, so the agents are told exactly what is enforced. The line carries no `@handle`, because the router cannot tell a
 quotation from a hand-off. The turn loop enforces it: a direct-mention reply whose first line fails
 `/^Got it:\s+\S/` appends one room notice naming the agent.
 

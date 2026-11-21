@@ -14,7 +14,7 @@ const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 const dev2: AgentSpec = { id: "dev2", handle: "@dev2", role: "dev" };
 const reviewer: AgentSpec = { id: "reviewer", handle: "@reviewer", role: "review" };
 
-function makeConfig(maxHops = 12, agents: AgentSpec[] = [dev1, dev2, reviewer]): LoadedConfig {
+function makeConfig(maxHops = 12, agents: AgentSpec[] = [dev1, dev2, reviewer], ackScope: "lead" | "anyone" = "lead"): LoadedConfig {
   const allAgents = [lead, ...agents];
   return {
     config: {
@@ -23,6 +23,7 @@ function makeConfig(maxHops = 12, agents: AgentSpec[] = [dev1, dev2, reviewer]):
       definition_of_done: "things done",
       max_hops: maxHops,
       turn_timeout_ms: 300_000,
+      ack_scope: ackScope,
       lead,
       agents,
     },
@@ -40,10 +41,10 @@ interface Harness {
   msgs: () => Promise<Array<{ kind: string; from: string; text: string; hop: number; mentions: string[] }>>;
 }
 
-async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: number; agents?: AgentSpec[]; turnTimeoutMs?: number }): Promise<void> {
+async function harness(fn: (h: Harness) => Promise<void>, opts?: { maxHops?: number; agents?: AgentSpec[]; turnTimeoutMs?: number; ackScope?: "lead" | "anyone" }): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-loop-"));
   try {
-    const config = makeConfig(opts?.maxHops, opts?.agents);
+    const config = makeConfig(opts?.maxHops, opts?.agents, opts?.ackScope);
     const store = new RoomStore(dir);
     const pi = new FakePiAgentClient();
     const telemetry = new RecordingTelemetry();
@@ -222,9 +223,43 @@ describe("TurnLoop", () => {
       await loop.submit("@lead start", "user");
 
       expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "lead"]);
-      expect((await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:")).length).toBe(1);
+      // the lead's second turn answers a peer's mention, which the default scope does not police
+      expect((await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:")).length).toBe(0);
     });
   });
+
+  test("by default an agent-to-agent mention needs no acknowledgement", async () => {
+    await harness(async ({ loop, pi, msgs }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }]);
+      // dev1 passes the work on; @dev2 is mentioned by a peer, not by the lead
+      pi.script("dev1", [{ lastText: "Got it: hand it on\n@dev2 take it" }]);
+      pi.script("dev2", [{ lastText: "taken" }]);
+
+      await loop.submit("@lead start", "user");
+
+      const ackNotices = (await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
+      expect(ackNotices.length).toBe(0);
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "dev2"]);
+    });
+  }, 20_000);
+
+  test("ack_scope: anyone makes a peer mention owe an acknowledgement too", async () => {
+    await harness(
+      async ({ loop, pi, msgs }) => {
+        pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }]);
+        pi.script("dev1", [{ lastText: "Got it: hand it on\n@dev2 take it" }]);
+        pi.script("dev2", [{ lastText: "taken" }]);
+
+        await loop.submit("@lead start", "user");
+
+        const ackNotices = (await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
+        expect(ackNotices.length).toBe(1);
+        expect(ackNotices[0]!.text).toContain("@dev2");
+        expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "dev2"]);
+      },
+      { ackScope: "anyone" },
+    );
+  }, 20_000);
 
   test("a human's direct message to the lead needs an acknowledgement as well", async () => {
     await harness(async ({ loop, pi, msgs }) => {

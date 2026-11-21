@@ -27,6 +27,7 @@ export interface RoomConfig {
   max_hops: number;              // default 12
   turn_timeout_ms: number;       // default 300000: how long one agent turn may take
   launch_guard?: "refuse" | "warn" | "off";  // default warn: git-root boot guard (#38)
+  ack_scope: "lead" | "anyone";  // default lead: whose direct mention needs `Got it:` (#60)
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -44,7 +45,7 @@ const THINKING_LEVELS = new Set<string>([
 
 const ROOM_KEYS = new Set<string>([
   "name", "room_dir", "task", "definition_of_done", "max_hops", "turn_timeout_ms",
-  "launch_guard", "lead", "agents",
+  "launch_guard", "ack_scope", "lead", "agents",
 ]);
 
 /** A run file names a template and carries only what is specific to that run. */
@@ -54,6 +55,7 @@ const RUN_KEYS = new Set<string>([...ROOM_KEYS, "template"]);
 const TEMPLATE_OWNED = new Set<string>(["name"]);
 
 const LAUNCH_GUARDS = new Set(["refuse", "warn", "off"]);
+const ACK_SCOPES = new Set(["lead", "anyone"]);
 
 const AGENT_KEYS = new Set<string>([
   "id", "handle", "role", "system_prompt", "system_prompt_file",
@@ -288,6 +290,11 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
     fail(`config.launch_guard must be one of ${[...LAUNCH_GUARDS].join(", ")}`);
   }
 
+  const ackScopeRaw = obj.ack_scope ?? "lead";
+  if (typeof ackScopeRaw !== "string" || !ACK_SCOPES.has(ackScopeRaw)) {
+    fail(`config.ack_scope must be one of ${[...ACK_SCOPES].join(", ")}`);
+  }
+
   if (obj.lead === undefined) fail("config.lead is required");
   const lead = parseAgent(obj.lead, "config.lead");
 
@@ -345,6 +352,7 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
       max_hops,
       turn_timeout_ms,
       ...(launchGuardRaw !== undefined ? { launch_guard: launchGuardRaw as "refuse" | "warn" | "off" } : {}),
+      ack_scope: ackScopeRaw as "lead" | "anyone",
       lead,
       agents,
     },

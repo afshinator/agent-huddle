@@ -21,6 +21,7 @@ function makeConfig(opts?: { task?: string }): LoadedConfig {
       ...(opts?.task !== undefined ? { task: opts.task } : {}),
       max_hops: 12,
       turn_timeout_ms: 300_000,
+      ack_scope: "lead",
       lead,
       agents: [dev1],
     },
