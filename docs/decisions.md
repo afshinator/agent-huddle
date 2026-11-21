@@ -450,13 +450,18 @@ in config and the template that needs it opts in.
 has to hold it whichever scope a room picks. Also rejected: a notice when a mention is ignored under
 `lead`; the lead already has the text as context and the room is noisy enough.
 
+**Amendment (#71):** under `lead`, a reply from anyone but the lead always reports upward, whether or not
+it names the lead. A live run had the reviewer answer with its evidence and `go` but no `@lead`, so
+nothing was dispatched and the room ended one step short of DONE, looking stuck.
+
 **Cost, accepted:** under `lead`, a two-agent handoff that does not involve the lead needs the lead to
 relay it.
 
 ## D19 — The brief is background, and notices are the room's own voice (#68)
 
 **Decision.** The startup task prints as a framed block (`── brief ── … ── end brief ──`), not as
-`[room] <task>`, and a room notice prints as `· <note>` with no participant prefix. Neither ever reaches
+`[room] <task>`, and a room notice prints as `· <note>` with no participant prefix — dim, when colour is
+on, so it cannot be mistaken for a message. Neither ever reaches
 an agent as a prompt.
 
 **Why:** agents read `[room] …` as somebody speaking, so a brief looked like a live instruction and a

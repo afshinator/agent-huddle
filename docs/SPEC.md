@@ -481,7 +481,8 @@ Rules:
 `dispatch_scope` decides, per room. `anyone` (the default) makes every mention a dispatch, exactly as v1
 routed. `lead` makes an agent's reply start a turn only for the **lead**, or for anyone when the author
 **is** the lead; any other mention — a report naming a peer — is recorded and pushed to that agent as
-context and starts nothing. The room config holds this, not the prompts: the failure that produced it was
+context and starts nothing. Under `lead` every reply from a non-lead reports upward whether or not it
+names the lead: the lead is the router, and a report that forgets the handle must not end the chain. The room config holds this, not the prompts: the failure that produced it was
 mechanical. `dispatch_scope: lead` is the docs-audit template's choice, because a tally report that ends
 "@reviewer count is 28" must not summon the reviewer before the lead asks.
 
