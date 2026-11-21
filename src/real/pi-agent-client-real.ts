@@ -338,8 +338,19 @@ export class RealPiAgentClient implements PiAgentClient {
         agent.textBuffer += ev.delta;
         this.bus.emit(agentId, "stream", ev.delta);
       } else if (ev?.type === "text_end" && typeof ev.content === "string") {
-        // Replaces rather than appends: some providers emit text_end without text_delta.
-        agent.textBuffer = ev.content;
+        // A provider may emit text_end with no text_delta before it (nothing streamed): take the
+        // content. Or it may restate only the last message of a turn whose earlier messages already
+        // streamed: appending keeps them, and the buffer is what the ack check and DONE read (§T11).
+        if (agent.textBuffer === "") {
+          agent.textBuffer = ev.content;
+        } else if (agent.textBuffer.endsWith(ev.content)) {
+          // Already streamed: the boundary between the earlier messages and this one is the
+          // only thing missing, and the record must show it.
+          const prefix = agent.textBuffer.slice(0, agent.textBuffer.length - ev.content.length);
+          if (prefix !== "" && !prefix.endsWith("\n")) agent.textBuffer = `${prefix}\n${ev.content}`;
+        } else if (!agent.textBuffer.includes(ev.content)) {
+          agent.textBuffer += `${agent.textBuffer.endsWith("\n") ? "" : "\n"}${ev.content}`;
+        }
       }
       return;
     }

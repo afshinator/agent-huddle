@@ -273,7 +273,7 @@ describe("What a room message is allowed to look like (§room)", () => {
   }, 20_000);
 
   test("a room notice is marked as the room's own note, not a message from a participant", async () => {
-    await harness({ task: undefined }, async ({ coordinator, out, pi }) => {
+    await harness({ task: undefined, color: true }, async ({ coordinator, out, pi }) => {
       // A notice arises here: a direct mention answered without an acknowledgement.
       pi.script("lead", [{ lastText: "working on it" }]);
       await coordinator.boot();
@@ -282,6 +282,8 @@ describe("What a room message is allowed to look like (§room)", () => {
       const text = out.join("");
       expect(text).toContain('· @lead answered a direct message without "Got it: …"');
       expect(text).not.toContain('[room] @lead answered');
+      // Dim, so a room note cannot be mistaken for somebody speaking (#71).
+      expect(text).toContain("\u001b[2m· @lead answered");
     });
   }, 20_000);
 });

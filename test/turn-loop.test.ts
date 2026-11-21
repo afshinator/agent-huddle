@@ -164,6 +164,25 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("dispatch_scope: lead — a report reaches the lead even with no mention at all", async () => {
+    await harness(async ({ loop, pi }) => {
+      // The live run: @reviewer replied with its evidence and "go" but never wrote "@lead", so
+      // under `lead` nobody was dispatched and the room went quiet with no DONE.
+      pi.script("dev1", [{ lastText: "Got it: tally\n28 rows\n@lead done" }]);
+      pi.script("lead", [{ lastText: "Got it: check\n@reviewer verify the count" }, { lastText: "ok\nDONE" }]);
+      pi.script("reviewer", [{ lastText: "Got it: verify\n28 rows, denominator 28; go" }]);
+
+      await loop.submit("@dev1 tally the docs", "user");
+
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual([
+        "dev1",
+        "lead",
+        "reviewer",
+        "lead",
+      ]);
+    }, { dispatchScope: "lead" });
+  });
+
   test("the lead's mention dispatches the agent it names under either scope", async () => {
     for (const dispatchScope of ["anyone", "lead"] as const) {
       await harness(async ({ loop, pi }) => {
@@ -293,15 +312,16 @@ describe("TurnLoop", () => {
 
   test("dispatch_scope: lead — a peer mention is context, so no acknowledgement is owed", async () => {
     await harness(async ({ loop, pi, msgs }) => {
-      pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }]);
-      // dev1 mentions a peer; under D18 that is a note to the room, not an assignment.
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 hand it on" }, { lastText: "ok\nDONE" }]);
+      // dev1 mentions a peer; under `lead` that is a note to the room, not an assignment.
       pi.script("dev1", [{ lastText: "Got it: hand it on\n@dev2 take it" }]);
 
       await loop.submit("@lead start", "user");
 
       const ackNotices = (await msgs()).filter((x) => x.kind === "notice" && x.text.includes("Got it:"));
       expect(ackNotices.length).toBe(0);
-      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1"]);
+      // the report goes back to the lead; @dev2 is never dispatched
+      expect(pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId)).toEqual(["lead", "dev1", "lead"]);
     }, { dispatchScope: "lead" });
   }, 20_000);
 

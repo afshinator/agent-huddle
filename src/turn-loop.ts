@@ -211,9 +211,17 @@ export class TurnLoop {
       // note to others, not a dispatch to itself.
       const leadOnly = this.cfg.config.dispatch_scope === "lead";
       const leadId = this.cfg.config.lead.id;
-      const nextIds = resolution.targets.filter(
-        (id) => id !== agentId && (!leadOnly || agentId === leadId || id === leadId),
-      );
+      // Under `lead` a reply from anyone else always reports upward: the lead is the router, so a
+      // report that forgets to write "@lead" must not leave the chain silent (live run, #68).
+      const reportUp = leadOnly && agentId !== leadId ? [leadId] : [];
+      const nextIds = [
+        ...new Set([
+          ...reportUp,
+          ...resolution.targets.filter(
+            (id) => id !== agentId && (!leadOnly || agentId === leadId || id === leadId),
+          ),
+        ]),
+      ];
       for (const nextId of nextIds) {
         queue.push({
           agentId: nextId,

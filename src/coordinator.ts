@@ -539,9 +539,9 @@ export class Coordinator {
     // transcript never ends mid-sentence with no indication why.
     if (msg.kind === "notice" || msg.kind === "hop_limit_reached") {
       this.chat.endAll("interrupted");
-      // The room's own note, not a participant's message: a bare `·` marks it as out-of-band,
-      // and no agent ever receives it as context (#68).
-      this.stdout.write(`· ${msg.text}\n`);
+      // The room's own note, not a participant's message: a dim `·` line marks it as out-of-band,
+      // so it cannot be read as somebody speaking (#68, #71).
+      this.stdout.write(`${this.color ? "\u001b[2m" : ""}· ${msg.text}${this.color ? "\u001b[0m" : ""}\n`);
       return;
     }
     const prefix = paintTag(msg.handle, (h) => this.colourFor(h));
