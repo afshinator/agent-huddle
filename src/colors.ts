@@ -1,7 +1,7 @@
 /**
  * Agent colours: the one file to edit.
  *
- * Each agent gets an RGB triple, and the `[@handle]` prefix of its messages is printed in that
+ * Each agent gets an RGB triple, and the `[handle]` prefix of its messages is printed in that
  * colour, so a reader can tell who is speaking without parsing the prefix. A handle named inside
  * somebody's text stays plain: colour marks the speaker, never the subject (#70). Nothing else in
  * the repo restates these values.
@@ -79,10 +79,11 @@ export function italicMentions(text: string, known: (handle: string) => boolean)
   });
 }
 
-/** The `[@handle]` prefix a room message carries, coloured. */
+/** The `[handle]` prefix a room message carries, coloured. The `@` is mention syntax, not the name. */
 export function paintTag(handle: string, colour: (handle: string) => string | null): string {
   const code = colour(handle);
-  return code === null ? `[${handle}]` : `\u001b[${code}m[${handle}]${RESET}`;
+  const name = handle.replace(/^@/, "");
+  return code === null ? `[${name}]` : `\u001b[${code}m[${name}]${RESET}`;
 }
 
 /** Drop every escape sequence: `room.log` is meant to be greppable. */

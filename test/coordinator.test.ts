@@ -144,7 +144,7 @@ describe("Coordinator chat stream (#63)", () => {
       const boot = coordinator.boot();
       await waitUntil(() => out.join("").includes("the footer now"), 3000);
 
-      expect(out.join("")).toContain("[@dev1] Got it: checking\nthe footer now");
+      expect(out.join("")).toContain("[dev1] Got it: checking\nthe footer now");
       await coordinator.shutdown();
       await boot.catch(() => undefined);
     });
@@ -174,7 +174,7 @@ describe("Coordinator chat stream (#63)", () => {
 
       const text = out.join("");
       expect(text.split("silent provider").length - 1).toBe(1);
-      expect(text).toContain("[@lead] silent provider");
+      expect(text).toContain("[lead] silent provider");
     });
   }, 20_000);
 
@@ -188,8 +188,8 @@ describe("Coordinator chat stream (#63)", () => {
       await coordinator.boot();
 
       const text = out.join("");
-      expect(text).toContain("[@dev1] reading the footer\n");
-      expect(text).toContain("[@dev1] (interrupted)");
+      expect(text).toContain("[dev1] reading the footer\n");
+      expect(text).toContain("[dev1] (interrupted)");
       expect(text).toContain("settle timeout");
     });
   }, 20_000);
@@ -379,8 +379,8 @@ describe("Agent colours in the room (#66)", () => {
 
       const text = out.join("");
       // the prefix of a message carries the sender's colour, which is its mark's colour
-      expect(text).toContain(`\u001b[${colorOf("lead", 0)}m[@lead]\u001b[0m`);
-      expect(text).toContain(`\u001b[${colorOf("dev1", 1)}m[@dev1]\u001b[0m`);
+      expect(text).toContain(`\u001b[${colorOf("lead", 0)}m[lead]\u001b[0m`);
+      expect(text).toContain(`\u001b[${colorOf("dev1", 1)}m[dev1]\u001b[0m`);
       // a handle named inside somebody's text stays uncoloured: colour marks who is speaking,
       // not who is being talked about (#70) — but it is italic, so the address is visible (#77)
       expect(text).not.toContain(`\u001b[${colorOf("dev1", 1)}m@dev1\u001b[0m go`);
@@ -505,8 +505,8 @@ describe("Coordinator (fakes)", () => {
       const stream = out.join("");
       // the startup task is printed as a framed brief, not as a participant's message
       expect(stream).toContain("── brief ── background: what this room was launched to do\n  do the work");
-      expect(stream).toContain("[@lead]");
-      expect(stream).toContain("[@dev1]");
+      expect(stream).toContain("[lead]");
+      expect(stream).toContain("[dev1]");
     });
   });
 

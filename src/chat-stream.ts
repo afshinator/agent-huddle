@@ -81,7 +81,8 @@ export class ChatStream {
     this.partial.delete(agentId);
     if (rest !== "") this.writeLines(agentId, rest + "\n");
     const printedThisTurn = this.printed.has(agentId);
-    if (reason !== undefined && printedThisTurn) this.sink.write(`[${this.handleOf(agentId)}] (${reason})\n`);
+    if (reason !== undefined && printedThisTurn)
+      this.sink.write(`[${this.handleOf(agentId).replace(/^@/, "")}] (${reason})\n`);
     this.printed.delete(agentId);
     this.active.delete(agentId);
     return printedThisTurn;

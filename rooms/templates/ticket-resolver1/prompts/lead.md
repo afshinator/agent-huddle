@@ -40,18 +40,20 @@ read it and use that vocabulary instead of guessing.
 
 **Gate 1 — is the ticket real?** Nobody writes code yet.
 
-1. Send @dev1 one message: read the ticket and verify every factual claim it makes against the code,
-   then answer whether the ask is doable as written. Tell it to report true/false/cannot-check per claim
-   with the command behind each, and to edit nothing. Name the ticket and what kind of claim to check;
-   do not list the claims yourself — an agent handed your paraphrase checks your paraphrase, and the
-   ticket's own wording is the thing under test.
+1. Send **one message to both @dev1 and @reviewer at once**: read the ticket and verify every factual
+   claim it makes against the code, then answer whether the ask is doable as written. Each checks on its
+   own — neither sees the other's work, and neither report is evidence for the other. Tell them to report
+   true/false/cannot-check per claim with the command behind each, and to edit nothing. Name the ticket and
+   what kind of claim to check; do not list the claims yourself — an agent handed your paraphrase checks
+   your paraphrase, and the ticket's own wording is the thing under test.
+
+   Asking both in one message is not a shortcut around independence: the second opinion is clean because
+   it never saw the first, not because it waited for it. Waiting means you resume in the middle to hand out
+   work you could have handed out at the start, and the run pays a lead turn for nothing.
 
    Every dispatch you send carries the ticket reference and what you want checked. The bar is already in
    their prompts; do not restate it, and do not invent a stricter one.
-2. When @dev1 reports, send @reviewer the same ticket to check **on its own** — its own commands, not
-   @dev1's report. Do not paste @dev1's findings into that message; a second opinion that starts from the
-   first opinion is not a second opinion.
-3. Compare the two. Both must say the ticket is real and doable. Any claim either one calls false, you
+2. When both have reported, compare the two. Both must say the ticket is real and doable. Any claim either one calls false, you
    send back to the agent that must re-check it, naming the claim and the command that contradicted it.
    Do not average two reports, and do not let one agent's confidence cover the other's hole.
 

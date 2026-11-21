@@ -412,7 +412,7 @@ screen updates mid-sentence, which a log-file reader will not see — `room.log`
 ## D17 — Colours come from one table, in truecolor (#66)
 
 **Decision.** `src/colors.ts` maps agent id to an RGB triple; every `@handle` in the room and every
-`[@handle]` prefix is printed in that colour, and nothing else in the repo restates the values. That file
+`[handle]` prefix is printed in that colour, and nothing else in the repo restates the values. That file
 is the one a human edits to change them.
 
 **Why RGB, not the 16 names:** a named colour resolves against the reader's terminal palette, and herdr
@@ -436,7 +436,7 @@ address"; colour would say "this agent is speaking", which is what the prefix al
 the finished line, because a handle can arrive split across two deltas. `AH_COLOR=0` turns it off with the
 colour, and `room.log` stays plain.
 
-**Amendment (#70):** colour marks the speaker, not the subject. Only a message's `[@handle]` prefix is
+**Amendment (#70):** colour marks the speaker, not the subject. Only a message's `[handle]` prefix is
 painted; `@handle` named inside text is plain, as are the banner's handle list and the brief. The first
 version painted every mention, which made a room where everybody's name was coloured and nobody's voice
 was.
@@ -538,3 +538,16 @@ acting on, and before this the record could not tell them apart because only too
 **Rejected:** inferring cost from a model price table inside the room — the provider is the authority,
 and a stale table would print a confident wrong number. Also rejected: blocking the summary on a
 provider that never answers; a five-second race leaves it out.
+
+## D23 — Gate 1 asks both verifiers at once, and a prefix is a name, not an address (#83)
+
+**Amendment (#83):** gate 1 is one message to `@dev1` and `@reviewer`, not one then the other. The
+second opinion is clean because it never saw the first, not because it waited for it; serialising cost a
+lead turn in the middle of work the lead could have handed out at the start. The room still dispatches
+one turn at a time within a chain, so what the change buys is the missing lead round-trip, not two
+simultaneous turns.
+
+**Amendment (#83):** a message's prefix prints the handle without its `@` — `[lead]`, not `[@lead]`. The
+sigil is mention syntax, which is how one agent addresses another; it is not part of the agent's name, and
+a prefix carrying it reads as a name with a character in it. Colour still marks the speaker (D17/#70) and
+a name inside a sentence is still italic (#77).

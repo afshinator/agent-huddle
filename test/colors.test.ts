@@ -24,8 +24,10 @@ describe("colorOf", () => {
 
 describe("paintTag", () => {
   test("the message prefix takes the agent's colour", () => {
-    expect(paintTag("@lead", () => "38;2;255;0;0")).toBe(`${RED}[@lead]${RESET}`);
-    expect(paintTag("@lead", () => null)).toBe("[@lead]");
+    expect(paintTag("@lead", () => "38;2;255;0;0")).toBe(`${RED}[lead]${RESET}`);
+    expect(paintTag("@lead", () => null)).toBe("[lead]");
+    // A handle without the `@` prints the same: the sigil is mention syntax, not part of the name.
+    expect(paintTag("lead", () => null)).toBe("[lead]");
   });
 });
 
@@ -80,7 +82,7 @@ describe("italicMentions", () => {
 
 describe("stripAnsi", () => {
   test("colour is removed for the transcript file", () => {
-    expect(stripAnsi(`[${RED}@lead${RESET}] ${RED}@dev1${RESET} go`)).toBe("[@lead] @dev1 go");
+    expect(stripAnsi(`${RED}[lead]${RESET} ${RED}@dev1${RESET} go`)).toBe("[lead] @dev1 go");
   });
 });
 
