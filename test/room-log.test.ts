@@ -23,6 +23,23 @@ describe("createRoomLog", () => {
     }
   });
 
+  test("colour reaches the terminal but never the transcript file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-room-log-color-"));
+    try {
+      const path = join(dir, "room.log");
+      const seen: string[] = [];
+      const log = createRoomLog(path, { write: (s) => seen.push(s) });
+
+      log.write("\u001b[38;2;230;170;80m[@lead]\u001b[0m \u001b[38;2;90;170;255m@dev1\u001b[0m go\n");
+
+      // the pane keeps the colour, the file stays greppable
+      expect(seen.join("")).toContain("\u001b[38;2;90;170;255m@dev1");
+      expect(await readFile(path, "utf8")).toBe("[@lead] @dev1 go\n");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("an unappendable transcript warns once on the terminal and keeps the room alive", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ah-room-log-fail-"));
     try {

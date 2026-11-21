@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { errorMessage } from "./errors";
+import { stripAnsi } from "./colors";
 
 /**
  * The room's human-readable transcript (#59).
@@ -22,7 +23,9 @@ export function createRoomLog(path: string, terminal: { write(s: string): void }
     write(s: string) {
       terminal.write(s);
       try {
-        appendFileSync(path, s, "utf8");
+        // The pane gets the colour; the archive gets the same line without escapes, so
+        // `grep` on room.log still works (#66).
+        appendFileSync(path, stripAnsi(s), "utf8");
       } catch (e) {
         // A transcript that cannot be written must not end the room, and must not be
         // silent either: one line on the terminal, once.

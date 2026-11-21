@@ -404,3 +404,22 @@ and it is now one delta rather than one whole turn.
 separable, and interleaving is the honest appearance of two people talking. Partial lines also mean the
 screen updates mid-sentence, which a log-file reader will not see — `room.log` gets the same writes.
 `src/chat-stream.ts`, wired in `src/coordinator.ts`.
+
+## D17 — Colours come from one table, in truecolor (#66)
+
+**Decision.** `src/colors.ts` maps agent id to an RGB triple; every `@handle` in the room and every
+`[@handle]` prefix is printed in that colour, and nothing else in the repo restates the values. That file
+is the one a human edits to change them.
+
+**Why RGB, not the 16 names:** a named colour resolves against the reader's terminal palette, and herdr
+(after `theme.name = terminal`) follows the host palette, so `red` is a different red in a light theme. A
+24-bit triple looks the same in every herdr session.
+
+**Rejected:** herdr UI theming — the CLI has no per-pane or per-label colour (`herdr pane rename` accepts
+only `--clear`) and `[theme]` styles the UI, not an agent's identity. Also rejected: colouring the agent
+panes, because `output.log` is a file agents and tests read and herdr strips escapes on `pane read`
+anyway; the room is where a reader needs to tell voices apart.
+
+**Cost, accepted:** a terminal without truecolor shows the escapes literally, which is why
+`PALETTE_MODE` exists (`rgb` or `256`); and `room.log` is stripped of colour, so the archive and the
+screen can differ in appearance but not in content.
