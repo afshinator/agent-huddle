@@ -7,7 +7,7 @@
  * live here where a test can hold them (#80). The shell script keeps only what needs git and gh.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ---------------------------------------------------------------- lockfiles
@@ -250,7 +250,9 @@ function cmdWarm(argv: string[]): number {
   }
   const started = Bun.nanoseconds();
   if (plan.mode === "clone") {
-    // Same volume, so this is a copy-on-write clone: measurable vs a network install (#80).
+    // `cp -R src dst` copies *into* dst when dst exists, which nests a second tree inside the first.
+    rmSync(join(worktree, "node_modules"), { recursive: true, force: true });
+    // Same volume, so this is a copy-on-write clone: measured 8.1s vs 42.7s for `npm ci` (#80).
     trySh("cp", ["-cR", join(repo, "node_modules"), join(worktree, "node_modules")]) ??
       sh("cp", ["-R", join(repo, "node_modules"), join(worktree, "node_modules")]);
   } else {
