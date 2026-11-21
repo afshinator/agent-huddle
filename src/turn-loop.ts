@@ -230,6 +230,17 @@ export class TurnLoop {
           ackRequired: needsAck(this.cfg, "user", resolution.targets, reply, agentId),
         });
       }
+      // Why this reply started whom: without it, "the same agent ran twice" is unattributable
+      // after the fact — a live run had the reviewer turn twice on one instruction (#73).
+      this.telemetry.log("info", "dispatch", {
+        chainId: chain.chainId,
+        hop: chain.hopCount,
+        from: agentId,
+        targets: resolution.targets,
+        queued: nextIds,
+        broadcast: resolution.targets.length === this.cfg.allAgents.length,
+        selfMention: resolution.targets.includes(agentId),
+      });
       await this.syncContext(chain, reply, nextIds, agentId);
     }
 

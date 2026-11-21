@@ -414,6 +414,19 @@ describe("TurnLoop", () => {
     });
   });
 
+  test("a reply logs why it dispatched whom, so a double turn is attributable", async () => {
+    await harness(async ({ loop, pi, telemetry }) => {
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 and @reviewer both look" }]);
+
+      await loop.submit("@lead start", "user");
+
+      // The lead's reply is the one that names two agents; the record says so, with the queue.
+      const dispatch = telemetry.infos.find((l) => l.msg === "dispatch" && l.attrs?.from === "lead");
+      expect(dispatch?.attrs?.queued).toEqual(["dev1", "reviewer"]);
+      expect(dispatch?.attrs?.targets).toEqual(["dev1", "reviewer"]);
+    });
+  });
+
   test("a self-mention does not re-queue the author", async () => {
     await harness(async ({ loop, pi }) => {
       pi.script("lead", [{ lastText: "@dev1 take it, report to @lead when green" }]);
