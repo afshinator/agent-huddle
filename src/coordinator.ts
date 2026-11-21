@@ -204,8 +204,7 @@ export class Coordinator {
       // The pane runs a script file, not an inline `sh -c`: herdr types the command
       // into the pane shell one word per argument, which strips inline quoting.
       const scriptPath = join(agentDir, "pane.sh");
-      const header = paintHandle(agent.handle, (h) => this.colourFor(h));
-      await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath, header }), "utf8");
+      await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath }), "utf8");
 
       const markWorking = (): void => {
         if (this.working.has(agent.id)) return;
@@ -246,7 +245,8 @@ export class Coordinator {
       if (this.panes) {
         const paneId = await this.panes.openAgentPane({
           id: `agent-${agent.id}`,
-          title: agent.handle,
+          // The pane's title is where the agent's name already is, so the colour goes there (#70).
+          title: paintHandle(agent.handle, (h) => this.colourFor(h)),
           command: ["sh", scriptPath],
           slot: agentIndex + 1,
           slots: this.config.allAgents.length,

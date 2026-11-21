@@ -78,9 +78,8 @@ agent's own pane carries tool calls and lifecycle lines, never its replies, and 
 JSON records for analysis.
 
 Every agent has a colour and the `[@handle]` prefix of its messages is shown in it — a handle named
-inside a sentence stays plain, so colour means "this agent is speaking". Each pane opens with its own
-handle in that colour, since herdr has no colour for a pane title. The table is `src/colors.ts`, one
-line per agent. `AH_COLOR=0` (or `NO_COLOR`) turns it off, and `room.log` is always plain text.
+inside a sentence stays plain, so colour means "this agent is speaking". Each agent's pane title
+carries the same colour. The table is `src/colors.ts`, one line per agent. `AH_COLOR=0` (or `NO_COLOR`) turns it off, and `room.log` is always plain text.
 
 An agent's pane says whether it has been used: `@reviewer — idle, never dispatched`, then
 `@reviewer — working` when a turn starts. It tails `<room_dir>/agents/<id>/output.log`.

@@ -307,6 +307,19 @@ describe("Agent colours in the room (#66)", () => {
     });
   }, 20_000);
 
+  test("the pane title carries the colour, because the title already carries the name", async () => {
+    await harness({ task: "do the work", color: true }, async ({ coordinator, pi, panes }) => {
+      pi.script("lead", [{ lastText: "Got it: start\nDONE" }]);
+      await coordinator.boot();
+
+      const titles = panes.calls
+        .filter((c) => c.op === "open")
+        .map((c) => (c.payload as { title: string }).title);
+      expect(titles).toContain("\u001b[38;2;230;170;80m@lead\u001b[0m");
+      expect(titles).toContain("\u001b[38;2;90;170;255m@dev1\u001b[0m");
+    });
+  });
+
   test("with colour off the room is plain text", async () => {
     await harness({ task: "do the work", color: false }, async ({ coordinator, pi, out }) => {
       pi.script("lead", [{ lastText: "Got it: start\n@dev1 go" }]);
