@@ -116,6 +116,7 @@ export class TurnLoop {
     this.newId = deps.newId ?? (() => randomUUID());
     this.handleById = new Map(deps.config.allAgents.map((a) => [a.id, a.handle]));
     this.onChainState = deps.onChainState;
+    this.onDispatch = deps.onDispatch;
     this.isStoppingHook = deps.isStopping;
     // The room's own copy of what has streamed this turn: a turn that times out has already said
     // things on screen, and dropping them ends the chain one step short (#73).
@@ -296,6 +297,7 @@ export class TurnLoop {
     text: string,
     countHop: boolean,
   ): Promise<SettledResult | null> {
+    this.onDispatch?.(agentId);
     if (countHop) chain.hopCount += 1;
     const hop = chain.hopCount;
     if (!chain.dispatchedAgentIds.includes(agentId)) chain.dispatchedAgentIds.push(agentId);

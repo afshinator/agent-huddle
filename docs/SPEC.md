@@ -511,7 +511,8 @@ When a chain finishes the room prints what it cost, per agent, and writes the sa
 ```
 
 A provider that reports no cost prints `cost unknown` and the total prints `unknown`: a room must not
-claim a run was free because its provider stayed quiet. If an agent does not answer the question in five
+claim a run was free because its provider stayed quiet. A cost under a cent prints four decimals —
+`$0.0036`, not `$0.00`, because rounding a real charge to zero reads as "free" (#76). If an agent does not answer the question in five
 seconds, it is left out rather than holding the summary.
 
 ### 8.0 What the room prints before it works (#59)

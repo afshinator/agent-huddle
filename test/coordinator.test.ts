@@ -261,6 +261,22 @@ describe("A boot's pane stream is its own (#61)", () => {
   }, 20_000);
 });
 
+describe("The timing record (§76)", () => {
+  test("a dispatch marks where the turn began, so the readout has a start", async () => {
+    await harness({ task: "do the work", color: false }, async ({ coordinator, pi, dir }) => {
+      pi.script("lead", [{ lastText: "Got it: start\nDONE" }]);
+      await coordinator.boot();
+
+      const events = (await readFile(join(dir, "agents", "lead", "log.jsonl"), "utf8"))
+        .trim()
+        .split("\n")
+        .map((l) => (JSON.parse(l) as { event: string }).event);
+      // Without this the readout has no turn boundaries and prints nothing at all.
+      expect(events).toContain("turn_start");
+    });
+  }, 20_000);
+});
+
 describe("The run's cost summary (§76)", () => {
   test("each agent's tokens and cost are printed once the chain is done", async () => {
     await harness({ task: "do the work", color: false }, async ({ coordinator, pi, out, dir }) => {

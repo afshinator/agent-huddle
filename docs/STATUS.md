@@ -120,7 +120,7 @@ started.
 | A reply logs why it dispatched whom (`dispatch`: targets, queued, broadcast, self-mention) | `test/turn-loop.test.ts`, #73 |
 | A turn that times out hands on what it streamed, so the agent it named is still dispatched | `test/turn-loop.test.ts`, D20 |
 | An acknowledgement prints when the turn starts working, not when it ends | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, D21 |
-| Per-turn timing readout: first token, tool time, longest gap and what preceded it | `test/timings.test.ts`, `test/pi-protocol.test.ts`, D22 |
+| Per-turn timing readout: first token, tool time, longest gap and what preceded it | `test/timings.test.ts`, `test/coordinator.test.ts`, `test/pi-protocol.test.ts`, D22 |
 | Per-agent tokens and cost printed at the end, `unknown` where the provider is silent | `test/coordinator.test.ts`, D22 |
 | `… said go. DONE` ends the chain; `almost DONE` does not, and an empty reply owes no ack | `test/turn-loop.test.ts`, D21 |
 | A turn's messages print on their own lines even when the provider streams them glued | `test/chat-stream.test.ts`, `test/pi-protocol.test.ts`, D20 |

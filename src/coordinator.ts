@@ -550,11 +550,13 @@ export class Coordinator {
     const tokens = rows.reduce((n, r) => n + r.tokens, 0);
     const costs = rows.map((r) => r.cost);
     const known = costs.filter((c): c is number => c !== null);
-    const total = known.length === 0 ? "unknown" : `$${known.reduce((a, b) => a + b, 0).toFixed(2)}`;
+    const sum = known.reduce((a, b) => a + b, 0);
+    const total = known.length === 0 ? "unknown" : `$${sum < 0.01 ? sum.toFixed(4) : sum.toFixed(2)}`;
     this.printLine("── spend ──");
     for (const r of rows) {
-      const cost = r.cost === null ? "cost unknown" : `$${r.cost.toFixed(2)}`;
-      this.printLine(`  ${r.handle}  ${r.tokens} tokens · ${cost} · ${r.toolCalls} tool calls`);
+      // A run under a cent is not free: $0.0036 printed as $0.00 reads as "no cost" (#76).
+      const cost = r.cost === null ? "cost unknown" : `$${r.cost < 0.01 ? r.cost.toFixed(4) : r.cost.toFixed(2)}`;
+      this.printLine(`  ${r.handle.padEnd(10)}${r.tokens} tokens · ${cost} · ${r.toolCalls} tool calls`);
     }
     this.printLine(`  total  ${tokens} tokens · ${total}`);
     try {
