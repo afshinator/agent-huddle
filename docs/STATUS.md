@@ -1,6 +1,6 @@
 # Status — v1.1
 
-Version: **v1.1** · 2026-11-20 · commit `3fc31f5` · spec: [`SPEC.md`](SPEC.md) · decisions:
+Version: **v1.1** · 2026-11-20 · code at commit `7676219` · spec: [`SPEC.md`](SPEC.md) · decisions:
 [`decisions.md`](decisions.md) · evidence: [`runs/`](runs/), [`rca/`](rca/)
 
 Capabilities listed here are backed by a test or a live run. Each claim names its evidence: a run note
@@ -9,7 +9,15 @@ rather than softened.
 
 ## What it does
 
-**A room, defined by one YAML file.** `rooms/*.yaml` declares the lead and specialists: id, handle,
+**A template owns a kind of room; a run owns one ask.** `rooms/templates/<type>/` is tracked and holds
+the template plus its prompts and its `launch.sh`. A run is a small file naming `template:` plus `task`,
+`definition_of_done` and any budget it overrides, and its collateral — the resolved config, a snapshot of
+the prompts that ran, the ask, notes and the room's runtime — lives in the gitignored `_run/<NNN>-<slug>/`
+in the repo the room runs in (D13). The ordinal is creation order, so `ls _run/` reads as a history, and
+re-running the same `--slug` reuses that directory.
+
+**A room, defined by one YAML file.** A template (or a standalone room file) declares the lead and
+specialists: id, handle,
 role, prompt (inline or file), provider, model, thinking level, tool allowlist, `pane_writable`. Room
 keys: `name`, `room_dir`, `task`, `definition_of_done`, `max_hops` (12), `turn_timeout_ms` (300000),
 `launch_guard` (`warn`), `lead`, `agents`. Unknown keys are rejected; reserved handles (`@all`,
@@ -96,17 +104,31 @@ started.
 | Inbox lines are consumed once and never replayed after a restart | `test/pane-inbox.test.ts` |
 | The real client maps `tool_execution_start` to a `tool` event (stub pi, real framing) | `test/pi-protocol.test.ts` |
 | `launch_guard` refuse / warn / off, and a refusal writes no room files | `test/coordinator.test.ts`, `test/launch-guard.test.ts`, #38 |
+| A linked worktree is left alone by both `warn` and `refuse`; a main checkout is not | `test/launch-guard.test.ts`, `test/coordinator.test.ts`, D12, #48 |
+| The fake and the real `PiAgentClient` agree on what a stop does to a turn in flight | `test/client-parity.test.ts`, #52 |
+| The test harness fails a test that ends with a chain still running, naming it | `test/coordinator.test.ts`, #53 |
+| `AH_DEBUG=1` traces boot, the signal, each stop and each child's exit with code and signal | `test/debug.test.ts`, `test/pi-protocol.test.ts`, `test/coordinator.test.ts`, #55 |
+| A run overlays a template: ask from the run, agents from the template; an agent of the same id is replaced whole; a run may not set `name` | `test/config-template.test.ts`, D13 |
+| A run's collateral is self-contained: resolved config plus prompt snapshot reload to the same room | `test/room-run.test.ts`, `test/config-template.test.ts` |
+| Run directories are numbered in creation order, and a rerun reuses its directory | `test/run-slug.test.ts` |
+| Every shipped template loads, and no template's prompts sit outside its own directory | `test/rooms.test.ts` |
 
 ## Not proven
 
 - **Nothing beyond two agents.** Run #3 used one lead, one specialist, one provider and a two-turn task.
-  `@all`, three or more agents, a lead that refuses to emit `DONE`, and a chain that reaches `max_hops`
-  are unproven in a manned room.
+  `@all`, three or more agents, a lead that refuses to emit `DONE`, a chain that reaches `max_hops`, and a
+  reviewer that pushes work back to another specialist are unproven in a manned room. `rooms/templates/docs-audit`
+  is a three-agent room staged for exactly that; until it runs, three agents are configuration, not behaviour.
+- **The template/run launcher is verified only up to the boot.** `launch.sh` was exercised with `--dry-run`
+  against a throwaway repo: collateral written, worktree created (branch and detached), resolved config
+  loads. No room has been booted through it yet, so the last step — exec with the resolved config and
+  `room_dir` pointing at `_run/` — is unproven in a real launch.
 - A provider other than `commandcode` (deepseek-v4-pro, deepseek-v4.1-flash); one provider is measured.
 - Crash (SIGKILL) of the coordinator: panes from that run are not tracked and will leak.
 - `definition_of_done` is never checked; `DONE` is the lead's self-certification.
 - The `launch_guard` **refusal** path was run through the CLI (#38) but not in a real room: nobody has
-  watched `refuse` stop a boot at the terminal.
+  watched `refuse` stop a boot at the terminal. The other half is proven both ways: a linked worktree is
+  left alone under `refuse`, and a main checkout is refused (`test/launch-guard.test.ts`, `test/coordinator.test.ts`).
 - A pane line typed while **no** chain is active, and a pane line typed into a `pane_writable: false`
   pane, are proven by test only.
 
@@ -131,6 +153,16 @@ started.
   you care about is indistinguishable from a throwaway one.
 - **Pane text carries noise a clean run should not have** (run #3): a lead turn with no text is committed
   as an empty `agent` message (#49). (#50's child stderr and #51's false `[error]` are fixed.)
+- **A run's collateral is only as good as the machine it ran on.** `_run/<NNN>-<slug>/` is gitignored, so a
+  run is reproducible from its snapshot but not shareable: the resolved config and prompt copy die with the
+  checkout. What survives a merge is the run's output, and a run note only if the ask produced one.
+- **Run numbering assumes the launcher.** A hand-made `_run/<name>/` is ignored when counting, and two
+  launchers started at the same moment can pick the same ordinal — nothing locks.
+- **`_run/` being ignored is the repo's job, not the launcher's.** `launch.sh` warns when `_run/` is not in
+  `.gitignore` and then writes there anyway.
+- **The tool-substitution rules are enforced outside this repo.** `sed -n` file slices, heredoc file writes,
+  interpreter rewrites and `git add -A` are refused by a user-level agent extension, so a clone gets the rules
+  in `AGENTS.md` without the check.
 
 ## v1 (superseded 2026-11-20, commit `2cc434a`)
 
