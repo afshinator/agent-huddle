@@ -286,7 +286,6 @@ export class RealPiAgentClient implements PiAgentClient {
       exited: false,
       shuttingDown: false,
     });
-    this.bus.reset(agent.id);
 
     let buf = "";
     child.stdout.on("data", (chunk: Buffer) => {

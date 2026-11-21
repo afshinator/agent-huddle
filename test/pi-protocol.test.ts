@@ -403,3 +403,52 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     }
   }, 20_000);
 });
+
+/** A stub whose one turn streams a sentence, so a listener can be watched across the spawn. */
+const STREAM_STUB = `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (o: unknown): void => { process.stdout.write(JSON.stringify(o) + "\\n"); };
+createInterface({ input: process.stdin }).on("line", (line: string) => {
+  if (line.trim() === "") return;
+  const cmd = JSON.parse(line) as { id?: string; type?: string };
+  if (cmd.type === "prompt") {
+    out({ id: cmd.id, type: "response", success: true, data: {} });
+    out({ type: "agent_start" });
+    out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hello from " } });
+    out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "the stub" } });
+    out({ type: "agent_settled" });
+    return;
+  }
+  if (cmd.type === "get_last_assistant_text") {
+    out({ id: cmd.id, type: "response", success: true, data: { text: "hello from the stub" } });
+    return;
+  }
+  if (cmd.id) out({ id: cmd.id, type: "response", success: true, data: {} });
+});
+`;
+
+describe("RealPiAgentClient (stub pi, the room's subscription order)", () => {
+  // The room builds TurnLoop — which subscribes — before bootRoom spawns (#T13). A spawn that
+  // clears its agent's listeners therefore silences the room's own copy of the stream, and D20's
+  // "hand on what it wrote" can never fire. The fake client never reset, so no test saw it.
+  test("a listener registered before spawn still receives the stream", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-order-"));
+    const stub = join(dir, "fake-pi");
+    await writeFile(stub, STREAM_STUB, "utf8");
+    await chmod(stub, 0o755);
+
+    const client = new RealPiAgentClient({ roomDir: dir, piBin: stub });
+    const deltas: string[] = [];
+    client.on("stream", "dev1", (d) => deltas.push(d));
+
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      await client.prompt("dev1", { message: "say something" });
+      const settled = await client.waitForSettled("dev1", 5000);
+      expect(settled.lastText).toBe("hello from the stub");
+      expect(deltas.join("")).toBe("hello from the stub");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+});

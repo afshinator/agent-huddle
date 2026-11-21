@@ -568,3 +568,19 @@ yields `cannot check — needs the database`, which is a named gap rather than a
 **Cost accepted:** production credentials are inside an agent's reach, guarded by instruction alone —
 there is no sandbox (`docs/STATUS.md`). The rule lives in the two verifier prompts, and a rooms test
 fails if either stops carrying it.
+
+## D25 — A turn gets thirty minutes, and a timeout no longer ends the chain (#T13)
+
+**Context:** run `002-ticket-64` died twice at the 900 s cap. Gate 1 took 48 provider round trips
+(median 5.0 s, p90 27.2 s, one stall of 354 s, 858 s in total), and gate 2 was still editing eleven files
+when the second cap fired. The cap is per turn, so it was never the run's budget.
+
+**Decision:** `turn_timeout_ms: 1800000` for this template. A timed-out turn no longer ends the chain
+either: D20's "hand on what it wrote" now works, because the room's stream listener survives the spawn
+(`src/real/pi-agent-client-real.ts` no longer clears an agent's listeners in `register`). A turn with
+nothing written still halts, which is the honest case.
+
+**Why it was broken:** the coordinator builds `TurnLoop` — which subscribes — in its constructor, and
+`bootRoom()` spawns afterwards; `register()` cleared the agent's listeners, so the room's own copy of the
+stream was always empty and the salvage branch never fired. Every stub test passed because the fake
+client's `spawn` never cleared anything.

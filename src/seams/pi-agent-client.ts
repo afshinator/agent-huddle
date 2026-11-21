@@ -103,10 +103,10 @@ export class AgentListeners {
     for (const fn of this.lists(agentId)[event] as Array<(arg: AgentEventMap[K]) => void>) fn(arg);
   }
 
-  /** Drop every listener registered for an agent (used when a session restarts). */
-  reset(agentId: string): void {
-    this.byAgent.delete(agentId);
-  }
+  /**
+   * Listeners are the room's, not the child's: they survive a spawn. Dropping them here is how
+   * D20's "hand on what it wrote" died in a live room while every stub test stayed green (#T13).
+   */
 
   private lists(agentId: string): AgentListenerLists {
     let lists = this.byAgent.get(agentId);
