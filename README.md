@@ -73,7 +73,9 @@ Nothing commits inside the room. After `DONE`, review the worktree, commit on `r
 and `git worktree remove` it. The `_run/<NNN>-<slug>/` collateral stays behind on the machine that ran it.
 
 The room pane shows the conversation as it happens: an agent's words appear while it writes them,
-not when its turn ends, and a turn that dies mid-sentence says so. Tool calls stay in each agent's
+not when its turn ends, and a turn that dies mid-sentence says so. A pane says whether its agent has been used:
+`@reviewer — idle, never dispatched`, then `@reviewer — working` when a turn starts.
+Tool calls stay in each agent's
 own pane.
 
 Each agent gets a pane showing that agent's work as prose. The pane tails `<room_dir>/agents/<id>/output.log`; the JSON records stay in `agents/<id>/log.jsonl` for analysis and no pane reads them.

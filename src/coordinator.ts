@@ -61,6 +61,8 @@ export class Coordinator {
   private readonly roomLogPath?: string;
   /** Agent prose as it arrives, so the room reads like a chat rather than minutes (#63). */
   private readonly chat: ChatStream;
+  /** Agents that have shown activity this turn, so the "working" marker is written once. */
+  private readonly working = new Set<string>();
   private readonly stderr: { write(s: string): void };
   private readonly now: () => string;
   private persistQueue: Promise<void> = Promise.resolve();
@@ -173,6 +175,14 @@ export class Coordinator {
       // `tail -f` on that file a few statements later. A failed write still must
       // not abort boot, which is what watchFailure's never-rejecting promise buys.
       await this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `[started] pid=${info.pid}`));
+      // Without this a pane that has never been used shows only a pid, which reads as
+      // activity: say what the agent's state actually is (#62).
+      const slot = this.panes ? ` · slot ${agentIndex + 1}/${this.config.allAgents.length}` : "";
+      await this.watchFailure(
+        "agent pane write",
+        agent.id,
+        this.agentStream.line(agent.id, `${agent.handle} — idle, never dispatched${slot}`),
+      );
 
       // A writable pane carries typed lines through an inbox file (D7): a pane
       // cannot tail and read a keyboard at once.
@@ -187,16 +197,27 @@ export class Coordinator {
       const scriptPath = join(agentDir, "pane.sh");
       await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath }), "utf8");
 
+      const markWorking = (): void => {
+        if (this.working.has(agent.id)) return;
+        this.working.add(agent.id);
+        this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `${agent.handle} — working`));
+      };
+
       this.pi.on("stream", agent.id, (delta) => {
+        markWorking();
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
         this.watchFailure("agent pane write", agent.id, this.agentStream.delta(agent.id, delta));
         // The room sees the prose as it is written, not when the turn ends (#63).
         this.chat.delta(agent.id, delta);
       });
       this.pi.on("tool", agent.id, (tool) => {
+        markWorking();
         this.watchFailure("agent pane write", agent.id, this.agentStream.tool(agent.id, tool));
       });
       this.pi.on("settled", agent.id, (r) => {
+        // A turn that streamed nothing still ran: mark it before its text lands, so the pane
+        // never shows words from an agent that was "never dispatched".
+        markWorking();
         // Only an agent that actually ran a turn moves its activity stamp.
         if (this.roomState) {
           const runtime = this.roomState.agents[agent.id];
@@ -207,6 +228,7 @@ export class Coordinator {
         this.watchFailure("agent pane write", agent.id, this.agentStream.settle(agent.id, r.lastText));
         // A provider may settle with text and no deltas; then the room still needs the words.
         if (!this.chat.end(agent.id)) this.printAgentText(agent.handle, r.lastText);
+        this.working.delete(agent.id);
       });
       this.pi.on("error", agent.id, (e) => {
         this.chat.end(agent.id, "turn failed");

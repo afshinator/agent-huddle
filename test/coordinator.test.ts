@@ -191,6 +191,56 @@ describe("Coordinator chat stream (#63)", () => {
   }, 20_000);
 });
 
+describe("A pane says whether its agent has been used (#62)", () => {
+  test("an undispatched agent's stream says so, with its slot", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
+      // the lead hands work to dev1 and finishes; nothing ever reaches anyone else
+      pi.script("lead", [{ lastText: "Got it: start\n@dev1 go" }, { lastText: "verified\nDONE" }]);
+      pi.script("dev1", [{ lastText: "Got it: go\nworked" }]);
+
+      await coordinator.boot();
+
+      const lead = await readFile(join(dir, "agents", "lead", "output.log"), "utf8");
+      expect(lead).toContain("@lead — idle, never dispatched · slot 1/2");
+    });
+  }, 20_000);
+
+  test("each turn marks its own start, so an agent that runs twice says so twice", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
+      pi.script("lead", [
+        { lastText: "Got it: start\n@dev1 first" },
+        { lastText: "Got it: first is done\n@dev1 second" },
+        { lastText: "verified\nDONE" },
+      ]);
+      pi.script("dev1", [
+        { lastText: "Got it: first\none\n@lead first done" },
+        { lastText: "Got it: second\ntwo\n@lead both done" },
+      ]);
+
+      await coordinator.boot();
+
+      const dev1 = await readFile(join(dir, "agents", "dev1", "output.log"), "utf8");
+      expect(dev1.split("@dev1 — working").length - 1).toBe(2);
+    });
+  }, 20_000);
+
+  test("the idle line gives way to a working line at the agent's first activity, once", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
+      pi.script("lead", [
+        { deltas: ["Got it: start\n", "@dev1 go\n"], lastText: "Got it: start\n@dev1 go" },
+        { lastText: "verified\nDONE" },
+      ]);
+      pi.script("dev1", [{ tools: [{ name: "bash", args: { command: "ls" } }, { name: "bash", args: { command: "pwd" } }], lastText: "Got it: go\nworked" }]);
+
+      await coordinator.boot();
+
+      const dev1 = await readFile(join(dir, "agents", "dev1", "output.log"), "utf8");
+      expect(dev1.split("@dev1 — working").length - 1).toBe(1);
+      expect(dev1.indexOf("@dev1 — working")).toBeLessThan(dev1.indexOf("[tool] bash"));
+    });
+  }, 20_000);
+});
+
 describe("A boot's pane stream is its own (#61)", () => {
   test("output.log holds this boot's lifecycle lines and nothing older", async () => {
     await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
