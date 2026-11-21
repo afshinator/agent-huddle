@@ -17,7 +17,7 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream } from "./chat-stream";
-import { colorOf, paintHandle, paintTag } from "./colors";
+import { colorOf, markOf, paintTag } from "./colors";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -255,8 +255,9 @@ export class Coordinator {
       if (this.panes) {
         const paneId = await this.panes.openAgentPane({
           id: `agent-${agent.id}`,
-          // Plain: herdr renders a pane title as text, so an escape shows up literally (#72).
-          title: agent.handle,
+          // A title cannot carry an escape — herdr prints it as text — so the agent's colour is a
+          // mark in the title instead (#72).
+          title: `${markOf(agent.id, agentIndex)} ${agent.handle}`,
           command: ["sh", scriptPath],
           slot: agentIndex + 1,
           slots: this.config.allAgents.length,

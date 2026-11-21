@@ -116,7 +116,7 @@ started.
 | The agent pane carries tool calls and lifecycle lines, never the agent's prose | `test/coordinator.test.ts`, `test/agent-stream.test.ts`, #65 |
 | Only a speaking message's prefix takes the agent's colour; a handle named in text stays plain | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, #70 |
 | A room note prints dim, so it cannot be read as somebody speaking | `test/coordinator.test.ts`, D19 |
-| A pane title is plain: herdr prints it as text, so an escape shows literally — measured live | `test/coordinator.test.ts`, D17 |
+| A pane title starts with a coloured mark (`🟨 @lead`); an escape there shows literally — measured live | `test/coordinator.test.ts`, D17 |
 | A reply logs why it dispatched whom (`dispatch`: targets, queued, broadcast, self-mention) | `test/turn-loop.test.ts`, #73 |
 | A turn that times out hands on what it streamed, so the agent it named is still dispatched | `test/turn-loop.test.ts`, D20 |
 | An acknowledgement prints when the turn starts working, not when it ends | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, D21 |

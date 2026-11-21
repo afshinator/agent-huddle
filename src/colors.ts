@@ -19,6 +19,24 @@ export const AGENT_RGB: Record<string, Rgb> = {
   reviewer: [180, 140, 240], // violet
 };
 
+/**
+ * Pane-title marks: a title cannot carry an escape (herdr prints it as text), but it can carry a
+ * coloured square. Same file as the colour so the two stay edited together.
+ */
+export const AGENT_MARK: Record<string, string> = {
+  lead: "🟨",
+  dev1: "🟦",
+  reviewer: "🟪",
+};
+
+/** Marks for agents the table does not name, in slot order. */
+export const FALLBACK_MARKS = ["🟩", "🟥", "🟧"];
+
+/** The mark a pane title starts with, so a tab bar tells agents apart at a glance (#72). */
+export function markOf(id: string, slot: number): string {
+  return AGENT_MARK[id] ?? FALLBACK_MARKS[slot % FALLBACK_MARKS.length]!;
+}
+
 /** Agents the table does not name take these in slot order, wrapping around. */
 export const FALLBACK_RGB: Rgb[] = [
   [120, 200, 160],
@@ -42,12 +60,6 @@ export function colorOf(id: string, slot: number, table: Record<string, Rgb> = A
 function toAnsi256([r, g, b]: Rgb): number {
   const q = (v: number): number => Math.round((v / 255) * 5);
   return 16 + 36 * q(r) + 6 * q(g) + q(b);
-}
-
-/** A bare `@handle`, coloured: what a pane opens with, and the only place a mention is painted. */
-export function paintHandle(handle: string, colour: (handle: string) => string | null): string {
-  const code = colour(handle);
-  return code === null ? handle : `\u001b[${code}m${handle}${RESET}`;
 }
 
 /** The `[@handle]` prefix a room message carries, coloured. */

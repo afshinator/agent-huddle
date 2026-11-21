@@ -307,7 +307,7 @@ describe("Agent colours in the room (#66)", () => {
     });
   }, 20_000);
 
-  test("a pane title stays plain: herdr prints it as text, not as a terminal", async () => {
+  test("a pane title carries a coloured mark, since it cannot carry an escape", async () => {
     await harness({ task: "do the work", color: true }, async ({ coordinator, pi, panes }) => {
       pi.script("lead", [{ lastText: "Got it: start\nDONE" }]);
       await coordinator.boot();
@@ -315,7 +315,8 @@ describe("Agent colours in the room (#66)", () => {
       const titles = panes.calls
         .filter((c) => c.op === "open")
         .map((c) => (c.payload as { title: string }).title);
-      expect(titles).toEqual(["@lead", "@dev1"]);
+      // A title is herdr's own text, so the colour travels as a mark; the handle stays greppable.
+      expect(titles).toEqual(["🟨 @lead", "🟦 @dev1"]);
     });
   });
 

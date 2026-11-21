@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { AGENT_RGB, FALLBACK_RGB, colorOf, paintHandle, paintTag, stripAnsi, colorEnabled } from "../src/colors";
+import { AGENT_RGB, FALLBACK_RGB, colorOf, markOf, paintTag, stripAnsi, colorEnabled } from "../src/colors";
 
 const RED = "\u001b[38;2;255;0;0m";
 const BLUE = "\u001b[38;2;0;0;255m";
@@ -29,10 +29,11 @@ describe("paintTag", () => {
   });
 });
 
-describe("paintHandle", () => {
-  test("a bare handle takes its colour, and stays plain with colour off", () => {
-    expect(paintHandle("@dev1", () => "38;2;90;170;255")).toBe("\u001b[38;2;90;170;255m@dev1\u001b[0m");
-    expect(paintHandle("@dev1", () => null)).toBe("@dev1");
+describe("markOf", () => {
+  test("a named agent gets its mark; anyone else falls back by slot", () => {
+    expect(markOf("lead", 0)).toBe("🟨");
+    expect(markOf("reviewer", 2)).toBe("🟪");
+    expect(markOf("extra", 0)).toBe("🟩");
   });
 });
 

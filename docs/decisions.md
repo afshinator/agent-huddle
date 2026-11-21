@@ -423,6 +423,10 @@ run answered it: the titles showed the escape as characters, so a pane title sta
 pane is not possible at all: the title is herdr's text, and `output.log` is a file. An earlier draft
 printed a coloured handle line at the top of each pane; that duplicated the title and was removed.
 
+**Amendment (#72):** herdr prints a pane title as text, measured live — an escape shows as characters. So
+each title starts with a coloured mark from the same table (`🟨 @lead`): a square renders in a title where
+an escape does not, and the handle stays greppable beside it.
+
 **Amendment (#70):** colour marks the speaker, not the subject. Only a message's `[@handle]` prefix is
 painted; `@handle` named inside text is plain, as are the banner's handle list and the brief. The first
 version painted every mention, which made a room where everybody's name was coloured and nobody's voice
