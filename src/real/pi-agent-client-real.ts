@@ -27,7 +27,10 @@ interface RealAgent {
   child: ChildProcessWithoutNullStreams;
   sessionDir: string;
   pid: number;
+  /** The assistant message currently streaming. */
   textBuffer: string;
+  /** Messages this dispatch has already finished, in order: one turn can hold several (§T11). */
+  turnMessages: string[];
   lastText: string | null;
   pendingSettle: PendingSettle | null;
   exited: boolean;
@@ -151,7 +154,10 @@ export class RealPiAgentClient implements PiAgentClient {
 
   async prompt(agentId: string, req: PromptRequest): Promise<void> {
     const agent = this.requireAgent(agentId);
+    // A dispatch starts a turn: clear both buffers here, not on `agent_start`, which arrives
+    // once per assistant message and would discard the ones before it (§T11).
     agent.textBuffer = "";
+    agent.turnMessages = [];
 
     let resolveSettle!: (r: SettledResult) => void;
     let rejectSettle!: (e: Error) => void;
@@ -250,6 +256,7 @@ export class RealPiAgentClient implements PiAgentClient {
       sessionDir: info.sessionDir,
       pid: info.pid,
       textBuffer: "",
+      turnMessages: [],
       lastText: null,
       pendingSettle: null,
       exited: false,
@@ -337,8 +344,16 @@ export class RealPiAgentClient implements PiAgentClient {
       return;
     }
 
-    // Reset per low-level run so a retry does not concatenate attempts.
+    // `agent_start` opens a message, so whatever streamed before it is a finished one.
     if (rec.type === "agent_start") {
+      // shortcut: a retry inside one dispatch re-sends the same message, which would repeat
+      // here; dedupe once a provider is seen doing it (T11 asked the question, no evidence yet).
+      if (agent.textBuffer.trim() !== "") {
+        agent.turnMessages.push(agent.textBuffer);
+        // A new message starts on a new line in the room too; without this the live run showed
+        // `…their files.go` when the model wrote "go" as a second message (§T11).
+        if (!agent.textBuffer.endsWith("\n")) this.bus.emit(agentId, "stream", "\n");
+      }
       agent.textBuffer = "";
       return;
     }
@@ -387,7 +402,11 @@ export class RealPiAgentClient implements PiAgentClient {
    * "last assistant text" is the fallback for a turn that streamed nothing (a resumed session).
    */
   private async settleText(agent: RealAgent): Promise<string | null> {
-    if (agent.textBuffer !== "") return agent.textBuffer;
+    const turn = [...agent.turnMessages, agent.textBuffer].filter((m) => m.trim() !== "");
+    if (turn.length > 0) {
+      agent.turnMessages = [];
+      return turn.join("\n");
+    }
     const data = await this.command(agent, { type: "get_last_assistant_text" });
     const text = (data as { text?: unknown } | undefined)?.text;
     return typeof text === "string" ? text : null;

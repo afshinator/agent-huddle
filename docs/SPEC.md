@@ -470,7 +470,8 @@ Rules:
   stream as it happens: an agent's prose is printed from the `stream` deltas as it is written, one
   prefix per turn (`[handle] `), never waiting for the turn to settle (D16, #63). The settled record
   goes to `messages.jsonl` and is **not** printed a second time; a turn that streams no deltas prints
-  its settled text once. Its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
+  its settled text once. A turn is every assistant message it contains, joined by a newline: pi opens
+  a message with `agent_start`, and a model's acknowledgement and its `DONE` are two messages (§T11). Its **stdin** is where the human types. Input → appended to `messages.jsonl` as a user message → routed per §6 (`@agent` / `@all` / no mention → nobody, D6). Notices/errors print here too. The human can steer at any time (§6.4).
 - **per-agent panes**: one per agent, `tail -f <room_dir>/agents/<id>/output.log` (D7). The coordinator writes tool calls (`[tool] <name> <args>`) and lifecycle lines to it, never the agent's prose — the conversation lives in the room, once (#65). `log.jsonl` holds the JSON records for machines, deltas included, and no pane reads it. Writable by default (`pane_writable: false` gives a tail-only pane with a banner, §9.2); closeable (hidden) in herdr — this only hides the pane; the `pi` process keeps running (child of coordinator, §2).
 
 ### 8.0 What the room prints before it works (#59)

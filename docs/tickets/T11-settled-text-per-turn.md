@@ -1,6 +1,6 @@
 # T11 — the acknowledgement check reads the turn's last message, not the turn
 
-Status: open. Filed after run `_run/001-docs-audit` (2026-11-21 04:34) where the reviewer
+Status: **closed** — fixed in `src/real/pi-agent-client-real.ts`; both probe questions answered below. Filed after run `_run/001-docs-audit` (2026-11-21 04:34) where the reviewer
 acknowledged a direct message and the room published the opposite.
 
 ## What happened
@@ -87,3 +87,26 @@ known (`agent_start`), so `ChatStream` can break there instead of guessing from 
 - `bun run check` green, and a control that removes the turn-level accumulation goes red.
 - The fixture's `messages.jsonl` `settled` record contains every message of the turn.
 - Relaunch the docs-audit room and confirm the reviewer's acknowledgement produces no notice.
+
+## Closed — what was done
+
+`RealAgent` now keeps two buffers: `textBuffer` for the message streaming and `turnMessages` for the
+messages before it. `agent_start` pushes the finished message instead of discarding it; `prompt()`
+clears both, because that is where a turn begins; `settleText` joins them with `"\n"` and falls back to
+`get_last_assistant_text` only when the turn was empty.
+
+The two probe questions:
+
+1. **Retry re-sending a message inside one dispatch:** no evidence found, so nothing was added for it.
+   A `shortcut:` comment names the limit at the push site. If a provider is seen repeating a message,
+   the fix is a dedupe there, not a return to per-message resets.
+2. **`text_end` per message:** handled — it replaces the *current* message, and the boundary push keeps
+   the earlier ones. A test covers a per-message `text_end`.
+
+The related cosmetic defect is fixed too: a message boundary now emits a newline into the room stream
+when the previous message did not end with one, so the live run's `…their files.go` becomes two lines.
+
+Proof: two stubs in `test/pi-protocol.test.ts`. Controls, each turned red and restored: no message
+accumulation (both red), settle ignoring earlier messages (both red), no boundary newline (one red).
+End-to-end against a two-message stub room: `messages.jsonl` records
+`Got it: verify the tally\ngo\nDONE` and no "silent pickup" notice appears.
