@@ -150,6 +150,14 @@ describe("Coordinator chat stream (#63)", () => {
       pi.script("dev1", [{ lastText: "Got it: checked\nDONE" }]);
       await boot.catch(() => undefined);
       await second.catch(() => undefined);
+
+      // Nothing waits now: a line that can start prints no queue notice.
+      const before = out.join("").match(/queued behind/g)?.length ?? 0;
+      pi.script("lead", [{ lastText: "Got it: third\nDONE" }]);
+      await coordinator.submit("third line", ["lead"]).catch(() => undefined);
+      const after = out.join("").match(/queued behind/g)?.length ?? 0;
+      expect(after).toBe(before);
+
       await coordinator.shutdown();
     });
   }, 20_000);
