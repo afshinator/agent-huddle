@@ -716,8 +716,10 @@ describe("TurnLoop", () => {
       // older message after the newer had landed.
       expect(leadPrompts).toHaveLength(2);
       const merged = leadPrompts[1] ?? "";
-      expect(merged).toMatch(/@dev1 \(\d\d:\d\d:\d\d\): Got it: part A done/);
-      expect(merged).toMatch(/@dev2 \(\d\d:\d\d:\d\d\): Got it: part B done/);
+      expect(merged).toMatch(/dev1 \(\d\d:\d\d:\d\d\): Got it: part A done/);
+      expect(merged).toMatch(/dev2 \(\d\d:\d\d:\d\d\): Got it: part B done/);
+      // No `@` on a label: an agent that echoed it would otherwise dispatch the agent it named.
+      expect(merged).not.toContain("@dev1 (");
       expect(merged.indexOf("part A")).toBeLessThan(merged.indexOf("part B"));
       // lead, dev1, dev2, merged lead: four hops, where dispatching the reports separately cost five.
       expect(result.hopCount).toBe(4);

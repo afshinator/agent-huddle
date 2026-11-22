@@ -103,7 +103,9 @@ interface PendingTurn {
  * arrived, and that line bought the review a second time (T17).
  */
 function mergeReplies(items: PendingTurn[], handleOf: (id: string) => string): string {
-  return items.map((i) => `${handleOf(i.from)} (${stampOf(i.at)}): ${i.text}`).join("\n\n");
+  // No `@` on the label: that is how the router spots an address, and an agent that echoes the label in
+  // its reply would otherwise dispatch the agent it named. `dev1 (00:57:11):` reads the same.
+  return items.map((i) => `${handleOf(i.from).replace(/^@/, "")} (${stampOf(i.at)}): ${i.text}`).join("\n\n");
 }
 
 export interface SubmitResult {
