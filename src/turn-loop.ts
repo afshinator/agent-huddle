@@ -133,6 +133,8 @@ export class TurnLoop {
   private readonly nudgeCheckMs: number;
   /** Last time an agent showed any sign of life in its current turn (T16). */
   private readonly lastEvent = new Map<string, number>();
+  /** Tools this agent has started and not yet finished: a running tool is work, not silence (T16). */
+  private readonly openTools = new Map<string, number>();
   private readonly now: () => string;
   private readonly newId: () => string;
   private readonly handleById: Map<string, string>;
@@ -163,9 +165,17 @@ export class TurnLoop {
         this.streamed.set(agent.id, (this.streamed.get(agent.id) ?? "") + delta);
         this.lastEvent.set(agent.id, Date.now());
       });
-      // A tool call is activity too: an agent that runs forty of them is working, not stuck.
-      deps.pi.on("tool", agent.id, () => this.lastEvent.set(agent.id, Date.now()));
-      deps.pi.on("tool_end", agent.id, () => this.lastEvent.set(agent.id, Date.now()));
+      // A tool call is activity too: an agent that runs forty of them is working, not stuck. A tool
+      // that has *started* is still activity while it runs — `npm run check` takes minutes, and a
+      // status request injected into that is a question the agent cannot answer until it ends.
+      deps.pi.on("tool", agent.id, () => {
+        this.lastEvent.set(agent.id, Date.now());
+        this.openTools.set(agent.id, (this.openTools.get(agent.id) ?? 0) + 1);
+      });
+      deps.pi.on("tool_end", agent.id, () => {
+        this.lastEvent.set(agent.id, Date.now());
+        this.openTools.set(agent.id, Math.max(0, (this.openTools.get(agent.id) ?? 0) - 1));
+      });
     }
   }
 
@@ -361,6 +371,7 @@ export class TurnLoop {
    */
   private async settleWithNudge(chain: ChainState, agentId: string, hop: number): Promise<SettledResult> {
     this.lastEvent.set(agentId, Date.now());
+    this.openTools.set(agentId, 0);
     const pending = this.pi.waitForSettled(agentId, this.turnTimeoutMs);
     let settledNow = false;
     // Resolved either way, so the race below never waits on an error and the caller still awaits
@@ -377,6 +388,9 @@ export class TurnLoop {
       // Raced, not slept: a turn that settles at once must not cost one check interval of latency.
       await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, this.nudgeCheckMs))]);
       if (settledNow || nudged) continue;
+      // Nothing to ask while a tool is running: the agent is working, and a steer would only land
+      // after that tool anyway.
+      if ((this.openTools.get(agentId) ?? 0) > 0) continue;
       const silentFor = Date.now() - (this.lastEvent.get(agentId) ?? Date.now());
       if (silentFor < this.idleNudgeMs) continue;
       nudged = true;

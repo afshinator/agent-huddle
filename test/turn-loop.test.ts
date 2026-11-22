@@ -765,6 +765,35 @@ describe("TurnLoop", () => {
     );
   }, 20_000);
 
+  test("a long-running tool is not silence: no status request while one is in flight", async () => {
+    await harness(
+      async ({ loop, pi }) => {
+        pi.script("lead", [{ hold: true }]);
+        const running = loop.submit("@lead go");
+        const steers = (): number =>
+          pi.calls.filter(
+            (c) =>
+              c.op === "prompt" &&
+              (c.payload as { streamingBehavior?: string } | undefined)?.streamingBehavior === "steer",
+          ).length;
+
+        // `npm run check` in a real repo takes minutes. A tool that is running is the agent working,
+        // not the agent quiet — asking then would inject a question into a healthy turn.
+        await waitUntil(() => pi.calls.some((c) => c.op === "prompt"), 2000);
+        pi.toolStarted("lead", "bash");
+        await new Promise((r) => setTimeout(r, 400));
+        expect(steers()).toBe(0);
+
+        // The tool ends and nothing follows: now the silence is real.
+        pi.toolFinished("lead", "bash", 400);
+        await waitUntil(() => steers() === 1, 4000);
+        pi.release("lead", "Got it: done\nDONE");
+        expect((await running).status).toBe("completed");
+      },
+      { idleNudgeMs: 100, nudgeCheckMs: 10 },
+    );
+  }, 20_000);
+
   test("a turn that never goes quiet is not asked twice", async () => {
     await harness(
       async ({ loop, pi }) => {

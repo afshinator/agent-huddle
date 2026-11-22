@@ -241,6 +241,20 @@ export class FakePiAgentClient implements PiAgentClient {
     this.bus.emit(agentId, "settled", result);
   }
 
+  /** Emit a tool start on a turn already in flight (T16). */
+  toolStarted(agentId: string, name = "bash"): void {
+    const a = this.requireAgent(agentId);
+    if (!a.settle) return;
+    this.bus.emit(agentId, "tool", { name, args: {} });
+  }
+
+  /** Emit that tool's end, so a test can show a long call finishing (T16). */
+  toolFinished(agentId: string, name = "bash", durationMs = 1): void {
+    const a = this.requireAgent(agentId);
+    if (!a.settle) return;
+    this.bus.emit(agentId, "tool_end", { name, durationMs });
+  }
+
   /**
    * Emit a stream delta on a turn already in flight, so a test can watch a live turn.
    *
