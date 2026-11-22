@@ -607,3 +607,28 @@ accounting is unchanged per dispatch (hops, telemetry spans, `room.active_chains
 
 **Not changed:** `wrapUp` and the concluding turns stay sequential — they exist so a chain can end, and
 running them together would race the halt.
+
+## D27 — A silent turn is asked for status, and a nudge is a steer (T16)
+
+**Context:** run `002-ticket-64` lost 15 minutes to a turn that ran 85 tool calls and never spoke; run
+`003-ticket-54` had 24 tool calls and not one line for the room. In both cases a human typed a status
+request and the agent answered from context within seconds. The room had no way to ask.
+
+**Decision:** a turn that shows no `stream`, `tool` or `tool_end` event for `NUDGE_IDLE_MS` (2 min) gets
+one status request, and the room records that it asked. The request goes out as `streamingBehavior:
+"steer"`, not `followUp`: pi delivers a follow-up only when the agent stops, which is after the turn it
+was meant to rescue (`docs/rpc-commands.md`). A steer lands at the agent's next tool boundary, inside the
+same turn, so it costs no hop; it is sent once per turn, and a failed steer is a notice rather than the
+end of the chain.
+
+**The wording is the point:** the room records a turn's words (`settled.lastText`), so the request says
+the status must be written, and that a tool call is not an answer. An agent answering by running a command
+is precisely the case that looks silent from the room's side.
+
+**Cost accepted:** a nudge changes the model's context mid-turn; an agent may abandon a half-finished
+verification to answer. That is why it is tied to silence and not to the clock, and why the settle timeout
+stays as the outer bound.
+
+**Rejected:** a lead ping when a reply lacks `Got it: …`. The notice already tells the lead and the report
+already goes upward (`turn-loop.ts`), so a ping would spend two turns on a line that changes nothing about
+whether the work was done.

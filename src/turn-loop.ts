@@ -20,6 +20,26 @@ export function wrapUpPrompt(maxHops: number): string {
 export const CONCLUDE_PROMPT =
   "Wrap up: summarize what is done, what remains, and the blockers. Do not start new work.";
 
+/**
+ * How long a turn may be silent before the room asks it for a status line.
+ *
+ * A live agent shows a tool call or a sentence every few seconds; two minutes of nothing means it is
+ * thinking at length or has lost the thread, and both are better asked than waited out — the settle
+ * timeout is thirty minutes (T16).
+ */
+export const NUDGE_IDLE_MS = 120_000;
+
+/** How often a running turn's silence is checked. Costs a timer, not a token. */
+export const NUDGE_CHECK_MS = 15_000;
+
+/**
+ * What the room says when it stops waiting. It has to ask for text: the room records a turn's words
+ * (`settled.lastText`), so an agent that answers by running a command has said nothing.
+ */
+export const NUDGE_PROMPT =
+  "Status only, in one line of text, now: what you have done so far and whether you are still on it. " +
+  "The room reads only what you write in your reply — a tool call is not an answer to the room.";
+
 /** `DONE` on a line of its own (§6.5: `/^DONE$/m` with trimmed lines). */
 export function hasDoneSignal(text: string | null): boolean {
   if (text === null) return false;
@@ -83,6 +103,10 @@ export interface TurnLoopDeps {
   pi: PiAgentClient;
   telemetry: Telemetry;
   turnTimeoutMs?: number;
+  /** Silence before a status request; defaults to `NUDGE_IDLE_MS` (T16). */
+  idleNudgeMs?: number;
+  /** How often that silence is checked; defaults to `NUDGE_CHECK_MS`. */
+  nudgeCheckMs?: number;
   now?: () => string;
   newId?: () => string;
   onChainState?: (state: ChainState | null) => Promise<void> | void;
@@ -105,6 +129,10 @@ export class TurnLoop {
   private readonly pi: PiAgentClient;
   private readonly telemetry: Telemetry;
   private readonly turnTimeoutMs: number;
+  private readonly idleNudgeMs: number;
+  private readonly nudgeCheckMs: number;
+  /** Last time an agent showed any sign of life in its current turn (T16). */
+  private readonly lastEvent = new Map<string, number>();
   private readonly now: () => string;
   private readonly newId: () => string;
   private readonly handleById: Map<string, string>;
@@ -120,6 +148,8 @@ export class TurnLoop {
     this.pi = deps.pi;
     this.telemetry = deps.telemetry;
     this.turnTimeoutMs = deps.turnTimeoutMs ?? 300_000;
+    this.idleNudgeMs = deps.idleNudgeMs ?? NUDGE_IDLE_MS;
+    this.nudgeCheckMs = deps.nudgeCheckMs ?? NUDGE_CHECK_MS;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.newId = deps.newId ?? (() => randomUUID());
     this.handleById = new Map(deps.config.allAgents.map((a) => [a.id, a.handle]));
@@ -131,7 +161,11 @@ export class TurnLoop {
     for (const agent of deps.config.allAgents) {
       deps.pi.on("stream", agent.id, (delta) => {
         this.streamed.set(agent.id, (this.streamed.get(agent.id) ?? "") + delta);
+        this.lastEvent.set(agent.id, Date.now());
       });
+      // A tool call is activity too: an agent that runs forty of them is working, not stuck.
+      deps.pi.on("tool", agent.id, () => this.lastEvent.set(agent.id, Date.now()));
+      deps.pi.on("tool_end", agent.id, () => this.lastEvent.set(agent.id, Date.now()));
     }
   }
 
@@ -317,6 +351,51 @@ export class TurnLoop {
     return { next, done, reply };
   }
 
+  /**
+   * Wait for a turn, and if it goes quiet, ask it once for a status line in the room.
+   *
+   * The nudge uses `steer`, not `followUp`: pi delivers a follow-up only when the agent stops, which is
+   * after the turn it was meant to rescue (pi `docs/rpc-commands.md`). A steer lands at the agent's next
+   * tool boundary, inside the same turn — so it costs no hop, and a failed steer is a notice rather than
+   * the end of the chain (T16).
+   */
+  private async settleWithNudge(chain: ChainState, agentId: string, hop: number): Promise<SettledResult> {
+    this.lastEvent.set(agentId, Date.now());
+    const pending = this.pi.waitForSettled(agentId, this.turnTimeoutMs);
+    let settledNow = false;
+    // Resolved either way, so the race below never waits on an error and the caller still awaits
+    // `pending` for the value or the rejection.
+    const settled = pending.then(
+      () => undefined,
+      () => undefined,
+    ).then(() => {
+      settledNow = true;
+    });
+
+    let nudged = false;
+    while (!settledNow) {
+      // Raced, not slept: a turn that settles at once must not cost one check interval of latency.
+      await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, this.nudgeCheckMs))]);
+      if (settledNow || nudged) continue;
+      const silentFor = Date.now() - (this.lastEvent.get(agentId) ?? Date.now());
+      if (silentFor < this.idleNudgeMs) continue;
+      nudged = true;
+      await this.append(
+        chain,
+        "notice",
+        "room",
+        `agent ${agentId}: silent for ${Math.max(1, Math.round(silentFor / 1000))}s — asked for a status line`,
+        hop,
+      );
+      try {
+        await this.pi.prompt(agentId, { message: NUDGE_PROMPT, streamingBehavior: "steer" });
+      } catch (e) {
+        await this.append(chain, "notice", "room", `agent ${agentId} nudge failed: ${errorMessage(e)}`, hop);
+      }
+    }
+    return pending;
+  }
+
   /** Lead wrap-up, then one concluding turn per previously dispatched agent. */
   private async wrapUp(chain: ChainState): Promise<SubmitResult> {
     chain.nudgeIssued = true;
@@ -361,7 +440,7 @@ export class TurnLoop {
         this.streamed.set(agentId, "");
         await this.pi.prompt(agentId, { message: text, streamingBehavior: "followUp" });
         const startedAt = performance.now();
-        const settled = await this.pi.waitForSettled(agentId, this.turnTimeoutMs);
+        const settled = await this.settleWithNudge(chain, agentId, hop);
         this.telemetry.histogram("agent.settle_latency_ms", performance.now() - startedAt, { agentId, chainId: chain.chainId });
         if (settled.aborted) {
           span.setStatus("error", "aborted");

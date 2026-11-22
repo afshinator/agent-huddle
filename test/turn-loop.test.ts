@@ -2,7 +2,7 @@ import { test, expect, describe } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TurnLoop, wrapUpPrompt, CONCLUDE_PROMPT, hasDoneSignal, hasAck } from "../src/turn-loop";
+import { TurnLoop, wrapUpPrompt, CONCLUDE_PROMPT, NUDGE_PROMPT, hasDoneSignal, hasAck } from "../src/turn-loop";
 import { RoomStore } from "../src/store";
 import type { Telemetry } from "../src/telemetry";
 import { RecordingTelemetry } from "./recording-telemetry";
@@ -56,6 +56,8 @@ async function harness(
     turnTimeoutMs?: number;
     ackScope?: "lead" | "anyone";
     dispatchScope?: "anyone" | "lead";
+    idleNudgeMs?: number;
+    nudgeCheckMs?: number;
   },
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-loop-"));
@@ -64,7 +66,15 @@ async function harness(
     const store = new RoomStore(dir);
     const pi = new FakePiAgentClient();
     const telemetry = new RecordingTelemetry();
-    const loop = new TurnLoop({ config, store, pi, telemetry, turnTimeoutMs: opts?.turnTimeoutMs });
+    const loop = new TurnLoop({
+      config,
+      store,
+      pi,
+      telemetry,
+      turnTimeoutMs: opts?.turnTimeoutMs,
+      ...(opts?.idleNudgeMs !== undefined ? { idleNudgeMs: opts.idleNudgeMs } : {}),
+      ...(opts?.nudgeCheckMs !== undefined ? { nudgeCheckMs: opts.nudgeCheckMs } : {}),
+    });
 
     for (const a of config.allAgents) await pi.spawn(a, { cwd: dir });
 
@@ -677,6 +687,112 @@ describe("TurnLoop", () => {
       expect(prompts).toEqual(["lead", "dev1", "dev2", "reviewer"]);
     });
   });
+
+  test("the status request asks for text, because the room cannot read a tool call", async () => {
+    // The room records a turn's words (settled.lastText). An agent that answers by running a command
+    // has said nothing to the room, which is exactly what the nudge exists to fix.
+    expect(NUDGE_PROMPT).toContain("one line of text");
+    expect(NUDGE_PROMPT).toContain("a tool call is not an answer");
+  });
+
+  test("an agent that goes quiet mid-turn is asked for status, in the room (T16)", async () => {
+    await harness(
+      async ({ loop, pi }) => {
+        pi.script("lead", [{ hold: true }]);
+        const running = loop.submit("@lead go");
+        const steers = (): Array<{ agentId: string; payload: unknown }> =>
+          pi.calls.filter(
+            (c) =>
+              c.op === "prompt" &&
+              (c.payload as { streamingBehavior?: string } | undefined)?.streamingBehavior === "steer",
+          );
+
+        // Nothing has streamed and no tool ran: the room must ask, rather than wait out 30 minutes.
+        await waitUntil(() => steers().length === 1, 4000);
+        expect(steers()[0]?.agentId).toBe("lead");
+        // A nudge is a question in the same turn, so it costs no hop.
+        pi.release("lead", "Got it: half done, still on it\nDONE");
+        const result = await running;
+        expect(result.status).toBe("completed");
+        expect(result.hopCount).toBe(1);
+      },
+      { idleNudgeMs: 60, nudgeCheckMs: 10 },
+    );
+  }, 20_000);
+
+  test("a turn that keeps working is never asked", async () => {
+    await harness(
+      async ({ loop, pi }) => {
+        pi.script("lead", [{ hold: true }]);
+        const running = loop.submit("@lead go");
+        // Keep emitting: a live agent shows a tool call or a sentence every few seconds, and only
+        // silence past the idle window deserves a question.
+        for (let i = 0; i < 12; i += 1) {
+          pi.streamDelta("lead", `step ${i} `);
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        const steers = pi.calls.filter(
+          (c) =>
+            c.op === "prompt" &&
+            (c.payload as { streamingBehavior?: string } | undefined)?.streamingBehavior === "steer",
+        );
+        expect(steers).toHaveLength(0);
+        pi.release("lead", "Got it: done\nDONE");
+        expect((await running).status).toBe("completed");
+      },
+      { idleNudgeMs: 150, nudgeCheckMs: 10 },
+    );
+  }, 20_000);
+
+  test("a nudge that cannot be delivered is a notice, not a halt", async () => {
+    await harness(
+      async ({ loop, pi, msgs }) => {
+        pi.script("lead", [{ hold: true }]);
+        pi.failOn("prompt", new Error("cannot steer"), 1, 1);
+        const running = loop.submit("@lead go");
+        await waitUntil(
+          () => true,
+          50,
+        );
+        await new Promise((r) => setTimeout(r, 400));
+        pi.release("lead", "Got it: finished\nDONE");
+        const result = await running;
+        const notices = (await msgs()).filter((m) => m.kind === "notice").map((m) => m.text);
+        expect(notices.some((t) => t.includes("nudge failed"))).toBe(true);
+        expect(result.status).toBe("completed");
+      },
+      { idleNudgeMs: 60, nudgeCheckMs: 10 },
+    );
+  }, 20_000);
+
+  test("a turn that never goes quiet is not asked twice", async () => {
+    await harness(
+      async ({ loop, pi }) => {
+        pi.script("lead", [{ hold: true }]);
+        const running = loop.submit("@lead go");
+        // First silence: one steer. Then keep silent for longer than two more windows: still one.
+        await waitUntil(
+          () =>
+            pi.calls.filter(
+              (c) =>
+                c.op === "prompt" &&
+                (c.payload as { streamingBehavior?: string } | undefined)?.streamingBehavior === "steer",
+            ).length === 1,
+          4000,
+        );
+        await new Promise((r) => setTimeout(r, 300));
+        const steers = pi.calls.filter(
+          (c) =>
+            c.op === "prompt" &&
+            (c.payload as { streamingBehavior?: string } | undefined)?.streamingBehavior === "steer",
+        );
+        expect(steers).toHaveLength(1);
+        pi.release("lead", "Got it: done\nDONE");
+        await running;
+      },
+      { idleNudgeMs: 60, nudgeCheckMs: 10 },
+    );
+  }, 20_000);
 
   test("two agents named in one message are in flight at the same time (#T14)", async () => {
     await harness(async ({ loop, pi }) => {

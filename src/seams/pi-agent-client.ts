@@ -184,6 +184,9 @@ export class FakePiAgentClient implements PiAgentClient {
     if (failure) throw failure.error;
     const a = this.requireAgent(agentId);
     this.record("prompt", agentId, req);
+    // A steer feeds a turn already in flight: it must not replace that turn's settle, which is what a
+    // new prompt would do. The real client's turn keeps running and settles once (T16).
+    if (req.streamingBehavior === "steer" && a.settle !== null) return;
     const turn = a.script.shift() ?? { lastText: null };
 
     let resolveSettle!: (r: SettledResult) => void;
@@ -236,6 +239,18 @@ export class FakePiAgentClient implements PiAgentClient {
     const result: SettledResult = { aborted: false, lastText };
     settle.resolve(result);
     this.bus.emit(agentId, "settled", result);
+  }
+
+  /**
+   * Emit a stream delta on a turn already in flight, so a test can watch a live turn.
+   *
+   * A real agent sends a sentence or a tool call every few seconds; a script that dumps its deltas
+   * and then holds cannot show that, which is the difference the idle nudge turns on.
+   */
+  streamDelta(agentId: string, delta: string): void {
+    const a = this.requireAgent(agentId);
+    if (!a.settle) return;
+    this.bus.emit(agentId, "stream", delta);
   }
 
   async pushContext(agentId: string, text: string): Promise<void> {
