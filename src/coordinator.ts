@@ -131,6 +131,9 @@ export class Coordinator {
       onChainState: (chain) => this.updateChainState(chain),
       // A turn's timing starts at its dispatch, not at boot (#76).
       onDispatch: (agentId) => {
+        // The pane says "working" when the work is handed over, not when the model's first byte
+        // arrives: a 43 s wait for the first token is the room working, not the agent idling.
+        this.markWorking(agentId);
         this.watchFailure("agent log write", agentId, this.appendAgentLog(agentId, "turn_start", ""));
       },
       isStopping: () => this.stopping,
@@ -191,14 +194,7 @@ export class Coordinator {
       // `tail -f` on that file a few statements later. A failed write still must
       // not abort boot, which is what watchFailure's never-rejecting promise buys.
       await this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `[started] pid=${info.pid}`));
-      // Without this a pane that has never been used shows only a pid, which reads as
-      // activity: say what the agent's state actually is (#62).
-      const slot = this.panes ? ` · slot ${agentIndex + 1}/${this.config.allAgents.length}` : "";
-      await this.watchFailure(
-        "agent pane write",
-        agent.id,
-        this.agentStream.line(agent.id, `${agent.handle} — idle, never dispatched${slot}`),
-      );
+
 
       // A writable pane carries typed lines through an inbox file (D7): a pane
       // cannot tail and read a keyboard at once.
@@ -213,12 +209,6 @@ export class Coordinator {
       const scriptPath = join(agentDir, "pane.sh");
       await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath }), "utf8");
 
-      const markWorking = (): void => {
-        if (this.working.has(agent.id)) return;
-        this.working.add(agent.id);
-        this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `${agent.handle} — working`));
-      };
-
       // A provider that streams a whole turn glued says afterwards where the next message started,
       // so the room can split the line it is still holding (#73).
       this.pi.on("message_end", agent.id, ({ text }) => {
@@ -227,7 +217,7 @@ export class Coordinator {
       });
 
       this.pi.on("stream", agent.id, (delta) => {
-        markWorking();
+        this.markWorking(agent.id);
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
         // The room sees the prose as it is written, not when the turn ends (#63).
         this.chat.delta(agent.id, delta);
@@ -239,16 +229,15 @@ export class Coordinator {
 
       this.pi.on("tool", agent.id, (tool) => {
         this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "tool_start", tool.name));
-        markWorking();
+        this.markWorking(agent.id);
         // A tool call cannot happen inside a sentence, so the line the provider left unterminated
         // ends here — otherwise "Got it: …" stays hidden until the turn's final report (#75).
         this.chat.flush(agent.id);
         this.watchFailure("agent pane write", agent.id, this.agentStream.tool(agent.id, tool));
       });
       this.pi.on("settled", agent.id, (r) => {
-        // A turn that streamed nothing still ran: mark it before its text lands, so the pane
-        // never shows words from an agent that was "never dispatched".
-        markWorking();
+        // A turn that streamed nothing still ran: mark it before its text lands.
+        this.markWorking(agent.id);
         // Only an agent that actually ran a turn moves its activity stamp.
         if (this.roomState) {
           const runtime = this.roomState.agents[agent.id];
@@ -517,6 +506,20 @@ export class Coordinator {
       // The submit path reports its own failures; this only stops an unhandled rejection.
       this.telemetry.log("error", "pane input failed", { agentId, error: errorMessage(e) });
     });
+  }
+
+  /**
+   * The pane says "working" the moment the room hands the agent work.
+   *
+   * The first stream delta arrives whenever the provider gets round to it — 43 s into a live lead
+   * turn — and a pane that says "idle" for that long is reporting the provider's queue as the
+   * agent's state.
+   */
+  private markWorking(agentId: string): void {
+    if (this.working.has(agentId)) return;
+    const handle = this.config.agentById.get(agentId)?.handle ?? agentId;
+    this.working.add(agentId);
+    this.watchFailure("agent pane write", agentId, this.agentStream.line(agentId, `${handle} — working`));
   }
 
   private async appendAgentLog(agentId: string, event: string, text: string): Promise<void> {

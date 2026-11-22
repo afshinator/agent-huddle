@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import { readFileSync } from "node:fs";
 import { appendFile, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -196,7 +197,7 @@ describe("Coordinator chat stream (#63)", () => {
 });
 
 describe("A pane says whether its agent has been used (#62)", () => {
-  test("an undispatched agent's stream says so, with its slot", async () => {
+  test("a pane that has had no work carries nothing but its boot line", async () => {
     await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
       // the lead hands work to dev1 and finishes; nothing ever reaches anyone else
       pi.script("lead", [{ lastText: "Got it: start\n@dev1 go" }, { lastText: "verified\nDONE" }]);
@@ -205,7 +206,30 @@ describe("A pane says whether its agent has been used (#62)", () => {
       await coordinator.boot();
 
       const lead = await readFile(join(dir, "agents", "lead", "output.log"), "utf8");
-      expect(lead).toContain("@lead — idle, never dispatched · slot 1/2");
+      // A live run opened every pane with "@lead — idle, never dispatched · slot 1/3": an idle
+      // nag as the first thing a human reads. The boot line is the only thing worth saying before
+      // there is any work.
+      expect(lead.trimStart().startsWith("[started] pid=")).toBe(true);
+      expect(lead).not.toMatch(/never dispatched|\bidle\b/i);
+    });
+  }, 20_000);
+
+  test("the pane says working when the work is handed over, not when the model first speaks", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
+      // A held turn says nothing: 43 s of a live lead turn passed between dispatch and the first
+      // delta, and the pane called that "idle" — it was the provider's queue, not the agent.
+      pi.script("lead", [{ hold: true }]);
+      const booted = coordinator.boot();
+      const pane = join(dir, "agents", "lead", "output.log");
+      await waitUntil(() => {
+        try {
+          return readFileSync(pane, "utf8").includes("@lead — working");
+        } catch {
+          return false;
+        }
+      }, 2000);
+      pi.release("lead", "Got it: start\nDONE");
+      await booted;
     });
   }, 20_000);
 
