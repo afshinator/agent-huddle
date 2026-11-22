@@ -221,6 +221,9 @@ describe("A pane says whether its agent has been used (#62)", () => {
       pi.script("lead", [{ hold: true }]);
       const booted = coordinator.boot();
       const pane = join(dir, "agents", "lead", "output.log");
+      // Wait for the dispatch before releasing: a release that lands before the turn exists is a
+      // no-op, the held turn never ends, and the boot hangs into the test's timeout.
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt" && c.agentId === "lead"), 10_000);
       let sawWorking = false;
       try {
         await waitUntil(() => {
@@ -229,7 +232,7 @@ describe("A pane says whether its agent has been used (#62)", () => {
           } catch {
             return false;
           }
-        }, 5000);
+        }, 5_000);
         sawWorking = true;
       } catch {
         // Recorded below, after the turn is released: a failed assertion here would leave the boot
