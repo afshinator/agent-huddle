@@ -16,6 +16,8 @@ export interface ChatSink {
   write(s: string): void;
 }
 
+import { stampNow } from "./stamp";
+
 export class ChatStream {
   /** Agents that have printed in the current turn, so the next text owes no prefix. */
   private readonly printed = new Set<string>();
@@ -31,6 +33,8 @@ export class ChatStream {
     private readonly colourOf: (handle: string) => string | null = () => null,
     /** Styling for a finished line: mentions are marked there, not in the prefix (#77). */
     private readonly styleOf: (text: string) => string = (text) => text,
+    /** The clock printed beside a speaker: a room with three agents needs the times (T17). */
+    private readonly stamp: () => string = stampNow,
   ) {}
 
   delta(agentId: string, text: string): void {
@@ -82,7 +86,7 @@ export class ChatStream {
     if (rest !== "") this.writeLines(agentId, rest + "\n");
     const printedThisTurn = this.printed.has(agentId);
     if (reason !== undefined && printedThisTurn)
-      this.sink.write(`[${this.handleOf(agentId).replace(/^@/, "")}] (${reason})\n`);
+      this.sink.write(`[${this.handleOf(agentId).replace(/^@/, "")}] ${this.stamp()} (${reason})\n`);
     this.printed.delete(agentId);
     this.active.delete(agentId);
     return printedThisTurn;
@@ -94,7 +98,9 @@ export class ChatStream {
   }
 
   private writeLines(agentId: string, text: string): void {
-    const prefix = this.printed.has(agentId) ? "" : `${paintTag(this.handleOf(agentId), this.colourOf)} `;
+    const prefix = this.printed.has(agentId)
+      ? ""
+      : `${paintTag(this.handleOf(agentId), this.colourOf)} ${this.stamp()} `;
     this.printed.add(agentId);
     // A line is styled whole: a handle can be split across deltas, so per-delta styling would
     // mark a fragment or nothing at all.

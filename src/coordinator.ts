@@ -18,6 +18,7 @@ import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream } from "./chat-stream";
 import { colorOf, markMentions, markOf, paintTag } from "./colors";
+import { stampNow } from "./stamp";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -669,7 +670,8 @@ export class Coordinator {
       return;
     }
     const prefix = paintTag(msg.handle, (h) => this.colourFor(h));
-    this.stdout.write(`${prefix} ${this.style(msg.text)}\n`);
+    // The time the line was said: with three agents talking, order has to be readable, not inferred (T17).
+    this.stdout.write(`${prefix} ${stampNow()} ${this.style(msg.text)}\n`);
   }
 
   /** The room's brief: a framed block, so it reads as background rather than a command. */
@@ -682,7 +684,7 @@ export class Coordinator {
   /** A settled reply whose turn streamed nothing: print it the way the room always has. */
   private printAgentText(handle: string, text: string | null): void {
     if (text === null || text.trim() === "") return;
-    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${this.style(text)}\n`);
+    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${stampNow()} ${this.style(text)}\n`);
   }
 
   /** Mentions are inverted when styling is on; with it off the text is untouched (#77, #86). */

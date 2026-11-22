@@ -695,6 +695,35 @@ describe("TurnLoop", () => {
     expect(NUDGE_PROMPT).toContain("a tool call is not an answer");
   });
 
+  test("replies that all address one agent arrive as one message, labelled and in order (T17)", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("lead", [
+        { lastText: "Got it: start\n@dev1 @dev2 split it" },
+        { lastText: "Got it: both reports in hand\nDONE" },
+      ]);
+      pi.script("dev1", [{ lastText: "Got it: part A done" }]);
+      // No mention at all: under `lead` scope this still reports upward, which is how two replies end up
+      // addressed to the same agent in one round (the live case that read as a stale answer).
+      pi.script("dev2", [{ lastText: "Got it: part B done" }]);
+
+      const result = await loop.submit("@lead build it", "user");
+      expect(result.status).toBe("completed");
+
+      const leadPrompts = pi.calls
+        .filter((c) => c.op === "prompt" && c.agentId === "lead")
+        .map((c) => (c.payload as { message?: string }).message ?? "");
+      // One merged prompt, not one per report: answering them in turn is what let the lead answer the
+      // older message after the newer had landed.
+      expect(leadPrompts).toHaveLength(2);
+      const merged = leadPrompts[1] ?? "";
+      expect(merged).toMatch(/@dev1 \(\d\d:\d\d:\d\d\): Got it: part A done/);
+      expect(merged).toMatch(/@dev2 \(\d\d:\d\d:\d\d\): Got it: part B done/);
+      expect(merged.indexOf("part A")).toBeLessThan(merged.indexOf("part B"));
+      // lead, dev1, dev2, merged lead: four hops, where dispatching the reports separately cost five.
+      expect(result.hopCount).toBe(4);
+    }, { dispatchScope: "lead" });
+  });
+
   test("an agent that goes quiet mid-turn is asked for status, in the room (T16)", async () => {
     await harness(
       async ({ loop, pi }) => {

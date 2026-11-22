@@ -83,12 +83,27 @@ export type SubmitKind = "user" | "startup_task";
  */
 export type ChainOutcome = "completed" | "halted" | "cancelled";
 
+import { stampNow, stampOf } from "./stamp";
+
 /** One agent's turn waiting to be dispatched: the message it gets, and who sent it. */
 interface PendingTurn {
   agentId: string;
   text: string;
   from: string;
   ackRequired: boolean;
+  /** When this message was said, so merged messages can be read in order (T17). */
+  at: string;
+}
+
+/**
+ * One message out of several that arrived for the same agent, each labelled with its author and time.
+ *
+ * Dispatching them one at a time let an agent answer the older one after the newer had landed: in run
+ * 003-ticket-54 the lead said it was "waiting on the reviewer's verdict" eight seconds after it had
+ * arrived, and that line bought the review a second time (T17).
+ */
+function mergeReplies(items: PendingTurn[], handleOf: (id: string) => string): string {
+  return items.map((i) => `${handleOf(i.from)} (${stampOf(i.at)}): ${i.text}`).join("\n\n");
 }
 
 export interface SubmitResult {
@@ -235,6 +250,7 @@ export class TurnLoop {
         text,
         from: "supervisor",
         ackRequired: needsAck(this.cfg, kind, initialTargets, text, "supervisor"),
+        at: this.now(),
       }),
     );
     await this.syncContext(chain, text, pending.map((t) => t.agentId));
@@ -258,13 +274,25 @@ export class TurnLoop {
       if (chain.hopCount >= this.cfg.config.max_hops) {
         return this.wrapUp(chain);
       }
-      const wave: PendingTurn[] = [];
-      const later: PendingTurn[] = [];
+      const byAgent = new Map<string, PendingTurn[]>();
       for (const item of pending) {
-        if (wave.some((w) => w.agentId === item.agentId)) later.push(item);
-        else wave.push(item);
+        const list = byAgent.get(item.agentId);
+        if (list === undefined) byAgent.set(item.agentId, [item]);
+        else list.push(item);
       }
-      pending = later;
+      pending = [];
+      // One prompt per agent, however many replies addressed it this round: the merged text carries each
+      // answer's author and time, so the agent can tell which is newer instead of answering a stale one.
+      const wave: PendingTurn[] = [...byAgent.values()].map((items) =>
+        items.length === 1
+          ? items[0]!
+          : {
+              ...items[0]!,
+              text: mergeReplies(items, (id) => this.handleById.get(id) ?? id),
+              // If any of the merged messages was a direct address, the merged one is too.
+              ackRequired: items.some((i) => i.ackRequired),
+            },
+      );
 
       const settledWave = await Promise.all(
         wave.map((item) => this.dispatch(chain, item.agentId, item.text, true)),
@@ -346,6 +374,7 @@ export class TurnLoop {
       text: reply,
       from: agentId,
       ackRequired: needsAck(this.cfg, "user", resolution.targets, reply, agentId),
+      at: this.now(),
     }));
     // Why this reply started whom: without it, "the same agent ran twice" is unattributable
     // after the fact — a live run had the reviewer turn twice on one instruction (#73).

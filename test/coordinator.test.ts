@@ -145,7 +145,7 @@ describe("Coordinator chat stream (#63)", () => {
       const boot = coordinator.boot();
       await waitUntil(() => out.join("").includes("the footer now"), 3000);
 
-      expect(out.join("")).toContain("[dev1] Got it: checking\nthe footer now");
+      expect(out.join("")).toMatch(/\[dev1\] \d\d:\d\d:\d\d Got it: checking\nthe footer now/);
       await coordinator.shutdown();
       await boot.catch(() => undefined);
     });
@@ -175,7 +175,7 @@ describe("Coordinator chat stream (#63)", () => {
 
       const text = out.join("");
       expect(text.split("silent provider").length - 1).toBe(1);
-      expect(text).toContain("[lead] silent provider");
+      expect(text).toMatch(/\[lead\] \d\d:\d\d:\d\d silent provider/);
     });
   }, 20_000);
 
@@ -189,8 +189,8 @@ describe("Coordinator chat stream (#63)", () => {
       await coordinator.boot();
 
       const text = out.join("");
-      expect(text).toContain("[dev1] reading the footer\n");
-      expect(text).toContain("[dev1] (interrupted)");
+      expect(text).toMatch(/\[dev1\] \d\d:\d\d:\d\d reading the footer\n/);
+      expect(text).toMatch(/\[dev1\] \d\d:\d\d:\d\d \(interrupted\)/);
       expect(text).toContain("settle timeout");
     });
   }, 20_000);

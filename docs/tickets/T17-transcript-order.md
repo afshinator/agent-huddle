@@ -53,9 +53,10 @@ Here that means two changes, in this order of value:
 
    One turn instead of two, no stale answer, one hop instead of two, and the agent can see that the second
    message is the newer one. This is the fix that removes the wrong line rather than explaining it.
-2. **Put the time on the line.** `[lead] 00:57:37 ` — one timestamp in the prefix, taken from the message's
-   own `ts`. Cheap, and it makes "which came first" checkable instead of inferred. Simultaneous messages
-   print in arrival order, both of them, as they already do.
+2. **Put the time on the line.** `[lead] 00:57:37 ` — one timestamp in the prefix, taken from the clock
+   when the line is printed, because streamed prose has no message record yet: the settled `ts` is the
+   end of a turn, not the moment it started speaking. Cheap, and it makes "which came first" checkable
+   instead of inferred. Simultaneous messages print in arrival order, both of them, as they already do.
 
 Deliberately **not** doing: buffering replies to print them in a sorted batch (delays the room for no
 reason — the timeliness of streaming text is the thing that makes it watchable), and hiding or collapsing
@@ -72,6 +73,11 @@ duplicates (a reader should see that the reviewer was asked twice).
 5. A test with two agents settling in the same round shows one combined prompt and one lead reply, and the
    chat lines carry timestamps.
 6. `bun run check` green.
+
+**Status:** done. `mergeReplies` in `src/turn-loop.ts` merges per agent before dispatch, labelled
+`@handle (HH:MM:SS): …` and in settle order; `src/stamp.ts` is the one clock, used by `ChatStream`,
+`printMessage` and `printAgentText`. Notices keep their `·`. Spec moved, not code: the prefix time is the
+print clock, for the reason in item 2.
 
 ## Red test
 

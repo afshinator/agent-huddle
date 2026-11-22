@@ -632,3 +632,19 @@ stays as the outer bound.
 **Rejected:** a lead ping when a reply lacks `Got it: …`. The notice already tells the lead and the report
 already goes upward (`turn-loop.ts`), so a ping would spend two turns on a line that changes nothing about
 whether the work was done.
+
+## D28 — A reader can order the transcript, and a reply cannot answer a superseded message (T17)
+
+**Context:** run `003-ticket-54` at 00:57 showed the reviewer's verdict, then the lead asking for it eight
+seconds later, then the review done twice. Both replies had settled in the same millisecond and both
+addressed the lead; the room dispatched the lead twice, in queue order, so the first turn answered dev1's
+superseded "standing by" and that answer bought the second review.
+
+**Decision:** replies that address the same agent in one round are merged into a single prompt, each
+labelled `@handle (HH:MM:SS): …` in settle order, and dispatched once. Hops drop by one for that round.
+Every printed line carries the time it was said, from one clock (`src/stamp.ts`), so order is readable
+rather than inferred; notices keep their `·` form and streamed prose still prints as it is written.
+
+**Rejected:** buffering replies to print them in sorted batches — it delays a live transcript to fix an
+ordering problem the reader can settle for themselves once the times are on the lines; and collapsing
+duplicate turns — a reader should see that the review was asked twice, because that was the cost.
