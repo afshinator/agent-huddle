@@ -63,6 +63,14 @@ export type SubmitKind = "user" | "startup_task";
  */
 export type ChainOutcome = "completed" | "halted" | "cancelled";
 
+/** One agent's turn waiting to be dispatched: the message it gets, and who sent it. */
+interface PendingTurn {
+  agentId: string;
+  text: string;
+  from: string;
+  ackRequired: boolean;
+}
+
 export interface SubmitResult {
   chainId: string;
   status: ChainOutcome;
@@ -177,7 +185,7 @@ export class TurnLoop {
     const initialTargets =
       pinnedTargets ??
       (kind === "startup_task" ? [this.cfg.config.lead.id] : initialResolution.targets);
-    const queue: Array<{ agentId: string; text: string; from: string; ackRequired: boolean }> = initialTargets.map(
+    let pending: PendingTurn[] = initialTargets.map(
       (agentId) => ({
         agentId,
         text,
@@ -185,9 +193,9 @@ export class TurnLoop {
         ackRequired: needsAck(this.cfg, kind, initialTargets, text, "supervisor"),
       }),
     );
-    await this.syncContext(chain, text, queue.map((t) => t.agentId));
+    await this.syncContext(chain, text, pending.map((t) => t.agentId));
 
-    if (queue.length === 0) {
+    if (pending.length === 0) {
       await this.append(
         chain,
         "notice",
@@ -198,72 +206,115 @@ export class TurnLoop {
       return this.finish(chain, "completed");
     }
 
-    while (queue.length > 0) {
-      const { agentId, text: promptText, ackRequired } = queue.shift()!;
+    // One wave per message: every agent this message names is handed its turn now, not after the
+    // previous one finishes. A two-verifier gate used to run in series — the second agent sat idle
+    // for the whole of the first agent's turn — which is a room spending wall clock on nothing.
+    // A repeat of an agent already in the wave waits for the next wave: one agent, one turn at a time.
+    while (pending.length > 0) {
       if (chain.hopCount >= this.cfg.config.max_hops) {
         return this.wrapUp(chain);
       }
-      const settled = await this.dispatch(chain, agentId, promptText, true);
-      if (settled === null) return this.finish(chain, this.isStopping() ? "cancelled" : "halted");
+      const wave: PendingTurn[] = [];
+      const later: PendingTurn[] = [];
+      for (const item of pending) {
+        if (wave.some((w) => w.agentId === item.agentId)) later.push(item);
+        else wave.push(item);
+      }
+      pending = later;
 
-      // An empty reply said nothing: "silent pickup" would be a notice about a turn that never spoke.
-      if (ackRequired && (settled.lastText ?? "").trim() !== "" && !hasAck(settled.lastText)) {
-        const handle = this.cfg.agentById.get(agentId)?.handle ?? agentId;
-        await this.append(
-          chain,
-          "notice",
-          "room",
-          `${handle} answered a direct message without "Got it: …" — a silent pickup is indistinguishable from a miss`,
-          chain.hopCount,
-        );
+      const settledWave = await Promise.all(
+        wave.map((item) => this.dispatch(chain, item.agentId, item.text, true)),
+      );
+      const replies: string[] = [];
+      let finished = false;
+      for (const [index, item] of wave.entries()) {
+        const settled = settledWave[index] ?? null;
+        if (settled === null) return this.finish(chain, this.isStopping() ? "cancelled" : "halted");
+        const { next, done, reply } = await this.routeReply(chain, item.agentId, item.ackRequired, settled);
+        replies.push(reply);
+        if (done) {
+          finished = true;
+          break;
+        }
+        pending.push(...next);
       }
-      if (this.isDone(agentId, settled.lastText)) return this.finish(chain, "completed");
-
-      const reply = settled.lastText ?? "";
-      const resolution = resolveMentions(reply, this.cfg);
-      if (resolution.unknownHandles.length > 0) {
-        await this.append(chain, "notice", "room", `unknown agent mention(s): ${resolution.unknownHandles.join(", ")}`, chain.hopCount);
-      }
-      // D18: with `dispatch_scope: lead`, work is handed out by the lead and reports go back to it,
-      // so dev1's report ending "@reviewer count is 28" cannot start a verification nobody asked
-      // for. `anyone` (the default) keeps every mention a dispatch. A mention of the author is a
-      // note to others, not a dispatch to itself.
-      const leadOnly = this.cfg.config.dispatch_scope === "lead";
-      const leadId = this.cfg.config.lead.id;
-      // Under `lead` a reply from anyone else always reports upward: the lead is the router, so a
-      // report that forgets to write "@lead" must not leave the chain silent (live run, #68).
-      const reportUp = leadOnly && agentId !== leadId ? [leadId] : [];
-      const nextIds = [
-        ...new Set([
-          ...reportUp,
-          ...resolution.targets.filter(
-            (id) => id !== agentId && (!leadOnly || agentId === leadId || id === leadId),
-          ),
-        ]),
-      ];
-      for (const nextId of nextIds) {
-        queue.push({
-          agentId: nextId,
-          text: reply,
-          from: agentId,
-          ackRequired: needsAck(this.cfg, "user", resolution.targets, reply, agentId),
-        });
-      }
-      // Why this reply started whom: without it, "the same agent ran twice" is unattributable
-      // after the fact — a live run had the reviewer turn twice on one instruction (#73).
-      this.telemetry.log("info", "dispatch", {
-        chainId: chain.chainId,
-        hop: chain.hopCount,
-        from: agentId,
-        targets: resolution.targets,
-        queued: nextIds,
-        broadcast: resolution.targets.length === this.cfg.allAgents.length,
-        selfMention: resolution.targets.includes(agentId),
-      });
-      await this.syncContext(chain, reply, nextIds, agentId);
+      if (finished) return this.finish(chain, "completed");
+      // One context push per wave, not one per reply: the agents left out of this wave are told what
+      // the whole wave said, including anyone it just started. Pushing per reply told each of them the
+      // same thing twice.
+      const spoken = replies.filter((r) => r.trim() !== "").join("\n\n");
+      const addressed = [...new Set([...wave.map((w) => w.agentId), ...pending.map((p) => p.agentId)])];
+      await this.syncContext(chain, spoken, addressed);
     }
 
     return this.finish(chain, "completed");
+  }
+
+  /**
+   * What a settled turn does once it has spoken: the ack notice, a `DONE`, and who it starts next.
+   *
+   * Extracted so a wave can settle several turns and route each reply identically; the rules here are
+   * unchanged from the sequential loop (#68, #73, D18).
+   */
+  private async routeReply(
+    chain: ChainState,
+    agentId: string,
+    ackRequired: boolean,
+    settled: SettledResult,
+  ): Promise<{ next: PendingTurn[]; done: boolean; reply: string }> {
+    // An empty reply said nothing: "silent pickup" would be a notice about a turn that never spoke.
+    if (ackRequired && (settled.lastText ?? "").trim() !== "" && !hasAck(settled.lastText)) {
+      const handle = this.cfg.agentById.get(agentId)?.handle ?? agentId;
+      await this.append(
+        chain,
+        "notice",
+        "room",
+        `${handle} answered a direct message without "Got it: …" — a silent pickup is indistinguishable from a miss`,
+        chain.hopCount,
+      );
+    }
+    const done = this.isDone(agentId, settled.lastText);
+
+    const reply = settled.lastText ?? "";
+    const resolution = resolveMentions(reply, this.cfg);
+    if (resolution.unknownHandles.length > 0) {
+      await this.append(chain, "notice", "room", `unknown agent mention(s): ${resolution.unknownHandles.join(", ")}`, chain.hopCount);
+    }
+    // D18: with `dispatch_scope: lead`, work is handed out by the lead and reports go back to it,
+    // so dev1's report ending "@reviewer count is 28" cannot start a verification nobody asked
+    // for. `anyone` (the default) keeps every mention a dispatch. A mention of the author is a
+    // note to others, not a dispatch to itself.
+    const leadOnly = this.cfg.config.dispatch_scope === "lead";
+    const leadId = this.cfg.config.lead.id;
+    // Under `lead` a reply from anyone else always reports upward: the lead is the router, so a
+    // report that forgets to write "@lead" must not leave the chain silent (live run, #68).
+    const reportUp = leadOnly && agentId !== leadId ? [leadId] : [];
+    const nextIds = [
+      ...new Set([
+        ...reportUp,
+        ...resolution.targets.filter(
+          (id) => id !== agentId && (!leadOnly || agentId === leadId || id === leadId),
+        ),
+      ]),
+    ];
+    const next: PendingTurn[] = nextIds.map((nextId) => ({
+      agentId: nextId,
+      text: reply,
+      from: agentId,
+      ackRequired: needsAck(this.cfg, "user", resolution.targets, reply, agentId),
+    }));
+    // Why this reply started whom: without it, "the same agent ran twice" is unattributable
+    // after the fact — a live run had the reviewer turn twice on one instruction (#73).
+    this.telemetry.log("info", "dispatch", {
+      chainId: chain.chainId,
+      hop: chain.hopCount,
+      from: agentId,
+      targets: resolution.targets,
+      queued: nextIds,
+      broadcast: resolution.targets.length === this.cfg.allAgents.length,
+      selfMention: resolution.targets.includes(agentId),
+    });
+    return { next, done, reply };
   }
 
   /** Lead wrap-up, then one concluding turn per previously dispatched agent. */

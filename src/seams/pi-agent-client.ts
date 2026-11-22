@@ -221,6 +221,23 @@ export class FakePiAgentClient implements PiAgentClient {
     });
   }
 
+  /**
+   * Settle a held turn now, the way production does when the model finishes.
+   *
+   * `hold` exists so a test can look at a room with two turns in flight at once; without a release the
+   * only way out of a held turn is a timeout, which is a different test.
+   */
+  release(agentId: string, lastText: string | null = null): void {
+    const a = this.requireAgent(agentId);
+    if (!a.settle) return;
+    const settle = a.settle;
+    a.settle = null;
+    a.lastText = lastText;
+    const result: SettledResult = { aborted: false, lastText };
+    settle.resolve(result);
+    this.bus.emit(agentId, "settled", result);
+  }
+
   async pushContext(agentId: string, text: string): Promise<void> {
     const failure = this.takeFailure("pushContext");
     if (failure) throw failure.error;

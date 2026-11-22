@@ -336,10 +336,11 @@ directive names the agents it is about, so its mentions are recorded and pushed 
 context but never choose the first targets — the lead decides who works.
         │
         ▼
-TurnLoop: dispatch each target in order, one at a time
+TurnLoop: dispatch every target of one message together (a wave), then route each
+reply as it settles — one agent never runs two turns at once
         │
         ▼
-on agent_settled: append agent text to messages.jsonl (kind agent, hop n)
+agent_settled per turn: append agent text to messages.jsonl (kind agent, hop n)
         │
         ├─ agent text contains @mention(s) ──► those become next hop targets
         ├─ lead emitted DONE ────────────────► chain complete, status idle

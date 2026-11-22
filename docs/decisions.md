@@ -584,3 +584,25 @@ nothing written still halts, which is the honest case.
 `bootRoom()` spawns afterwards; `register()` cleared the agent's listeners, so the room's own copy of the
 stream was always empty and the salvage branch never fired. Every stub test passed because the fake
 client's `spawn` never cleared anything.
+
+## D26 — One message's targets are dispatched together, not one after another (#85)
+
+**Context:** a gate that asks two agents the same question ran them in series: the second agent sat idle
+for the whole of the first agent's turn. Run `003-ticket-54` showed it plainly — the lead addressed
+`@dev1 @reviewer` in one message, dev1 worked, and the reviewer's own log held a single `spawned` event
+and nothing else. An earlier prompt change ("ask both in one message") removed the lead turn between
+them, which is not the same thing as letting them work at once.
+
+**Decision:** the agents one message names are dispatched as a wave — `Promise.all` over the distinct
+targets, each with its own turn, session and pane. A reply's mentions form the next wave. An agent
+appearing twice in one wave is deferred to the next, so one agent still runs one turn at a time. Hops are
+counted per dispatch, the `max_hops` check is per wave, and a `DONE` finishes the chain after that wave's
+turns have spoken. Context is pushed once per wave rather than once per reply: pushing per reply told
+every spectator the same thing twice, which two existing tests caught.
+
+**Cost accepted:** two turns run at the same time, so a chain can spend two agents' tokens in one
+wall-clock window. A turn that times out no longer holds up the other agent's turn, and the room's
+accounting is unchanged per dispatch (hops, telemetry spans, `room.active_chains`).
+
+**Not changed:** `wrapUp` and the concluding turns stay sequential — they exist so a chain can end, and
+running them together would race the halt.

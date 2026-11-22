@@ -7,6 +7,7 @@ import { RoomStore } from "../src/store";
 import type { Telemetry } from "../src/telemetry";
 import { RecordingTelemetry } from "./recording-telemetry";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
+import { waitUntil } from "./helpers";
 import type { AgentSpec, LoadedConfig } from "../src/config";
 
 const lead: AgentSpec = { id: "lead", handle: "@lead", role: "lead" };
@@ -674,6 +675,26 @@ describe("TurnLoop", () => {
       expect(result.hopCount).toBe(4);
       const prompts = pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
       expect(prompts).toEqual(["lead", "dev1", "dev2", "reviewer"]);
+    });
+  });
+
+  test("two agents named in one message are in flight at the same time (#T14)", async () => {
+    await harness(async ({ loop, pi }) => {
+      pi.script("dev1", [{ deltas: ["dev1 on it"], hold: true }]);
+      pi.script("dev2", [{ deltas: ["dev2 on it"], hold: true }]);
+      const prompted = (): string[] => pi.calls.filter((c) => c.op === "prompt").map((c) => c.agentId);
+
+      const running = loop.submit("@dev1 @dev2 both go");
+      // Both are handed the message before either settles. A room that makes dev2 wait for dev1 turns
+      // one two-agent gate into two turns of wall clock, and the second agent sits idle throughout.
+      await waitUntil(() => prompted().length === 2, 2000);
+      expect(prompted()).toEqual(["dev1", "dev2"]);
+
+      pi.release("dev1", "Got it: dev1\npart A");
+      pi.release("dev2", "Got it: dev2\npart B");
+      const result = await running;
+      expect(result.status).toBe("completed");
+      expect(result.hopCount).toBe(2);
     });
   });
 
