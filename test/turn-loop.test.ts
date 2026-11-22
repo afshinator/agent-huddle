@@ -58,6 +58,7 @@ async function harness(
     dispatchScope?: "anyone" | "lead";
     idleNudgeMs?: number;
     nudgeCheckMs?: number;
+    workNoticeMs?: number;
   },
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "ah-loop-"));
@@ -74,6 +75,7 @@ async function harness(
       turnTimeoutMs: opts?.turnTimeoutMs,
       ...(opts?.idleNudgeMs !== undefined ? { idleNudgeMs: opts.idleNudgeMs } : {}),
       ...(opts?.nudgeCheckMs !== undefined ? { nudgeCheckMs: opts.nudgeCheckMs } : {}),
+      ...(opts?.workNoticeMs !== undefined ? { workNoticeMs: opts.workNoticeMs } : {}),
     });
 
     for (const a of config.allAgents) await pi.spawn(a, { cwd: dir });
@@ -822,6 +824,42 @@ describe("TurnLoop", () => {
         expect((await running).status).toBe("completed");
       },
       { idleNudgeMs: 100, nudgeCheckMs: 10 },
+    );
+  }, 20_000);
+
+  test("a turn that works without printing is reported as working, not as stuck (T19)", async () => {
+    await harness(
+      async ({ loop, pi, msgs }) => {
+        pi.script("lead", [{ hold: true }]);
+        const running = loop.submit("@lead go");
+        await waitUntil(() => pi.calls.some((c) => c.op === "prompt"), 2000);
+
+        // The run-004 shape: the agent runs tool calls and emits no text at all. In the transcript that
+        // was indistinguishable from a hung turn, so the room says it is alive.
+        pi.toolStarted("lead", "bash");
+        const beatsOf = async (): Promise<string[]> =>
+          (await msgs()).filter((m) => m.kind === "notice" && m.text.includes("working —")).map((m) => m.text);
+        const deadline = Date.now() + 4000;
+        while ((await beatsOf()).length === 0 && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        const beats = await beatsOf();
+        expect(beats[0]).toMatch(/agent lead: working — \d+s, 1 tool calls, no text yet/);
+
+        // Once it speaks, the pane has its own words and the heartbeat stops.
+        const beatsBefore = beats.length;
+        pi.streamDelta("lead", "Got it: reading the parser\n");
+        pi.toolFinished("lead", "bash", 50);
+        await new Promise((r) => setTimeout(r, 300));
+        const beatsAfter = (await msgs()).filter(
+          (m) => m.kind === "notice" && m.text.includes("working —"),
+        ).length;
+        expect(beatsAfter).toBe(beatsBefore);
+
+        pi.release("lead", "Got it: done\nDONE");
+        expect((await running).status).toBe("completed");
+      },
+      { workNoticeMs: 60, nudgeCheckMs: 10, idleNudgeMs: 100_000 },
     );
   }, 20_000);
 

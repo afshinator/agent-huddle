@@ -33,6 +33,15 @@ export const NUDGE_IDLE_MS = 120_000;
 export const NUDGE_CHECK_MS = 15_000;
 
 /**
+ * How long a turn may work without printing a word before the room says it is alive.
+ *
+ * A model that batches its text until the end (run `004-ticket-55`: 20 tool calls, 51 seconds, no delta)
+ * leaves a transcript that looks stuck while the agent is working perfectly well. One dim line a minute
+ * is the difference between "silent" and "dead" (T19).
+ */
+export const WORK_NOTICE_MS = 60_000;
+
+/**
  * What the room says when it stops waiting. It has to ask for text: the room records a turn's words
  * (`settled.lastText`), so an agent that answers by running a command has said nothing.
  */
@@ -124,6 +133,8 @@ export interface TurnLoopDeps {
   idleNudgeMs?: number;
   /** How often that silence is checked; defaults to `NUDGE_CHECK_MS`. */
   nudgeCheckMs?: number;
+  /** How long a turn may work without printing text before the room reports it; defaults to `WORK_NOTICE_MS` (T19). */
+  workNoticeMs?: number;
   now?: () => string;
   newId?: () => string;
   onChainState?: (state: ChainState | null) => Promise<void> | void;
@@ -148,10 +159,13 @@ export class TurnLoop {
   private readonly turnTimeoutMs: number;
   private readonly idleNudgeMs: number;
   private readonly nudgeCheckMs: number;
+  private readonly workNoticeMs: number;
   /** Last time an agent showed any sign of life in its current turn (T16). */
   private readonly lastEvent = new Map<string, number>();
   /** Tools this agent has started and not yet finished: a running tool is work, not silence (T16). */
   private readonly openTools = new Map<string, number>();
+  /** Tool calls in the turn now running, so a working agent can be reported as working (T19). */
+  private readonly toolsThisTurn = new Map<string, number>();
   private readonly now: () => string;
   private readonly newId: () => string;
   private readonly handleById: Map<string, string>;
@@ -169,6 +183,7 @@ export class TurnLoop {
     this.turnTimeoutMs = deps.turnTimeoutMs ?? 300_000;
     this.idleNudgeMs = deps.idleNudgeMs ?? NUDGE_IDLE_MS;
     this.nudgeCheckMs = deps.nudgeCheckMs ?? NUDGE_CHECK_MS;
+    this.workNoticeMs = deps.workNoticeMs ?? WORK_NOTICE_MS;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.newId = deps.newId ?? (() => randomUUID());
     this.handleById = new Map(deps.config.allAgents.map((a) => [a.id, a.handle]));
@@ -188,6 +203,7 @@ export class TurnLoop {
       deps.pi.on("tool", agent.id, () => {
         this.lastEvent.set(agent.id, Date.now());
         this.openTools.set(agent.id, (this.openTools.get(agent.id) ?? 0) + 1);
+        this.toolsThisTurn.set(agent.id, (this.toolsThisTurn.get(agent.id) ?? 0) + 1);
       });
       deps.pi.on("tool_end", agent.id, () => {
         this.lastEvent.set(agent.id, Date.now());
@@ -403,6 +419,9 @@ export class TurnLoop {
   private async settleWithNudge(chain: ChainState, agentId: string, hop: number): Promise<SettledResult> {
     this.lastEvent.set(agentId, Date.now());
     this.openTools.set(agentId, 0);
+    this.toolsThisTurn.set(agentId, 0);
+    const startedAt = Date.now();
+    let lastNotice = startedAt;
     const pending = this.pi.waitForSettled(agentId, this.turnTimeoutMs);
     let settledNow = false;
     // Resolved either way, so the race below never waits on an error and the caller still awaits
@@ -418,7 +437,22 @@ export class TurnLoop {
     while (!settledNow) {
       // Raced, not slept: a turn that settles at once must not cost one check interval of latency.
       await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, this.nudgeCheckMs))]);
-      if (settledNow || nudged) continue;
+      if (settledNow) continue;
+      // A turn that is working but has printed nothing looks identical to a hung one in the transcript
+      // (run 004: 20 tool calls, 51 seconds, no delta). Say it is alive, once a minute, and stop as soon
+      // as it speaks: after that the pane has the agent's own words to show (T19).
+      if ((this.streamed.get(agentId) ?? "") === "" && Date.now() - lastNotice >= this.workNoticeMs) {
+        lastNotice = Date.now();
+        const worked = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+        await this.append(
+          chain,
+          "notice",
+          "room",
+          `agent ${agentId}: working — ${worked}s, ${this.toolsThisTurn.get(agentId) ?? 0} tool calls, no text yet`,
+          hop,
+        );
+      }
+      if (nudged) continue;
       // Nothing to ask while a tool is running: the agent is working, and a steer would only land
       // after that tool anyway.
       if ((this.openTools.get(agentId) ?? 0) > 0) continue;

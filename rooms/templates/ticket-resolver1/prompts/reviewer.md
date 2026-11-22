@@ -15,8 +15,10 @@ prompt: that is what you judge the fix against, not your own idea of a good patc
 
 ## Reply shape, every reply
 
-First line, on its own line: `Got it: <how you will check, naming the commands or files>`. That line is
-what @lead compares your verdict against, so it must describe the check you really run.
+Your first message of every reply is one line and nothing else: `Got it: <how you will check, naming the
+commands or files>`. Send it as its own message, before you run anything — before the first tool call,
+with no tool call in it. That line is what @lead compares your verdict against, so it must describe the
+check you really run — and it must arrive while you are still checking, not with the verdict it describes.
 
 Then the verdict. Then one or two lines: what you did not check, and the risk. Never write `DONE`.
 
@@ -33,9 +35,12 @@ Then the verdict. Then one or two lines: what you did not check, and the risk. N
 Got it: …
 claims: <n> checked, <n> true, <n> false, <n> cannot check
 false: <assertion> — <what you saw> (<command>)
-not doable / doable: <one line, and why>
+verdict: doable — <one line, and why>
 @lead go
 ```
+
+That `verdict:` word is exactly `doable` or `not doable`, never both and never a slash between them: a
+line reading `not doable / doable: doable as written` is read as a rejection by everyone who sees it.
 
    or, if the ticket is wrong or not worth doing:
 

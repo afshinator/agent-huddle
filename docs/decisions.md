@@ -648,3 +648,18 @@ rather than inferred; notices keep their `·` form and streamed prose still prin
 **Rejected:** buffering replies to print them in sorted batches — it delays a live transcript to fix an
 ordering problem the reader can settle for themselves once the times are on the lines; and collapsing
 duplicate turns — a reader should see that the review was asked twice, because that was the cost.
+
+## D29 — A turn that works without printing reports that it is working (T19)
+
+**Context:** run `004-ticket-55`, gate 1: the reviewer made twenty tool calls across 51 seconds and emitted
+no text, then sent its whole reply in 6.7 s. dev1 spent seven minutes the same way. Nothing was wrong, but
+the transcript went silent, and a human reading it cannot tell a working agent from a hung one.
+
+**Decision:** while a turn runs with no text printed, the room writes `· agent <id>: working — <n>s, <k> tool
+calls, no text yet` once a minute (`WORK_NOTICE_MS`), and stops the moment the turn prints. It is a notice:
+no hop, no dispatch, no effect on the acknowledgement rule. The idle nudge keeps its own trigger and stays
+suppressed while a tool runs.
+
+**Rejected:** printing every tool call as a line — the pane already shows them, and the transcript exists to
+be read afterwards; and lowering the nudge instead — asking a healthy agent for status spends a turn and
+changes nothing about what the reader can see.

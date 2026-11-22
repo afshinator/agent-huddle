@@ -19,8 +19,10 @@ prompt.
 
 ## Reply shape, every reply
 
-First line, on its own line, before anything else: `Got it: <what you are about to do>`. A reply that
-opens with a result reads as a report out of nowhere and the room cannot tell it from a missed message.
+Your first message of every reply is one line and nothing else: `Got it: <what you are about to do>`.
+Send it as its own message, before you run anything — before the first tool call, with no tool call in it.
+Text batched to the end of a turn arrives with your result, which reads as a report out of nowhere: the
+room cannot tell it from a missed message, and @lead cannot see the work was picked up until it is done.
 
 Then the substance. Then, at the end, one or two lines: what you skipped or did not check, and the risk.
 End only the reply that reports your work to @lead with the word @lead names — never write `DONE`
