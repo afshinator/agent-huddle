@@ -1,7 +1,8 @@
 # T17 — The transcript must show replies in the order they were said, and must not let a reply answer a superseded message
 
-**Status:** open · **Found:** run `003-ticket-54`, 2026-11-22 00:57 · **Severity:** a reader watches the lead
-ask for a verdict that is already on screen, then sees the review done twice
+**Status:** done — `2cb7b10` (merge + timestamps) and `57e6397` (a label carries no `@`). · **Found:** run
+`003-ticket-54`, 2026-11-22 00:57 · **Severity:** a reader watches the lead ask for a verdict that is already
+on screen, then sees the review done twice
 
 ## What the reader saw
 

@@ -1,7 +1,8 @@
 # T16 — An agent that goes quiet mid-turn is asked for status, in the room
 
-**Status:** open · **Found:** runs `002-ticket-64` and `003-ticket-54`, 2026-11-21 · **Severity:** a turn can
-spend 30 minutes silent and return nothing usable
+**Status:** done — `b474c23` (nudge) and `c269c20` (a running tool is not silence). · **Found:** runs
+`002-ticket-64` and `003-ticket-54`, 2026-11-21 · **Severity:** a turn can spend 30 minutes silent and return
+nothing usable
 
 ## What happened
 

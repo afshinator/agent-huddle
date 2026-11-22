@@ -135,6 +135,25 @@ async function harness(
 }
 
 describe("Coordinator chat stream (#63)", () => {
+  test("a line that has to wait is shown as queued, not silently swallowed (T18)", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, out }) => {
+      // The first chain is still running when the second line arrives, so it waits in submitQueue.
+      pi.script("lead", [{ hold: true }]);
+      const boot = coordinator.boot();
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt"), 2000);
+
+      const second = coordinator.submit("second line: check the footer", ["dev1"]);
+      await waitUntil(() => out.join("").includes("queued behind"), 2000);
+      expect(out.join("")).toMatch(/· queued behind 1 run for @dev1: second line: check the footer/);
+
+      pi.release("lead", "Got it: start\nDONE");
+      pi.script("dev1", [{ lastText: "Got it: checked\nDONE" }]);
+      await boot.catch(() => undefined);
+      await second.catch(() => undefined);
+      await coordinator.shutdown();
+    });
+  }, 20_000);
+
   test("an agent's prose reaches the room while its turn is still running", async () => {
     await harness({ task: "do the work" }, async ({ coordinator, pi, out }) => {
       // first turn settles and hands off; the second never settles, so anything the room

@@ -288,7 +288,17 @@ export class Coordinator {
   }
 
   /** `targets` pins the first dispatch (pane input, #40); the chat pane leaves it unset. */
-  submit(text: string, targets?: readonly string[]): Promise<SubmitResult> {    this.inFlight += 1;
+  submit(text: string, targets?: readonly string[]): Promise<SubmitResult> {
+    this.inFlight += 1;
+    // A submit waits behind whatever chain is running (submitQueue). Saying so is the difference
+    // between a typed line that is queued and one that looks ignored — run 002 had a pasted line wait
+    // nineteen minutes and then speak as an instruction nobody remembered writing (T18).
+    if (this.inFlight > 1) {
+      const waiting = this.inFlight - 1;
+      const who = targets !== undefined && targets.length > 0 ? ` for ${(targets as string[]).map((id) => this.config.agentById.get(id)?.handle ?? id).join(", ")}` : "";
+      const head = text.replace(/\s+/g, " ").slice(0, 60);
+      this.stdout.write(`${this.color ? "\u001b[2m" : ""}· queued behind ${waiting} run${waiting === 1 ? "" : "s"}${who}: ${head}${text.length > 60 ? "…" : ""}${this.color ? "\u001b[0m" : ""}\n`);
+    }
     const run = this.submitQueue.then(async () => {
       this.roomStatus = "active";
       for (const agent of Object.values(this.roomState?.agents ?? {})) agent.status = "busy";

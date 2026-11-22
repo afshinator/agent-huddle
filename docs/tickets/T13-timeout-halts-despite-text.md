@@ -1,6 +1,7 @@
 # T13 — A timed-out turn halts the chain, though the room never sees the text
 
-**Status:** open · **Found:** run `002-ticket-64`, 2026-11-21 · **Severity:** the run dies mid-gate
+**Status:** done — fixed in `a5f0fce` (the spawn no longer clears the room's listeners) and `turn_timeout_ms`
+raised to 30 minutes. · **Found:** run `002-ticket-64`, 2026-11-21 · **Severity:** the run dies mid-gate
 
 ## What happened
 
