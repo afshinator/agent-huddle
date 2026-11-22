@@ -29,7 +29,7 @@ export class ChatStream {
     private readonly handleOf: (agentId: string) => string,
     /** SGR payload for a handle, or null when colour is off: only the prefix is painted (#70). */
     private readonly colourOf: (handle: string) => string | null = () => null,
-    /** Styling for a finished line: mentions are italicised there, not in the prefix (#77). */
+    /** Styling for a finished line: mentions are marked there, not in the prefix (#77). */
     private readonly styleOf: (text: string) => string = (text) => text,
   ) {}
 
@@ -97,7 +97,7 @@ export class ChatStream {
     const prefix = this.printed.has(agentId) ? "" : `${paintTag(this.handleOf(agentId), this.colourOf)} `;
     this.printed.add(agentId);
     // A line is styled whole: a handle can be split across deltas, so per-delta styling would
-    // italicise a fragment or nothing at all.
+    // mark a fragment or nothing at all.
     this.sink.write(prefix + this.styleOf(text));
   }
 }

@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { AGENT_MARK, AGENT_RGB, FALLBACK_MARKS, FALLBACK_RGB, colorOf, italicMentions, markOf, paintTag, stripAnsi, colorEnabled } from "../src/colors";
+import { AGENT_MARK, AGENT_RGB, FALLBACK_MARKS, FALLBACK_RGB, colorOf, markMentions, markOf, paintTag, stripAnsi, colorEnabled } from "../src/colors";
 
 const RED = "\u001b[38;2;255;0;0m";
 const BLUE = "\u001b[38;2;0;0;255m";
@@ -60,23 +60,23 @@ describe("markOf", () => {
   });
 });
 
-describe("italicMentions", () => {
+describe("markMentions", () => {
   const known = (h: string): boolean => ["@lead", "@dev1"].includes(h);
 
-  test("a known handle is italicised in place, the rest of the line untouched", () => {
-    expect(italicMentions("@lead @dev1 verify the file", known)).toBe(
-      "\u001b[3m@lead\u001b[0m \u001b[3m@dev1\u001b[0m verify the file",
+  test("a known handle is inverted in place, the rest of the line untouched", () => {
+    expect(markMentions("@lead @dev1 verify the file", known)).toBe(
+      "\u001b[7m@lead\u001b[0m \u001b[7m@dev1\u001b[0m verify the file",
     );
   });
 
   test("an unknown handle, an email and a longer handle are left alone", () => {
-    expect(italicMentions("@nobody look", known)).toBe("@nobody look");
-    expect(italicMentions("mail a@dev1.com", known)).toBe("mail a@dev1.com");
-    expect(italicMentions("@dev12 x", known)).toBe("@dev12 x");
+    expect(markMentions("@nobody look", known)).toBe("@nobody look");
+    expect(markMentions("mail a@dev1.com", known)).toBe("mail a@dev1.com");
+    expect(markMentions("@dev12 x", known)).toBe("@dev12 x");
   });
 
-  test("punctuation after the handle stays outside the italics", () => {
-    expect(italicMentions("ask @dev1, then stop", known)).toBe("ask \u001b[3m@dev1\u001b[0m, then stop");
+  test("punctuation after the handle stays outside the mark", () => {
+    expect(markMentions("ask @dev1, then stop", known)).toBe("ask \u001b[7m@dev1\u001b[0m, then stop");
   });
 });
 

@@ -431,7 +431,7 @@ printed a coloured handle line at the top of each pane; that duplicated the titl
 each title starts with a coloured mark from the same table (`🟨 @lead`): a square renders in a title where
 an escape does not, and the handle stays greppable beside it.
 
-**Amendment (#77):** a known `@handle` inside a sentence is italic, not coloured. Italic says "this is an
+**Amendment (#77):** a known `@handle` inside a sentence is marked, not coloured. The mark says "this is an
 address"; colour would say "this agent is speaking", which is what the prefix already says. Styling runs on
 the finished line, because a handle can arrive split across two deltas. `AH_COLOR=0` turns it off with the
 colour, and `room.log` stays plain.
@@ -550,7 +550,8 @@ simultaneous turns.
 **Amendment (#83):** a message's prefix prints the handle without its `@` — `[lead]`, not `[@lead]`. The
 sigil is mention syntax, which is how one agent addresses another; it is not part of the agent's name, and
 a prefix carrying it reads as a name with a character in it. Colour still marks the speaker (D17/#70) and
-a name inside a sentence is still italic (#77).
+a name inside a sentence is still marked (#77), and the mark is inverse video because italic was too quiet
+to find in a wall of prose (#86).
 
 ## D24 — A verifier may read the database and may never write it (#84)
 

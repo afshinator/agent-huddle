@@ -63,13 +63,13 @@ describe("ChatStream", () => {
       { write: (s) => out.push(s) },
       (id) => `@${id}`,
       () => null,
-      (text) => text.replace(/(@[a-z0-9]+)/g, "\u001b[3m$1\u001b[0m"),
+      (text) => text.replace(/(@[a-z0-9]+)/g, "\u001b[7m$1\u001b[0m"),
     );
     // the handle arrives in two pieces, so styling has to happen on the finished line
     chat.delta("dev1", "verify with @rev");
     chat.delta("dev1", "iewer please\n");
 
-    expect(out).toEqual(["[dev1] verify with \u001b[3m@reviewer\u001b[0m please\n"]);
+    expect(out).toEqual(["[dev1] verify with \u001b[7m@reviewer\u001b[0m please\n"]);
   });
 
   test("the prefix is painted with the agent's colour, and the prose is not", () => {

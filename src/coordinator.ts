@@ -17,7 +17,7 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream } from "./chat-stream";
-import { colorOf, italicMentions, markOf, paintTag } from "./colors";
+import { colorOf, markMentions, markOf, paintTag } from "./colors";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
 function firstLine(text: string): string {
@@ -682,10 +682,10 @@ export class Coordinator {
     this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${this.style(text)}\n`);
   }
 
-  /** Mentions are italic when styling is on; with it off the text is untouched (#77). */
+  /** Mentions are inverted when styling is on; with it off the text is untouched (#77, #86). */
   private style(text: string): string {
     if (!this.color) return text;
-    return italicMentions(text, (handle) => this.colourFor(handle) !== null);
+    return markMentions(text, (handle) => this.colourFor(handle) !== null);
   }
 
   /** The SGR payload for a handle, or null when colour is off or the handle is unknown. */

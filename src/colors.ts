@@ -66,16 +66,17 @@ function toAnsi256([r, g, b]: Rgb): number {
 }
 
 /**
- * Italicise every mentions of an agent inside a line of text.
+ * Invert every mention of an agent inside a line of text.
  *
- * Colour marks who is speaking, so a name inside a sentence stays uncoloured (#70); italic marks that
- * the name is an address rather than a word — `@reviewer verify this` reads as a hand-off (#77).
+ * Colour marks who is speaking, so a name inside a sentence stays uncoloured (#70); inverse video marks
+ * the name as an address rather than a word — `@reviewer verify this` reads as a hand-off (#77). Italic
+ * was too quiet to find in a wall of prose, so the mark is a solid block (#86).
  * Only handles the room knows, and only where the `@` starts a word, so `a@dev1.com` and `@dev12`
  * are left alone.
  */
-export function italicMentions(text: string, known: (handle: string) => boolean): string {
+export function markMentions(text: string, known: (handle: string) => boolean): string {
   return text.replace(/(^|[^\w@])(@[A-Za-z0-9_-]+)/g, (match, lead: string, handle: string) => {
-    return known(handle) ? `${lead}\u001b[3m${handle}${RESET}` : match;
+    return known(handle) ? `${lead}\u001b[7m${handle}${RESET}` : match;
   });
 }
 
