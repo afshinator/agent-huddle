@@ -221,15 +221,23 @@ describe("A pane says whether its agent has been used (#62)", () => {
       pi.script("lead", [{ hold: true }]);
       const booted = coordinator.boot();
       const pane = join(dir, "agents", "lead", "output.log");
-      await waitUntil(() => {
-        try {
-          return readFileSync(pane, "utf8").includes("@lead — working");
-        } catch {
-          return false;
-        }
-      }, 2000);
+      let sawWorking = false;
+      try {
+        await waitUntil(() => {
+          try {
+            return readFileSync(pane, "utf8").includes("@lead — working");
+          } catch {
+            return false;
+          }
+        }, 5000);
+        sawWorking = true;
+      } catch {
+        // Recorded below, after the turn is released: a failed assertion here would leave the boot
+        // held and hang the harness's shutdown, which turns a 2 s failure into a 20 s timeout.
+      }
       pi.release("lead", "Got it: start\nDONE");
       await booted;
+      expect(sawWorking).toBe(true);
     });
   }, 20_000);
 
