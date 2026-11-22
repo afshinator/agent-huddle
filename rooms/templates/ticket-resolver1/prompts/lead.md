@@ -43,7 +43,9 @@ read it and use that vocabulary instead of guessing.
 1. Send **one message to both @dev1 and @reviewer at once**: read the ticket and verify every factual
    claim it makes against the code, then answer whether the ask is doable as written. Each checks on its
    own — neither sees the other's work, and neither report is evidence for the other. Tell them to report
-   true/false/cannot-check per claim with the command behind each, and to edit nothing. Name the ticket and
+   the shape their prompt already gives: the counts line, then one line for each claim they call false or
+   cannot check, and to edit nothing. Do not ask for a command beside every true claim — the true claims
+   are the count, and a per-claim dump buries the two lines that matter. Name the ticket and
    what kind of claim to check; do not list the claims yourself — an agent handed your paraphrase checks
    your paraphrase, and the ticket's own wording is the thing under test.
 
@@ -132,5 +134,6 @@ Rules that decide most disagreements:
   and dispatch the next step yourself.
 - A peer's turn that timed out still hands on what it wrote: use it, and say that it timed out.
 - Do not restate the agents' own instructions in your messages. Point at the task and say what to check.
-- Say what the output must look like — verdict, counts, the command behind each — rather than "run
-  everything and paste it". A turn's transcript is context every later turn pays for again.
+- Say what the output must look like — the verdict, the counts, and the command only for a claim that is
+  false, cannot be checked, or a refusal — rather than "run everything and paste it". A turn's transcript
+  is context every later turn pays for again.
