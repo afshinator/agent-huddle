@@ -3,7 +3,7 @@ import { ChatStream } from "../src/chat-stream";
 
 const AT = "12:00:00";
 
-function make(): { chat: ChatStream; out: string[] } {
+function make(clock?: { ms: number }): { chat: ChatStream; out: string[] } {
   const out: string[] = [];
   const chat = new ChatStream(
     { write: (s) => out.push(s) },
@@ -11,11 +11,38 @@ function make(): { chat: ChatStream; out: string[] } {
     () => null,
     (text) => text,
     () => AT,
+    () => clock?.ms ?? 0,
   );
   return { chat, out };
 }
 
 describe("ChatStream", () => {
+  test("another speaker ends the burst, so the resuming line is tagged (#66)", () => {
+    const { chat, out } = make();
+    chat.delta("dev1", "a\n");
+    chat.delta("reviewer", "b\n");
+    chat.delta("dev1", "c\n");
+    expect(out[1].startsWith("[reviewer] ")).toBe(true);
+    expect(out[2].startsWith("[dev1] ")).toBe(true);
+  });
+
+  test("silence ends the burst, so a turn that pauses and resumes is tagged (#66)", () => {
+    const clock = { ms: 1_000 };
+    const { chat, out } = make(clock);
+    chat.delta("dev1", "a\n");
+    clock.ms += 61_000;
+    chat.delta("dev1", "b\n");
+    expect(out[1].startsWith("[dev1] ")).toBe(true);
+  });
+
+  test("a burst that keeps talking is not tagged twice (#66)", () => {
+    const clock = { ms: 1_000 };
+    const { chat, out } = make(clock);
+    chat.delta("dev1", "a\n");
+    clock.ms += 5_000;
+    chat.delta("dev1", "b\n");
+    expect(out[1]).toBe("b\n");
+  });
   test("a delta is printed as it arrives, with the prefix once per turn", () => {
     const { chat, out } = make();
     chat.delta("dev1", "Got it: check the");
@@ -143,7 +170,13 @@ describe("ChatStream", () => {
     chat.delta("dev1", "checking the\n");
     chat.delta("reviewer", "reading\n");
     chat.delta("dev1", "footer\n");
-    expect(out).toEqual([`[dev1] ${AT} checking the\n`, `[reviewer] ${AT} reading\n`, "footer\n"]);
+    // dev1's continuation resumes after the reviewer spoke, so it carries the tag again (#66): an
+    // untagged line there reads as the reviewer's.
+    expect(out).toEqual([
+      `[dev1] ${AT} checking the\n`,
+      `[reviewer] ${AT} reading\n`,
+      `[dev1] ${AT} footer\n`,
+    ]);
   });
 
   test("endAll closes whatever is open, once, with the reason", () => {

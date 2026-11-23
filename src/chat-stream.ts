@@ -18,9 +18,16 @@ export interface ChatSink {
 
 import { stampNow } from "./stamp";
 
+/** How long a turn may go quiet before its next line is tagged again: a burst, not a turn (#66). */
+const RESUME_TAG_MS = 60_000;
+
 export class ChatStream {
-  /** Agents that have printed in the current turn, so the next text owes no prefix. */
+  /** Agents that have printed in the current turn, so the next text owes no prefix. Turn-scoped: a
+   * burst that resumes inside the turn is retagged by the `lastSpeaker`/`lastAt` rule below (#66). */
   private readonly printed = new Set<string>();
+  /** Who printed last, and when, per agent: a burst ends on a speaker change or on silence (#66). */
+  private lastSpeaker: string | undefined;
+  private readonly lastAt = new Map<string, number>();
   /** Text received but not yet terminated by a newline, per agent. */
   private readonly partial = new Map<string, string>();
   /** Agents with anything in flight this turn, printed or held. */
@@ -35,6 +42,8 @@ export class ChatStream {
     private readonly styleOf: (text: string) => string = (text) => text,
     /** The clock printed beside a speaker: a room with three agents needs the times (T17). */
     private readonly stamp: () => string = stampNow,
+    /** Monotonic-ish wall clock for the resume decision, injectable so a test can advance it. */
+    private readonly nowMs: () => number = Date.now,
   ) {}
 
   delta(agentId: string, text: string): void {
@@ -98,10 +107,16 @@ export class ChatStream {
   }
 
   private writeLines(agentId: string, text: string): void {
-    const prefix = this.printed.has(agentId)
+    const now = this.nowMs();
+    // The tag marks who is speaking now, not who spoke earlier in the turn: another agent's line or a
+    // minute of silence starts a new burst, and an untagged continuation would read as theirs (#66).
+    const resumed = this.lastSpeaker !== agentId || now - (this.lastAt.get(agentId) ?? now) >= RESUME_TAG_MS;
+    const prefix = this.printed.has(agentId) && !resumed
       ? ""
       : `${paintTag(this.handleOf(agentId), this.colourOf)} ${this.stamp()} `;
     this.printed.add(agentId);
+    this.lastSpeaker = agentId;
+    this.lastAt.set(agentId, now);
     // A line is styled whole: a handle can be split across deltas, so per-delta styling would
     // mark a fragment or nothing at all.
     this.sink.write(prefix + this.styleOf(text));
