@@ -16,8 +16,8 @@ import type { Debug } from "./debug";
 import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "./launch-guard";
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
-import { ChatStream } from "./chat-stream";
-import { colorOf, markMentions, markOf, paintTag } from "./colors";
+import { ChatStream, roomLine, tagWidth } from "./chat-stream";
+import { colorOf, markMentions, markOf } from "./colors";
 import { stampNow } from "./stamp";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
@@ -70,6 +70,8 @@ export class Coordinator {
   private readonly working = new Set<string>();
   /** Decided by the caller (#67): `AH_COLOR`, `NO_COLOR`, or "the output is a terminal". */
   private readonly color: boolean;
+  /** The roster's widest tag, so the room's clocks and text share a column (#65). */
+  private readonly speakerWidth: number;
   private readonly stderr: { write(s: string): void };
   private readonly now: () => string;
   private persistQueue: Promise<void> = Promise.resolve();
@@ -100,12 +102,17 @@ export class Coordinator {
     this.stdout = deps.stdout ?? process.stdout;
     this.roomLogPath = deps.roomLogPath;
     this.color = deps.color;
+    // The widest tag in the room, so every line's clock and text sit in one column (#65).
+    this.speakerWidth = Math.max(tagWidth("room"), ...this.config.allAgents.map((a) => tagWidth(a.handle)));
     this.chat = new ChatStream(
       // Agent prose prints plain: colour marks who speaks, not who is named (#70).
       { write: (s) => this.stdout.write(s) },
       (agentId) => this.config.agentById.get(agentId)?.handle ?? agentId,
       (handle) => this.colourFor(handle),
       (text) => this.style(text),
+      stampNow,
+      Date.now,
+      this.speakerWidth,
     );
     this.stderr = deps.stderr ?? process.stderr;
     this.now = deps.now ?? (() => new Date().toISOString());
@@ -297,7 +304,7 @@ export class Coordinator {
       const waiting = this.inFlight - 1;
       const who = targets !== undefined && targets.length > 0 ? ` for ${(targets as string[]).map((id) => this.config.agentById.get(id)?.handle ?? id).join(", ")}` : "";
       const head = text.replace(/\s+/g, " ").slice(0, 60);
-      this.stdout.write(`${this.color ? "\u001b[2m" : ""}· queued behind ${waiting} run${waiting === 1 ? "" : "s"}${who}: ${head}${text.length > 60 ? "…" : ""}${this.color ? "\u001b[0m" : ""}\n`);
+      this.stdout.write(roomLine("room", stampNow(), `· queued behind ${waiting} run${waiting === 1 ? "" : "s"}${who}: ${head}${text.length > 60 ? "…" : ""}\n`, this.speakerWidth, (h) => this.colourFor(h)));
     }
     const run = this.submitQueue.then(async () => {
       this.roomStatus = "active";
@@ -674,14 +681,13 @@ export class Coordinator {
     // transcript never ends mid-sentence with no indication why.
     if (msg.kind === "notice" || msg.kind === "hop_limit_reached") {
       this.chat.endAll("interrupted");
-      // The room's own note, not a participant's message: a dim `·` line marks it as out-of-band,
+      // The room's own note, not a participant's message: `[room]` and a `·` mark it as out-of-band,
       // so it cannot be read as somebody speaking (#68, #71).
-      this.stdout.write(`${this.color ? "\u001b[2m" : ""}· ${msg.text}${this.color ? "\u001b[0m" : ""}\n`);
+      this.stdout.write(roomLine("room", stampNow(), `· ${msg.text}\n`, this.speakerWidth, (h) => this.colourFor(h)));
       return;
     }
-    const prefix = paintTag(msg.handle, (h) => this.colourFor(h));
     // The time the line was said: with three agents talking, order has to be readable, not inferred (T17).
-    this.stdout.write(`${prefix} ${stampNow()} ${this.style(msg.text)}\n`);
+    this.stdout.write(roomLine(msg.handle, stampNow(), this.style(msg.text), this.speakerWidth, (h) => this.colourFor(h)));
   }
 
   /** The room's brief: a framed block, so it reads as background rather than a command. */
@@ -694,7 +700,7 @@ export class Coordinator {
   /** A settled reply whose turn streamed nothing: print it the way the room always has. */
   private printAgentText(handle: string, text: string | null): void {
     if (text === null || text.trim() === "") return;
-    this.stdout.write(`${paintTag(handle, (h) => this.colourFor(h))} ${stampNow()} ${this.style(text)}\n`);
+    this.stdout.write(roomLine(handle, stampNow(), this.style(text), this.speakerWidth, (h) => this.colourFor(h)));
   }
 
   /** Mentions are inverted when styling is on; with it off the text is untouched (#77, #86). */

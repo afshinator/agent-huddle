@@ -172,7 +172,7 @@ describe("Coordinator chat stream (#63)", () => {
       const boot = coordinator.boot();
       await waitUntil(() => out.join("").includes("the footer now"), 3000);
 
-      expect(out.join("")).toMatch(/\[dev1\] \d\d:\d\d:\d\d Got it: checking\nthe footer now/);
+      expect(out.join("")).toMatch(/\[dev1\] +\d\d:\d\d:\d\d Got it: checking\n +the footer now/);
       await coordinator.shutdown();
       await boot.catch(() => undefined);
     });
@@ -422,10 +422,10 @@ describe("What a room message is allowed to look like (§room)", () => {
       await coordinator.submit("@lead go");
 
       const text = out.join("");
-      expect(text).toContain('· @lead answered a direct message without "Got it: …"');
-      expect(text).not.toContain('[room] @lead answered');
-      // Dim, so a room note cannot be mistaken for somebody speaking (#71).
-      expect(text).toContain("\u001b[2m· @lead answered");
+      // The room speaks as itself, with a clock and a `·` marker: attributable, and still not a
+      // participant's message (#65).
+      expect(text).toMatch(/\[room\] +\d\d:\d\d:\d\d · @lead answered a direct message without "Got it: …"/);
+      expect(text).not.toMatch(/\[lead\] +\d\d:\d\d:\d\d @lead answered/);
     });
   }, 20_000);
 });

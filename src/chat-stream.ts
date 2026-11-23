@@ -21,6 +21,42 @@ import { stampNow } from "./stamp";
 /** How long a turn may go quiet before its next line is tagged again: a burst, not a turn (#66). */
 const RESUME_TAG_MS = 60_000;
 
+/** Width of `HH:MM:SS`: the room's column depends on it, so it is stated once (#65). */
+const STAMP_WIDTH = 8;
+
+/** The width of a painted tag without colour: `[handle]`. */
+export function tagWidth(handle: string): number {
+  return handle.replace(/^@/, "").length + 2;
+}
+
+/**
+ * One room line: the tag padded to the widest speaker, the clock, then the text, with every
+ * continuation line indented to that same column (#65). Callers pass the roster's widest tag, so
+ * `[lead]` and `[reviewer]` put their clocks and text in one column instead of drifting per speaker.
+ */
+export function roomLine(
+  handle: string,
+  stamp: string,
+  text: string,
+  speakerWidth: number,
+  colour: (handle: string) => string | null = () => null,
+): string {
+  const pad = " ".repeat(Math.max(0, speakerWidth - tagWidth(handle)));
+  const column = speakerWidth + 1 + STAMP_WIDTH + 1;
+  const trailing = text.endsWith("\n");
+  const [first = "", ...rest] = (trailing ? text.slice(0, -1) : text).split("\n");
+  const body = [first, ...rest.map((line) => (line === "" ? "" : " ".repeat(column) + line))].join("\n");
+  return `${paintTag(handle, colour)}${pad} ${stamp} ${body}${trailing ? "\n" : ""}`;
+}
+
+/** A continuation inside one burst: every line starts in the text column, none carries a tag (#65). */
+function indentLines(text: string, column: number): string {
+  const trailing = text.endsWith("\n");
+  const lines = (trailing ? text.slice(0, -1) : text).split("\n");
+  const body = lines.map((line) => (line === "" ? "" : " ".repeat(column) + line)).join("\n");
+  return body + (trailing ? "\n" : "");
+}
+
 export class ChatStream {
   /** Agents that have printed in the current turn, so the next text owes no prefix. Turn-scoped: a
    * burst that resumes inside the turn is retagged by the `lastSpeaker`/`lastAt` rule below (#66). */
@@ -44,6 +80,8 @@ export class ChatStream {
     private readonly stamp: () => string = stampNow,
     /** Monotonic-ish wall clock for the resume decision, injectable so a test can advance it. */
     private readonly nowMs: () => number = Date.now,
+    /** The roster's widest tag: what every line's clock and text column up against (#65). */
+    private readonly speakerWidth: number,
   ) {}
 
   delta(agentId: string, text: string): void {
@@ -95,7 +133,7 @@ export class ChatStream {
     if (rest !== "") this.writeLines(agentId, rest + "\n");
     const printedThisTurn = this.printed.has(agentId);
     if (reason !== undefined && printedThisTurn)
-      this.sink.write(`[${this.handleOf(agentId).replace(/^@/, "")}] ${this.stamp()} (${reason})\n`);
+      this.sink.write(roomLine(this.handleOf(agentId), this.stamp(), `(${reason})\n`, this.speakerWidth, this.colourOf));
     this.printed.delete(agentId);
     this.active.delete(agentId);
     return printedThisTurn;
@@ -111,14 +149,16 @@ export class ChatStream {
     // The tag marks who is speaking now, not who spoke earlier in the turn: another agent's line or a
     // minute of silence starts a new burst, and an untagged continuation would read as theirs (#66).
     const resumed = this.lastSpeaker !== agentId || now - (this.lastAt.get(agentId) ?? now) >= RESUME_TAG_MS;
-    const prefix = this.printed.has(agentId) && !resumed
-      ? ""
-      : `${paintTag(this.handleOf(agentId), this.colourOf)} ${this.stamp()} `;
+    // A line is styled whole: a handle can be split across deltas, so per-delta styling would mark a
+    // fragment or nothing at all.
+    const styled = this.styleOf(text);
+    this.sink.write(
+      this.printed.has(agentId) && !resumed
+        ? indentLines(styled, this.speakerWidth + 1 + STAMP_WIDTH + 1)
+        : roomLine(this.handleOf(agentId), this.stamp(), styled, this.speakerWidth, this.colourOf),
+    );
     this.printed.add(agentId);
     this.lastSpeaker = agentId;
     this.lastAt.set(agentId, now);
-    // A line is styled whole: a handle can be split across deltas, so per-delta styling would
-    // mark a fragment or nothing at all.
-    this.sink.write(prefix + this.styleOf(text));
   }
 }

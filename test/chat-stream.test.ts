@@ -3,7 +3,7 @@ import { ChatStream } from "../src/chat-stream";
 
 const AT = "12:00:00";
 
-function make(clock?: { ms: number }): { chat: ChatStream; out: string[] } {
+function make(clock?: { ms: number }, width = 6): { chat: ChatStream; out: string[] } {
   const out: string[] = [];
   const chat = new ChatStream(
     { write: (s) => out.push(s) },
@@ -12,9 +12,13 @@ function make(clock?: { ms: number }): { chat: ChatStream; out: string[] } {
     (text) => text,
     () => AT,
     () => clock?.ms ?? 0,
+    width,
   );
   return { chat, out };
 }
+
+/** Where a line's text starts: the padded tag, a space, the clock, a space (#65). */
+const COLUMN = 6 + 1 + 8 + 1;
 
 describe("ChatStream", () => {
   test("another speaker ends the burst, so the resuming line is tagged (#66)", () => {
@@ -41,7 +45,7 @@ describe("ChatStream", () => {
     chat.delta("dev1", "a\n");
     clock.ms += 5_000;
     chat.delta("dev1", "b\n");
-    expect(out[1]).toBe("b\n");
+    expect(out[1]).toBe(`${" ".repeat(COLUMN)}b\n`);
   });
   test("a delta is printed as it arrives, with the prefix once per turn", () => {
     const { chat, out } = make();
@@ -61,9 +65,11 @@ describe("ChatStream", () => {
     chat.flush("dev1");
 
     expect(out).toEqual([`[dev1] ${AT} Got it: tally every tracked .md file\n`]);
-    // the turn continues on a fresh line, with no second prefix
+    // the burst continues on a fresh line, in the text column, with no second prefix (#65)
     chat.delta("dev1", "Row count: 28\n");
-    expect(out.join("")).toBe(`[dev1] ${AT} Got it: tally every tracked .md file\nRow count: 28\n`);
+    expect(out.join("")).toBe(
+      `[dev1] ${AT} Got it: tally every tracked .md file\n${" ".repeat(COLUMN)}Row count: 28\n`,
+    );
   });
 
   test("flush with nothing held prints nothing", () => {
@@ -81,7 +87,9 @@ describe("ChatStream", () => {
     chat.messageBoundary("dev1", "Got it: tally written.");
     chat.delta("dev1", "\n");
 
-    expect(out).toEqual([`[dev1] ${AT} Got it: tally the docs.\nGot it: tally written.\n`]);
+    expect(out).toEqual([
+      `[dev1] ${AT} Got it: tally the docs.\n${" ".repeat(COLUMN)}Got it: tally written.\n`,
+    ]);
   });
 
   test("a boundary that does not match what is held changes nothing", () => {
@@ -100,6 +108,8 @@ describe("ChatStream", () => {
       () => null,
       (text) => text.replace(/(@[a-z0-9]+)/g, "\u001b[7m$1\u001b[0m"),
       () => AT,
+      () => 0,
+      6,
     );
     // the handle arrives in two pieces, so styling has to happen on the finished line
     chat.delta("dev1", "verify with @rev");
@@ -116,6 +126,8 @@ describe("ChatStream", () => {
       (handle) => (handle === "@dev1" ? "38;2;90;170;255" : null),
       (text) => text,
       () => AT,
+      () => 0,
+      6,
     );
     chat.delta("dev1", "Got it: plain prose naming @dev1\n");
 
@@ -135,7 +147,27 @@ describe("ChatStream", () => {
   test("further lines of one turn are not prefixed again", () => {
     const { chat, out } = make();
     chat.delta("dev1", "Got it: x\nsecond line\nthird\n");
-    expect(out).toEqual([`[dev1] ${AT} Got it: x\nsecond line\nthird\n`]);
+    expect(out).toEqual([
+      `[dev1] ${AT} Got it: x\n${" ".repeat(COLUMN)}second line\n${" ".repeat(COLUMN)}third\n`,
+    ]);
+  });
+
+  test("every speaker's clock and text sit in one column (#65)", () => {
+    const { chat, out } = make(undefined, 10);
+    chat.delta("dev1", "one\n");
+    chat.delta("reviewer", "two\n");
+    expect(out[0].indexOf("one")).toBe(out[1].indexOf("two"));
+    expect(out[0]).toBe(`[dev1]     ${AT} one\n`);
+    expect(out[1]).toBe(`[reviewer] ${AT} two\n`);
+  });
+
+  test("a continuation line starts in the text column (#65)", () => {
+    const { chat, out } = make(undefined, 10);
+    chat.delta("dev1", "one\ncontinued\n");
+    const column = 10 + 1 + 8 + 1;
+    const [first = "", second = ""] = out[0].split("\n");
+    expect(first.indexOf("one")).toBe(column);
+    expect(second).toBe(`${" ".repeat(column)}continued`);
   });
 
   test("each new turn gets its own prefix", () => {
