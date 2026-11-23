@@ -28,6 +28,29 @@ export interface MentionResolution {
   unknownHandles: string[];
 }
 
+/**
+ * The text with fenced blocks and inline code spans blanked to spaces, keeping every offset, so an
+ * `@` inside code is not read as a handle. A lone backtick is not a span; only a closed pair is.
+ */
+function proseOnly(text: string): string {
+  let fence: string | undefined;
+  return text
+    .split("\n")
+    .map((line) => {
+      const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+      if (fence !== undefined) {
+        if (marker !== undefined && marker[0] === fence[0] && marker.length >= fence.length) fence = undefined;
+        return " ".repeat(line.length);
+      }
+      if (marker !== undefined) {
+        fence = marker;
+        return " ".repeat(line.length);
+      }
+      return line.replace(/`[^`]*`/g, (span) => " ".repeat(span.length));
+    })
+    .join("\n");
+}
+
 export function resolveMentions(text: string, config: LoadedConfig): MentionResolution {
   const handleToId = new Map<string, string>();
   for (const a of config.allAgents) handleToId.set(a.handle, a.id);
@@ -45,6 +68,9 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
   };
 
   const unknownHandles: string[] = [];
+  // A mention is reported as unknown only when it sits in prose, not inside code; targets still read
+  // the raw text, so a backticked `@dev1` dispatches.
+  const prose = new Set([...proseOnly(text).matchAll(MENTION_RE)].map((m) => m.index));
   for (const m of text.matchAll(MENTION_RE)) {
     const token = m[0];
     // `@testing-library/react` stops at the slash; the rest of the path is what makes it a package
@@ -60,7 +86,7 @@ export function resolveMentions(text: string, config: LoadedConfig): MentionReso
     }
     const id = handleToId.get(token);
     if (id !== undefined) add(id);
-    else if (!BROADCAST_TOKENS.has(token) && !unknownHandles.includes(token)) unknownHandles.push(token);
+    else if (prose.has(m.index) && !unknownHandles.includes(token)) unknownHandles.push(token);
   }
 
   return { targets, unknownHandles };

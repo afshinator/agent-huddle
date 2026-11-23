@@ -91,4 +91,31 @@ describe("extractMentions", () => {
   test("mention adjacent to punctuation", () => {
     expect(extractMentions("@dev1, please check.", cfg)).toEqual(["dev1"]);
   });
+
+  describe("an @-token inside code", () => {
+    test("a fenced CSS block is not a mention (#64)", () => {
+      expect(resolveMentions("```css\n@page { margin: 0 }\n```", cfg).unknownHandles).toEqual([]);
+    });
+
+    test("an inline code span is not a mention (#64)", () => {
+      expect(resolveMentions("see `@page` in globals.css", cfg).unknownHandles).toEqual([]);
+    });
+
+    test("a known handle in code still dispatches (#64)", () => {
+      expect(resolveMentions("```\n@dev1 take this\n```", cfg).targets).toEqual(["dev1"]);
+      expect(resolveMentions("run `@dev1` now", cfg).targets).toEqual(["dev1"]);
+    });
+
+    test("an unknown handle in prose is still reported (#64)", () => {
+      expect(resolveMentions("@nobody do x", cfg).unknownHandles).toEqual(["@nobody"]);
+    });
+
+    test("a tilde fence is code too (#64)", () => {
+      expect(resolveMentions("~~~\n@page { margin: 0 }\n~~~", cfg).unknownHandles).toEqual([]);
+    });
+
+    test("an unbalanced backtick does not swallow the rest of the line (#64)", () => {
+      expect(resolveMentions("a lone ` tick and @nobody", cfg).unknownHandles).toEqual(["@nobody"]);
+    });
+  });
 });
