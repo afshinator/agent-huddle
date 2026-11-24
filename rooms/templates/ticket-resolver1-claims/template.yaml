@@ -1,0 +1,44 @@
+name: ticket-resolver1-claims
+# ticket-resolver1 plus the ticket's own ```claims block: a pre-flight run at pickup and a landing run
+# before DONE. Everything else is unchanged, so a run here is comparable to a run on the base template.
+# Created for run 007 (#52); fold back into ticket-resolver1 once a run has shown the step is worth its turns.
+# Two gates before any code and one after it: 4 hops to agree the ticket is real, 4 to
+# implement and review, 4 more per pushback round. 20 = the whole flow, two rounds, and a
+# re-check of a claim that turned out false.
+max_hops: 20
+# The lead routes. A report that names a peer is context; only the lead hands out work.
+dispatch_scope: lead
+# A turn here reads code, edits it and runs a suite: ten minutes is a floor, not a ceiling.
+# 30 min, not 15: gate 1 and gate 2 each measured over 900 s in run 002 — 48 provider round trips
+# for a 27-claim audit (median 5 s, one stall of 354 s), and an implementation turn that was still
+# editing when the old cap fired. The cap is per turn, so this is the ceiling for one agent, not the run.
+turn_timeout_ms: 1800000
+# A supervised room belongs in a linked worktree, which this guard leaves alone, so `refuse`
+# is safe here and is the strictest setting if someone starts one in a checkout.
+launch_guard: refuse
+lead:
+  id: lead
+  handle: "@lead"
+  role: "Lead: settle whether the ticket is real and doable, then gate the fix on review. Never edits a file."
+  system_prompt_file: prompts/lead.md
+  provider: commandcode
+  model: deepseek/deepseek-v4-pro
+  thinking: medium
+  tools: [read, grep, bash]
+agents:
+  - id: dev1
+    handle: "@dev1"
+    role: "Check the ticket's claims against the code, then implement the smallest correct fix with a test."
+    system_prompt_file: prompts/dev1.md
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
+    thinking: high
+    tools: [read, grep, bash, write, edit]
+  - id: reviewer
+    handle: "@reviewer"
+    role: "Check the ticket independently, then review the diff and run the check yourself. Never edits a file."
+    system_prompt_file: prompts/reviewer.md
+    provider: commandcode
+    model: gpt-5.6-luna
+    thinking: high
+    tools: [read, grep, bash]

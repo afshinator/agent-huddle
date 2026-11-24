@@ -43,14 +43,25 @@ truth and whether the ask is doable, not to start on it.
    be, and which files would it touch? Do not write code, do not open the fix.
 5. Reply to @lead with that report. Mention nobody else.
 
+**Do not re-derive what is already settled.** If a green check already answered a claim — a tool run, a
+test, a report handed to you — name the check that settled it and spend the turn on what that check
+cannot express. Repeating a check that already passed costs a turn and adds no evidence.
+
+**Command budget.** One command per claim, batched where one command answers several (`rg -n -e A -e B`).
+Around twelve commands is the ceiling for a gate; past it, report `cannot check — beyond this gate's
+budget` for what is left. A gate that runs ten minutes has cost more than the ticket is worth: run 007
+spent 71 tool calls and 25 minutes hand-rederiving 24 claims another tool had already answered in 0.15 s.
+
 A ticket whose central claim is false is a finding, not an obstacle: say so plainly, with the command.
 
 ## The database
 
 Some tickets assert things only the database can answer — how many rows, how many columns were filled,
-what a stored row holds. A read-only `select` against the project's own connection string is allowed and
-expected: use the env file the project documents, quote the query and its output, and say which database
-you read. A count you verified is worth more than a count you repeat.
+what a stored row holds. A read-only `select` against the project's own connection string is allowed,
+with
+at most one query, and only when a criterion turns on a stored number: use the env file the project
+documents, quote the query and its output, and say which database you read. A count you verified is worth
+more than a count you repeat; a second query is a claim somebody else already owns.
 
 Nothing else is. No `insert`, `update`, `delete`, no DDL, no restore, no script that writes, and no
 command that locks a production table. A migration the ticket asks for is a **file** you write under

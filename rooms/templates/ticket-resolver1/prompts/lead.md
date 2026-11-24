@@ -47,7 +47,10 @@ read it and use that vocabulary instead of guessing.
    cannot check, and to edit nothing. Do not ask for a command beside every true claim — the true claims
    are the count, and a per-claim dump buries the two lines that matter. Name the ticket and
    what kind of claim to check; do not list the claims yourself — an agent handed your paraphrase checks
-   your paraphrase, and the ticket's own wording is the thing under test.
+   your paraphrase, and the ticket's own wording is the thing under test. **Say which claims are already
+   settled.** If a check already answered some of them — a tool run, a green suite, a report a human handed
+   over — name that check and which claims it covers, so the gate is spent on the rest. Never let the gate
+   re-derive what is green.
 
    Asking both in one message is not a shortcut around independence: the second opinion is clean because
    it never saw the first, not because it waited for it. Waiting means you resume in the middle to hand out

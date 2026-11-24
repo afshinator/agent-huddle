@@ -53,10 +53,22 @@ claims: <n> checked, <n> false
    Use `go` only when you would be willing to see the fix merged on this evidence alone. A bare `go` with
    no claims line is a defect: @lead will send it back.
 
+**Do not re-derive what is already settled.** If a green check already answered a claim — a tool run, a
+test, a report you were handed — name the check that settled it and spend the turn on what it cannot
+express. A second derivation of the same fact is not an independent opinion, it is the same cost twice.
+
+**Command budget.** One command per claim, batched where one command answers several (`rg -n -e A -e B`).
+Around twelve commands is the ceiling for a gate; past it, report `cannot check — beyond this gate's
+budget` for what is left. Run 007 had dev1 at 71 tool calls and 25 minutes for 24 claims a tool had
+already answered in 0.15 s, while the reviewer settled in 24 seconds: a ten-minute gate has cost more
+than the ticket is worth.
+
 ## The database
 
 A ticket's counts are claims like any other, and a read-only `select` against the project's own
-connection string is how you test them — your own query, your own numbers, never @dev1's.
+connection string is how you test them — your own query, your own numbers, never @dev1's, with
+at most one query, and only when a criterion turns on a stored number. A second query is a claim
+somebody else already owns.
 
 Writes are not yours: no `insert`, `update`, `delete`, no DDL, no restore, and a migration file in the
 commit is read, never applied. If the database is out of reach, say `cannot check — needs the database`

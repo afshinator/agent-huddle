@@ -663,3 +663,47 @@ suppressed while a tool runs.
 **Rejected:** printing every tool call as a line — the pane already shows them, and the transcript exists to
 be read afterwards; and lowering the nudge instead — asking a healthy agent for status spends a turn and
 changes nothing about what the reader can see.
+
+## D30 — A green check is not re-derived, and a gate has a budget (T20)
+
+**Context:** run `007-ticket-52`, gate 1. Both checkers were dispatched with the same instruction, "verify
+every factual claim", while the ticket's ```claims block had already answered all 24 structural claims in
+0.15 s at Gate 0. The reviewer settled in 24 s with a counts line. dev1 spent 71 tool calls and 25 minutes
+— `rg` per symbol, `git log -S` per absent declaration, files read 50 lines at a time, and 11 `psql`
+queries against production to re-derive counts no record covers. Same prompt, same message, an order of
+magnitude apart: nothing told either of them the block had settled the claims, and dev1's prompt said a
+read-only `select` was "allowed and expected".
+
+**Decision:** every gating template's checker prompt says a green check already settled its claims and is
+not to be re-derived, and that a red row is the evidence rather than something to prove again; a gate has
+a command budget (about twelve, batched with `rg -e` where one command answers several); the database gets
+at most one query, and only when a criterion turns on a stored number. The lead says which claims are
+already settled when it dispatches. `test/template-prompts.test.ts` walks `rooms/templates/` and fails
+unless every template is either listed as gating (and carries the rules) or listed as exempt with a
+reason, so a template added later is covered the day it is created and no prompt can lose the rules by a
+careless edit.
+
+**Rejected:** raising `turn_timeout_ms` — it buys more of the same waste; swapping dev1's model — the turns
+were spent on real commands, not on reasoning; and deleting the claims block from tickets before dispatch
+— the block is the evidence a gate is supposed to start from.
+
+## D31 — Green means the rows hold, not that every criterion has one (T21)
+
+**Context:** #52's block passed pickup with 24 rows while criterion 1 asked for a `new: rollup.ts`
+declaring `ComboAccum` — a name already exported at `src/lib/stats/group-stats.ts:19`, and the leaf's second
+type was named in neither the criteria nor any record. `claim-check` had no way to see this: it derives
+records, and nothing in it reads criteria. `lint` read prose but only for four adjectives, so a criterion
+backed by no record produced no output at all. This room's Gate 0 said "both must exit 0 … a non-zero
+result means the ticket is not ready", which reads as: green means checked.
+
+**Decision:** coverage is reported, not assumed. `claim-check` AC20 makes `lint` print `UNACCOUNTED` for
+every numbered criterion that neither cites `record:<id>` nor states `cannot be recorded`, with a count;
+it stays advisory (exit `0`). The skill states the authoring rule — account for every criterion, give a
+`new:` name an `absent-symbol` row, give a criterion naming two artefacts two rows — and Gate 0 in the
+claims template says green covers the rows that exist, not the criteria, and to report the `UNACCOUNTED`
+count before calling the gate passed.
+
+**Rejected:** making coverage a gate — a behavioural criterion can never be a record, so a blocking check
+would push authors to write a decorative row or an opt-out phrase under pressure; and widening `run` to
+consume criteria — the tool's whole contract is that it derives code facts, and prose parsing is `lint`'s
+job alone.
