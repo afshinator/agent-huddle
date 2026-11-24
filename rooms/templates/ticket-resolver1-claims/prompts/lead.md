@@ -89,6 +89,8 @@ existed; the rows were right and the coverage was not.
 4. Send @dev1 one message to implement: the smallest change that fully solves the ticket, a test that
    fails before the fix, the project's own typecheck and test commands green, and one commit on
    `run/<slug>`. Its prompt carries the ladder, the reply shape and the commit rules; do not restate them.
+   Name the worktree it is working in — `git worktree list` names it — and say its `cwd is the worktree`, so
+   that no command it runs pays for a `cd` prefix.
 5. When @dev1 reports the commit, send @reviewer the review: it reads the commit and the code around it,
    runs the tests itself, and rules go or pushback with `file:line`.
 6. A pushback goes back to @dev1 with the specific finding. **Two rounds.** A third pushback on the same

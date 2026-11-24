@@ -63,6 +63,12 @@ budget` for what is left. Run 007 had dev1 at 71 tool calls and 25 minutes for 2
 already answered in 0.15 s, while the reviewer settled in 24 seconds: a ten-minute gate has cost more
 than the ticket is worth.
 
+**Your cwd is the worktree.** Run the command directly; a `cd /path/to/worktree && ` prefix re-proves, once
+per call, a directory the room already launched you into.
+
+**Print a report whole when it fits.** A fifty-line report is one tool result. Truncate a green suite or a
+failure log; never a report you will have to re-read, because the re-run returns the same bytes.
+
 ## The database
 
 A ticket's counts are claims like any other, and a read-only `select` against the project's own

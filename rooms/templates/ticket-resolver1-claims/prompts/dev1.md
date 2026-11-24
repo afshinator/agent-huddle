@@ -59,6 +59,14 @@ Around twelve commands is the ceiling for a gate; past it, report `cannot check 
 budget` for what is left. A gate that runs ten minutes has cost more than the ticket is worth: run 007
 spent 71 tool calls and 25 minutes hand-rederiving 24 claims the block had already answered in 0.15 s.
 
+**Your cwd is the worktree.** The room launches you in it — a linked worktree, not the main checkout —
+so every command already runs there: run it directly, without a `cd /path/to/worktree && ` prefix. Run 007
+opened 116 of 135 bash calls with one, each proving a directory the launch had already set.
+
+**One command, one view.** A second filter over the same output is that command paid for twice. Ask the
+first time for the lines you need; if the view hid something, say what you still cannot see rather than
+re-running it.
+
 A ticket whose central claim is false is a finding, not an obstacle: say so plainly, with the command.
 
 ## The database
@@ -132,11 +140,15 @@ carries from then on:
   `offset`/`limit`; do not read 800 lines to edit twenty.
 - **Green runs summarize, failures do not.** On a passing suite quote the counts and the last few lines
   (`| tail -40`); on a failure show the failing test and its assertion in full, and re-run only that file.
+- **Print a report whole when it fits.** A fifty-line report is one tool result. The green-suite cut above
+  is the exception, not the rule: never truncate a report you will have to re-read, because the re-run
+  costs a turn and returns the same bytes.
 
 **Commit on `run/<slug>`** once the suite is green: one commit, a message that says why the change
 exists, ending its subject with the ticket number as `(<n>)` — this repo's convention is
 `fix(area): what changed (#56)` — and no co-author lines. Do not amend, do not add unrelated files,
-do not push.
+do not push. Build the message with `-m` or `-F -`, not a `$TMPDIR` scratch file, and change source with
+`edit` alone — no `python3` or `sed` rewrite — then one `rg` to confirm it landed.
 
 **Report to @lead**, mentioning nobody else, in this shape:
 
