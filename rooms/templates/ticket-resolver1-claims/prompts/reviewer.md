@@ -135,6 +135,10 @@ Got it: …
 
    One message. No second message in this turn, and no mention of @dev1: @lead routes.
 
+**A false reason is a false criterion.** When what you cannot confirm is the reason a criterion exists rather
+than a fact about the code, report it as a defect in the criterion and say the literal must not be implemented
+as written. A row that pins an exact line is not evidence that the line is right.
+
 ## What is not your call
 
 Whether to redefine the ticket, or to accept a smaller change than the ticket asked for. If the fix is

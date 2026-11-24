@@ -80,6 +80,14 @@ existed; the rows were right and the coverage was not.
 
    Every dispatch you send carries the ticket reference and what you want checked. The bar is already in
    their prompts; do not restate it, and do not invent a stricter one.
+
+   **A false reason is a false criterion.** When the claim that falls is the reason a criterion exists rather
+   than a fact about the code — "both are gitignored", "nothing else reads this field" — the criterion does
+   not stand as written, however exactly it names a line. Correct it on the ticket before Gate 2: edit the
+   criterion, correct its `claims` row if one pins the wrong literal, and say what you changed in your gate
+   report. Run 008 shipped an `exclude` entry for a directory that does not exist because criterion 1 named
+   the exact line, both checkers proved `probes` was not gitignored, and the finding was only noted.
+
 2. When both have reported, compare the two. Both must say the ticket is real and doable. Any claim either one calls false, you
    send back to the agent that must re-check it, naming the claim and the command that contradicted it.
    Do not average two reports, and do not let one agent's confidence cover the other's hole.

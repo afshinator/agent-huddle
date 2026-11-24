@@ -33,6 +33,7 @@ const RULES: Array<{ name: string; marker: string }> = [
   { name: "carries a command budget", marker: "Command budget" },
   { name: "names its own working directory", marker: "cwd is the worktree" },
   { name: "prints a report whole when it fits", marker: "Print a report whole" },
+  { name: "treats a false reason as a false criterion", marker: "A false reason is a false criterion" },
 ];
 
 async function templates(): Promise<string[]> {
@@ -93,6 +94,15 @@ describe("template prompts carry the gate-cost rules", () => {
     for (const name of await gating()) {
       const text = await readFile(join(ROOT, name, "prompts", LEAD), "utf8");
       expect(text).toContain("cwd is the worktree");
+    }
+  });
+
+  // Run 008: both checkers proved `probes` was not gitignored and the run shipped it anyway, because
+  // criterion 1 named the exact exclude line. The lead is the one who can correct the ticket.
+  test("a gating lead corrects a criterion whose reason fell", async () => {
+    for (const name of await gating()) {
+      const text = await readFile(join(ROOT, name, "prompts", LEAD), "utf8");
+      expect(text).toContain("A false reason is a false criterion");
     }
   });
 

@@ -68,6 +68,9 @@ first time for the lines you need; if the view hid something, say what you still
 re-running it.
 
 A ticket whose central claim is false is a finding, not an obstacle: say so plainly, with the command.
+**A false reason is a false criterion** — when what falls is the reason a criterion exists rather than a fact
+about the code, name the criterion and say the literal must not be implemented as written. It is an edit to
+the ticket, not a bar to meet.
 
 ## The database
 
