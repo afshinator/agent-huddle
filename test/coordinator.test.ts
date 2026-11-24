@@ -172,7 +172,7 @@ describe("Coordinator chat stream (#63)", () => {
       const boot = coordinator.boot();
       await waitUntil(() => out.join("").includes("the footer now"), 3000);
 
-      expect(out.join("")).toMatch(/\[dev1\] +\d\d:\d\d:\d\d Got it: checking\n +the footer now/);
+      expect(out.join("")).toMatch(/\d\d:\d\d:\d\d \[dev1\] Got it: checking\n +the footer now/);
       await coordinator.shutdown();
       await boot.catch(() => undefined);
     });
@@ -202,7 +202,7 @@ describe("Coordinator chat stream (#63)", () => {
 
       const text = out.join("");
       expect(text.split("silent provider").length - 1).toBe(1);
-      expect(text).toMatch(/\[lead\] \d\d:\d\d:\d\d silent provider/);
+      expect(text).toMatch(/\d\d:\d\d:\d\d \[lead\] silent provider/);
     });
   }, 20_000);
 
@@ -216,8 +216,8 @@ describe("Coordinator chat stream (#63)", () => {
       await coordinator.boot();
 
       const text = out.join("");
-      expect(text).toMatch(/\[dev1\] \d\d:\d\d:\d\d reading the footer\n/);
-      expect(text).toMatch(/\[dev1\] \d\d:\d\d:\d\d \(interrupted\)/);
+      expect(text).toMatch(/\d\d:\d\d:\d\d \[dev1\] reading the footer\n/);
+      expect(text).toMatch(/\d\d:\d\d:\d\d \[dev1\] \(interrupted\)/);
       expect(text).toContain("settle timeout");
     });
   }, 20_000);
@@ -424,8 +424,8 @@ describe("What a room message is allowed to look like (§room)", () => {
       const text = out.join("");
       // The room speaks as itself, with a clock and a `·` marker: attributable, and still not a
       // participant's message (#65).
-      expect(text).toMatch(/\[room\] +\d\d:\d\d:\d\d · @lead answered a direct message without "Got it: …"/);
-      expect(text).not.toMatch(/\[lead\] +\d\d:\d\d:\d\d @lead answered/);
+      expect(text).toMatch(/\d\d:\d\d:\d\d \[room\] · @lead answered a direct message without "Got it: …"/);
+      expect(text).not.toMatch(/\d\d:\d\d:\d\d \[lead\] @lead answered/);
     });
   }, 20_000);
 });

@@ -21,39 +21,31 @@ import { stampNow } from "./stamp";
 /** How long a turn may go quiet before its next line is tagged again: a burst, not a turn (#66). */
 const RESUME_TAG_MS = 60_000;
 
-/** Width of `HH:MM:SS`: the room's column depends on it, so it is stated once (#65). */
-const STAMP_WIDTH = 8;
-
-/** The width of a painted tag without colour: `[handle]`. */
-export function tagWidth(handle: string): number {
-  return handle.replace(/^@/, "").length + 2;
-}
+/** How far a continuation line is indented: fixed, so a long handle does not push the text right (#T18). */
+const CONTINUATION_INDENT = 4;
 
 /**
- * One room line: the tag padded to the widest speaker, the clock, then the text, with every
- * continuation line indented to that same column (#65). Callers pass the roster's widest tag, so
- * `[lead]` and `[reviewer]` put their clocks and text in one column instead of drifting per speaker.
+ * One room line: the clock, then the tag, then the text, with every continuation line indented four
+ * spaces. The clock comes first so a column of times reads top-down, and the handle is not padded —
+ * padding it made the text column jump with the roster's longest handle (#T18).
  */
 export function roomLine(
   handle: string,
   stamp: string,
   text: string,
-  speakerWidth: number,
   colour: (handle: string) => string | null = () => null,
 ): string {
-  const pad = " ".repeat(Math.max(0, speakerWidth - tagWidth(handle)));
-  const column = speakerWidth + 1 + STAMP_WIDTH + 1;
   const trailing = text.endsWith("\n");
   const [first = "", ...rest] = (trailing ? text.slice(0, -1) : text).split("\n");
-  const body = [first, ...rest.map((line) => (line === "" ? "" : " ".repeat(column) + line))].join("\n");
-  return `${paintTag(handle, colour)}${pad} ${stamp} ${body}${trailing ? "\n" : ""}`;
+  const body = [first, ...rest.map((line) => (line === "" ? "" : " ".repeat(CONTINUATION_INDENT) + line))].join("\n");
+  return `${stamp} ${paintTag(handle, colour)} ${body}${trailing ? "\n" : ""}`;
 }
 
-/** A continuation inside one burst: every line starts in the text column, none carries a tag (#65). */
-function indentLines(text: string, column: number): string {
+/** A continuation inside one burst: every line starts four spaces in, none carries a tag. */
+function indentLines(text: string): string {
   const trailing = text.endsWith("\n");
   const lines = (trailing ? text.slice(0, -1) : text).split("\n");
-  const body = lines.map((line) => (line === "" ? "" : " ".repeat(column) + line)).join("\n");
+  const body = lines.map((line) => (line === "" ? "" : " ".repeat(CONTINUATION_INDENT) + line)).join("\n");
   return body + (trailing ? "\n" : "");
 }
 
@@ -80,8 +72,6 @@ export class ChatStream {
     private readonly stamp: () => string = stampNow,
     /** Monotonic-ish wall clock for the resume decision, injectable so a test can advance it. */
     private readonly nowMs: () => number = Date.now,
-    /** The roster's widest tag: what every line's clock and text column up against (#65). */
-    private readonly speakerWidth: number,
   ) {}
 
   delta(agentId: string, text: string): void {
@@ -133,7 +123,7 @@ export class ChatStream {
     if (rest !== "") this.writeLines(agentId, rest + "\n");
     const printedThisTurn = this.printed.has(agentId);
     if (reason !== undefined && printedThisTurn)
-      this.sink.write(roomLine(this.handleOf(agentId), this.stamp(), `(${reason})\n`, this.speakerWidth, this.colourOf));
+      this.sink.write(roomLine(this.handleOf(agentId), this.stamp(), `(${reason})\n`, this.colourOf));
     this.printed.delete(agentId);
     this.active.delete(agentId);
     return printedThisTurn;
@@ -154,8 +144,8 @@ export class ChatStream {
     const styled = this.styleOf(text);
     this.sink.write(
       this.printed.has(agentId) && !resumed
-        ? indentLines(styled, this.speakerWidth + 1 + STAMP_WIDTH + 1)
-        : roomLine(this.handleOf(agentId), this.stamp(), styled, this.speakerWidth, this.colourOf),
+        ? indentLines(styled)
+        : roomLine(this.handleOf(agentId), this.stamp(), styled, this.colourOf),
     );
     this.printed.add(agentId);
     this.lastSpeaker = agentId;

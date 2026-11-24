@@ -3,7 +3,7 @@ import { ChatStream } from "../src/chat-stream";
 
 const AT = "12:00:00";
 
-function make(clock?: { ms: number }, width = 6): { chat: ChatStream; out: string[] } {
+function make(clock?: { ms: number }): { chat: ChatStream; out: string[] } {
   const out: string[] = [];
   const chat = new ChatStream(
     { write: (s) => out.push(s) },
@@ -12,13 +12,12 @@ function make(clock?: { ms: number }, width = 6): { chat: ChatStream; out: strin
     (text) => text,
     () => AT,
     () => clock?.ms ?? 0,
-    width,
   );
   return { chat, out };
 }
 
-/** Where a line's text starts: the padded tag, a space, the clock, a space (#65). */
-const COLUMN = 6 + 1 + 8 + 1;
+/** Where a continuation line starts: four spaces, whatever the handle's length (#T18). */
+const COLUMN = 4;
 
 describe("ChatStream", () => {
   test("another speaker ends the burst, so the resuming line is tagged (#66)", () => {
@@ -26,8 +25,8 @@ describe("ChatStream", () => {
     chat.delta("dev1", "a\n");
     chat.delta("reviewer", "b\n");
     chat.delta("dev1", "c\n");
-    expect(out[1].startsWith("[reviewer] ")).toBe(true);
-    expect(out[2].startsWith("[dev1] ")).toBe(true);
+    expect(out[1].startsWith(`${AT} [reviewer] `)).toBe(true);
+    expect(out[2].startsWith(`${AT} [dev1] `)).toBe(true);
   });
 
   test("silence ends the burst, so a turn that pauses and resumes is tagged (#66)", () => {
@@ -36,7 +35,7 @@ describe("ChatStream", () => {
     chat.delta("dev1", "a\n");
     clock.ms += 61_000;
     chat.delta("dev1", "b\n");
-    expect(out[1].startsWith("[dev1] ")).toBe(true);
+    expect(out[1].startsWith(`${AT} [dev1] `)).toBe(true);
   });
 
   test("a burst that keeps talking is not tagged twice (#66)", () => {
@@ -53,7 +52,7 @@ describe("ChatStream", () => {
     // no newline yet: the line is held, not split with an invented one
     expect(out).toEqual([]);
     chat.delta("dev1", " footer\n");
-    expect(out).toEqual([`[dev1] ${AT} Got it: check the footer\n`]);
+    expect(out).toEqual([`${AT} [dev1] Got it: check the footer\n`]);
   });
 
   test("flush prints the line the provider left unterminated", () => {
@@ -64,11 +63,11 @@ describe("ChatStream", () => {
     expect(out).toEqual([]);
     chat.flush("dev1");
 
-    expect(out).toEqual([`[dev1] ${AT} Got it: tally every tracked .md file\n`]);
+    expect(out).toEqual([`${AT} [dev1] Got it: tally every tracked .md file\n`]);
     // the burst continues on a fresh line, in the text column, with no second prefix (#65)
     chat.delta("dev1", "Row count: 28\n");
     expect(out.join("")).toBe(
-      `[dev1] ${AT} Got it: tally every tracked .md file\n${" ".repeat(COLUMN)}Row count: 28\n`,
+      `${AT} [dev1] Got it: tally every tracked .md file\n${" ".repeat(COLUMN)}Row count: 28\n`,
     );
   });
 
@@ -76,7 +75,7 @@ describe("ChatStream", () => {
     const { chat, out } = make();
     chat.delta("dev1", "one line\n");
     chat.flush("dev1");
-    expect(out).toEqual([`[dev1] ${AT} one line\n`]);
+    expect(out).toEqual([`${AT} [dev1] one line\n`]);
   });
 
   test("a message boundary splits the line the turn has not flushed yet", () => {
@@ -88,7 +87,7 @@ describe("ChatStream", () => {
     chat.delta("dev1", "\n");
 
     expect(out).toEqual([
-      `[dev1] ${AT} Got it: tally the docs.\n${" ".repeat(COLUMN)}Got it: tally written.\n`,
+      `${AT} [dev1] Got it: tally the docs.\n${" ".repeat(COLUMN)}Got it: tally written.\n`,
     ]);
   });
 
@@ -97,7 +96,7 @@ describe("ChatStream", () => {
     chat.delta("dev1", "Got it: one thing");
     chat.messageBoundary("dev1", "something else");
     chat.delta("dev1", "\n");
-    expect(out).toEqual([`[dev1] ${AT} Got it: one thing\n`]);
+    expect(out).toEqual([`${AT} [dev1] Got it: one thing\n`]);
   });
 
   test("a mention is inverted in a line however the deltas split it", () => {
@@ -109,13 +108,12 @@ describe("ChatStream", () => {
       (text) => text.replace(/(@[a-z0-9]+)/g, "\u001b[7m$1\u001b[0m"),
       () => AT,
       () => 0,
-      6,
     );
     // the handle arrives in two pieces, so styling has to happen on the finished line
     chat.delta("dev1", "verify with @rev");
     chat.delta("dev1", "iewer please\n");
 
-    expect(out).toEqual([`[dev1] ${AT} verify with \u001b[7m@reviewer\u001b[0m please\n`]);
+    expect(out).toEqual([`${AT} [dev1] verify with \u001b[7m@reviewer\u001b[0m please\n`]);
   });
 
   test("the prefix is painted with the agent's colour, and the prose is not", () => {
@@ -127,12 +125,11 @@ describe("ChatStream", () => {
       (text) => text,
       () => AT,
       () => 0,
-      6,
     );
     chat.delta("dev1", "Got it: plain prose naming @dev1\n");
 
     // colour marks the speaker; the mention inside the sentence stays plain (#70)
-    expect(out).toEqual([`\u001b[38;2;90;170;255m[dev1]\u001b[0m ${AT} Got it: plain prose naming @dev1\n`]);
+    expect(out).toEqual([`${AT} \u001b[38;2;90;170;255m[dev1]\u001b[0m Got it: plain prose naming @dev1\n`]);
   });
 
   test("a line carries the time it was said, so a reader can order two speakers (T17)", () => {
@@ -141,33 +138,29 @@ describe("ChatStream", () => {
     chat.end("dev1");
     chat.delta("reviewer", "two\n");
     // Both stamps come from the same clock in a test; what matters is that the line carries one at all.
-    expect(out).toEqual([`[dev1] ${AT} one\n`, `[reviewer] ${AT} two\n`]);
+    expect(out).toEqual([`${AT} [dev1] one\n`, `${AT} [reviewer] two\n`]);
   });
 
   test("further lines of one turn are not prefixed again", () => {
     const { chat, out } = make();
     chat.delta("dev1", "Got it: x\nsecond line\nthird\n");
     expect(out).toEqual([
-      `[dev1] ${AT} Got it: x\n${" ".repeat(COLUMN)}second line\n${" ".repeat(COLUMN)}third\n`,
+      `${AT} [dev1] Got it: x\n${" ".repeat(COLUMN)}second line\n${" ".repeat(COLUMN)}third\n`,
     ]);
   });
 
-  test("every speaker's clock and text sit in one column (#65)", () => {
-    const { chat, out } = make(undefined, 10);
+  test("every line starts with its clock, then the tag (#T18)", () => {
+    const { chat, out } = make();
     chat.delta("dev1", "one\n");
     chat.delta("reviewer", "two\n");
-    expect(out[0].indexOf("one")).toBe(out[1].indexOf("two"));
-    expect(out[0]).toBe(`[dev1]     ${AT} one\n`);
-    expect(out[1]).toBe(`[reviewer] ${AT} two\n`);
+    expect(out[0]).toBe(`${AT} [dev1] one\n`);
+    expect(out[1]).toBe(`${AT} [reviewer] two\n`);
   });
 
-  test("a continuation line starts in the text column (#65)", () => {
-    const { chat, out } = make(undefined, 10);
-    chat.delta("dev1", "one\ncontinued\n");
-    const column = 10 + 1 + 8 + 1;
-    const [first = "", second = ""] = out[0].split("\n");
-    expect(first.indexOf("one")).toBe(column);
-    expect(second).toBe(`${" ".repeat(column)}continued`);
+  test("a continuation line is indented four spaces, whatever the handle's length (#T18)", () => {
+    const { chat, out } = make();
+    chat.delta("reviewer", "one\ncontinued\n");
+    expect(out[0]).toBe(`${AT} [reviewer] one\n${" ".repeat(COLUMN)}continued\n`);
   });
 
   test("each new turn gets its own prefix", () => {
@@ -175,7 +168,7 @@ describe("ChatStream", () => {
     chat.delta("dev1", "one\n");
     chat.end("dev1");
     chat.delta("dev1", "two\n");
-    expect(out).toEqual([`[dev1] ${AT} one\n`, `[dev1] ${AT} two\n`]);
+    expect(out).toEqual([`${AT} [dev1] one\n`, `${AT} [dev1] two\n`]);
   });
 
   test("end flushes a partial line and reports whether anything was printed", () => {
@@ -183,7 +176,7 @@ describe("ChatStream", () => {
     expect(chat.end("dev1")).toBe(false);
     chat.delta("dev1", "half a sentence");
     expect(chat.end("dev1")).toBe(true);
-    expect(out).toEqual([`[dev1] ${AT} half a sentence\n`]);
+    expect(out).toEqual([`${AT} [dev1] half a sentence\n`]);
   });
 
   test("a turn that dies says so, and only when it had text on screen", () => {
@@ -194,7 +187,7 @@ describe("ChatStream", () => {
     const talking = make();
     talking.chat.delta("dev1", "starting the audit");
     talking.chat.end("dev1", "interrupted");
-    expect(talking.out).toEqual([`[dev1] ${AT} starting the audit\n`, `[dev1] ${AT} (interrupted)\n`]);
+    expect(talking.out).toEqual([`${AT} [dev1] starting the audit\n`, `${AT} [dev1] (interrupted)\n`]);
   });
 
   test("two agents streaming at once keep their own prefixes and lines", () => {
@@ -205,9 +198,9 @@ describe("ChatStream", () => {
     // dev1's continuation resumes after the reviewer spoke, so it carries the tag again (#66): an
     // untagged line there reads as the reviewer's.
     expect(out).toEqual([
-      `[dev1] ${AT} checking the\n`,
-      `[reviewer] ${AT} reading\n`,
-      `[dev1] ${AT} footer\n`,
+      `${AT} [dev1] checking the\n`,
+      `${AT} [reviewer] reading\n`,
+      `${AT} [dev1] footer\n`,
     ]);
   });
 
@@ -216,6 +209,6 @@ describe("ChatStream", () => {
     chat.delta("dev1", "mid sentence");
     chat.endAll("turn failed");
     chat.endAll("turn failed");
-    expect(out).toEqual([`[dev1] ${AT} mid sentence\n`, `[dev1] ${AT} (turn failed)\n`]);
+    expect(out).toEqual([`${AT} [dev1] mid sentence\n`, `${AT} [dev1] (turn failed)\n`]);
   });
 });
