@@ -1,0 +1,32 @@
+name: ticket-prep
+# Repairs a ticket's ```claims block before a resolver room reads it. The launcher refuses a ticket whose
+# block is missing or disagrees (#68) and nothing could fix one. The room's output is a ticket body, not a
+# commit: it runs with `--no-claims` and without `--branch`, so its worktree is detached and nothing merges.
+# 6 hops: read the ticket, check each row, publish once, re-run it, report. A room still arguing after that
+# is arguing with a criterion, and that argument belongs to a human.
+max_hops: 6
+# The lead routes. Only the lead hands out work.
+dispatch_scope: lead
+# Reading a body and running claim-check is minutes, not tens of minutes. This caps one turn.
+turn_timeout_ms: 600000
+# A supervised room belongs in a linked worktree, which this guard leaves alone.
+launch_guard: refuse
+lead:
+  id: lead
+  handle: "@lead"
+  role: "Lead: read the ticket, decide what may be repaired, refuse when the ask itself is broken. Never edits a file."
+  system_prompt_file: prompts/lead.md
+  provider: commandcode
+  model: deepseek/deepseek-v4-pro
+  thinking: medium
+  tools: [read, grep, bash]
+agents:
+  - id: prep
+    handle: "@prep"
+    role: "Repair the ticket's claims block; cut a reason that is false. Never rewrites the ask, never moves a label, never edits code."
+    system_prompt_file: prompts/prep.md
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
+    thinking: high
+    # `write` is for the records JSON that `publish` reads. No `edit`: this room never touches source.
+    tools: [read, grep, bash, write]

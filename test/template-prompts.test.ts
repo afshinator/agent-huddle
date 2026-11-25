@@ -23,6 +23,7 @@ const GATES_TICKETS = new Set(["ticket-resolver1", "ticket-resolver1-claims"]);
 /** Templates doing a different job. Named on purpose: exemption is a decision, not an omission. */
 const EXEMPT: Record<string, string> = {
   "docs-audit": "an inventory of docs, no ticket claims; it already carries its own two-minute budget",
+  "ticket-prep": "repairs a ticket's claims block before a resolver room starts; it writes no code and no ask",
 };
 
 const CHECKERS = ["dev1.md", "reviewer.md"];
@@ -34,6 +35,20 @@ const RULES: Array<{ name: string; marker: string }> = [
   { name: "names its own working directory", marker: "cwd is the worktree" },
   { name: "prints a report whole when it fits", marker: "Print a report whole" },
   { name: "treats a false reason as a false criterion", marker: "A false reason is a false criterion" },
+];
+
+/**
+ * The prep room's rules. `RULES` above is applied to `GATES_TICKETS` only, so an exempt room is pinned by
+ * nothing there; these six decide what the prep agent may repair and what it must refuse, and a later edit
+ * that drops one turns the room into one that rewrites tickets instead of correcting them.
+ */
+const PREP_RULES = [
+  "Find the file that decides the fact",
+  "A false supporting reason is deleted, never reworded",
+  "Never propose or rewrite the ask",
+  "never move a state label",
+  "No observable end state means stop",
+  "Re-running must be safe",
 ];
 
 async function templates(): Promise<string[]> {
@@ -73,7 +88,9 @@ describe("template prompts carry the gate-cost rules", () => {
     test(`${file} allows at most one database query wherever it mentions the database`, async () => {
       const missing: string[] = [];
       for (const name of await templates()) {
-        const text = await readFile(join(ROOT, name, "prompts", file), "utf8");
+        // A template whose agents are not called dev1/reviewer has no such file. The rule is about
+        // wherever the database is mentioned, not about every room naming its agents the same way.
+        const text = await readFile(join(ROOT, name, "prompts", file), "utf8").catch(() => "");
         if (!text.includes("## The database")) continue;
         if (!text.includes("at most one query")) missing.push(name);
       }
@@ -115,5 +132,10 @@ describe("template prompts carry the gate-cost rules", () => {
         expect(text).toContain("red row");
       }
     }
+  });
+
+  test("the prep room carries all six repair rules", async () => {
+    const text = await readFile(join(ROOT, "ticket-prep", "prompts", "prep.md"), "utf8");
+    expect(PREP_RULES.filter((rule) => !text.includes(rule))).toEqual([]);
   });
 });
