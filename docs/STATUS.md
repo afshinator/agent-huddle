@@ -1,6 +1,6 @@
 # Status — v1.1
 
-Version: **v1.1** · 2026-11-20 · code at commit `7676219` · spec: [`SPEC.md`](SPEC.md) · decisions:
+Version: **v1.1** · 2026-11-20 · code at commit `0bcb9b3` · spec: [`SPEC.md`](SPEC.md) · decisions:
 [`decisions.md`](decisions.md) · evidence: [`runs/`](runs/), [`rca/`](rca/)
 
 Capabilities listed here are backed by a test or a live run. Each claim names its evidence: a run note
@@ -10,11 +10,24 @@ rather than softened.
 ## What it does
 
 **A template owns a kind of room; a run owns one ask.** `rooms/templates/<type>/` is tracked and holds
-the template plus its prompts, and one shared `rooms/launch.sh --template <name>`. A run is a small file naming `template:` plus `task`,
+the template plus its prompts, and one shared `rooms/launch.sh`, which takes a template (`--template
+<name>`) or a ticket (`--issue <n>`) and picks the template itself when given the latter. A run is a small file naming `template:` plus `task`,
 `definition_of_done` and any budget it overrides, and its collateral — the resolved config, a snapshot of
 the prompts that ran, the ask, notes and the room's runtime — lives in the gitignored `_run/<NNN>-<slug>/`
 in the repo the room runs in (D13). The ordinal is creation order, so `ls _run/` reads as a history, and
 re-running the same `--slug` reuses that directory.
+
+**A ticket decides the room, and its own records gate the boot.** `rooms/launch.sh --repo <path> --issue <n>`
+is the whole command: the template is picked from the ticket body (a `claims` block means the
+claims-carrying room, no block the base room), the run is named `ticket-<n>`, and the ticket's own
+`claims` block is re-derived inside the run's worktree before anything boots — records resolve against
+the working directory, and the main checkout may be dirty. A missing block, a row that disagrees, or a
+`claim-check` that cannot run stops the launch and removes the worktree and run directory it just created
+(#68, #70 — a binary it cannot find exits `2`, D33). When a disagreeing row is the reason, the launcher runs the `ticket-prep` room once — its own run
+name, its own detached worktree, the gate skipped — and then asks the original question again, so the
+template is picked from the repaired body; a second refusal stops rather than running prep a second time
+(#69, #70, D32). `--no-claims` skips the gate, and an explicit `--template` disables the chain: a human
+who named the room is not overruled by one the launcher picked.
 
 **A room, defined by one YAML file.** A template (or a standalone room file) declares the lead and
 specialists: id, handle,
@@ -134,6 +147,12 @@ started.
 | A run's collateral is self-contained: resolved config plus prompt snapshot reload to the same room | `test/room-run.test.ts`, `test/config-template.test.ts` |
 | Run directories are numbered in creation order, and a rerun reuses its directory | `test/run-slug.test.ts` |
 | Every shipped template loads, and no template's prompts sit outside its own directory | `test/rooms.test.ts` |
+| The preflight's verdict is fatal for a missing block or a disagreeing row, and a warning is not | `test/launch.test.ts`, #68 |
+| The template comes from the ticket body: a `claims` block wants the claims room, a body without one the base room | `test/launch.test.ts`, #68 |
+| An issue names its run `ticket-<n>` | `test/run-slug.test.ts`, #68 |
+| A requested name keeps its ordinal, and a name an existing run already carries reruns that directory | `test/run-slug.test.ts`, `2b9cd83` |
+| A refused preflight decides to run the prep room once, and stops when the pass is spent; a template named with `--template` keeps the chain out | `test/launch.test.ts`, #70, D32 |
+| The prep room carries its six repair rules, and a template that is not gating must be exempt with a reason | `test/template-prompts.test.ts`, #69, D30 |
 
 ## Not proven
 
@@ -141,10 +160,16 @@ started.
   `@all`, three or more agents, a lead that refuses to emit `DONE`, a chain that reaches `max_hops`, and a
   reviewer that pushes work back to another specialist are unproven in a manned room. `rooms/templates/docs-audit`
   is a three-agent room staged for exactly that; until it runs, three agents are configuration, not behaviour.
-- **The template/run launcher is verified only up to the boot.** `rooms/launch.sh` was exercised with `--dry-run`
-  against a throwaway repo: collateral written, worktree created (branch and detached), resolved config
-  loads. No room has been booted through it yet, so the last step — exec with the resolved config and
-  `room_dir` pointing at `_run/` — is unproven in a real launch.
+- **The template/run launcher is verified to the boot, and once past it.** `rooms/launch.sh` writes the
+  collateral, creates the worktree, resolves the config and boots; the `ticket-prep` room booted through it
+  on a smoke ticket (#71, log not kept — the run's `_run/` collateral was deleted afterwards), read the
+  ticket, published one corrected row and stopped. What is unproven past the boot is everything below.
+- **The prep chain has never run live end to end.** `#70`'s path — refusal, prep room, re-asked launch,
+  template re-picked from the repaired body — is exercised with `--dry-run` and a hand-set `AH_PREP_RAN`,
+  not by a launch that actually refused and actually repaired.
+- **The prep room's three judgement branches are unobserved.** On #71 it repaired one disagreeing record;
+  nobody has watched it cut a reason that is false, publish nothing on a ticket whose block already holds,
+  or refuse a ticket whose ask has no observable end state.
 - A provider other than `commandcode` (deepseek-v4-pro, deepseek-v4.1-flash); one provider is measured.
 - Crash (SIGKILL) of the coordinator: panes from that run are not tracked and will leak.
 - `definition_of_done` is never checked; `DONE` is the lead's self-certification.

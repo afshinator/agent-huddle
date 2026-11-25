@@ -690,7 +690,8 @@ were spent on real commands, not on reasoning; and deleting the claims block fro
 ## D31 — Green means the rows hold, not that every criterion has one (T21)
 
 **Context:** #52's block passed pickup with 24 rows while criterion 1 asked for a `new: rollup.ts`
-declaring `ComboAccum` — a name already exported at `src/lib/stats/group-stats.ts:19`, and the leaf's second
+declaring `ComboAccum` — a name then exported at `finance-hub:src/lib/stats/group-stats.ts`, and moved to
+`finance-hub:src/lib/stats/rollup.ts:36` by the fix this entry describes — and the leaf's second
 type was named in neither the criteria nor any record. `claim-check` had no way to see this: it derives
 records, and nothing in it reads criteria. `lint` read prose but only for four adjectives, so a criterion
 backed by no record produced no output at all. This room's Gate 0 said "both must exit 0 … a non-zero
@@ -707,3 +708,57 @@ count before calling the gate passed.
 would push authors to write a decorative row or an opt-out phrase under pressure; and widening `run` to
 consume criteria — the tool's whole contract is that it derives code facts, and prose parsing is `lint`'s
 job alone.
+
+## D32 — A refused ticket is repaired once, by a room, and the choice lives where a test can hold it (#70)
+
+**Context:** #68 made the launcher gate a boot on the ticket's own `claims` block and refuse a ticket whose
+records disagree, and #69 added a room that repairs one. Nothing connected them: the human had to read the
+refusal, remember `--template ticket-prep --no-claims --any-state`, wait for prep to publish, then run the
+launcher again. Two facts made a naive chain unsafe. The default run name for an issue is `ticket-<n>`
+(`src/run-slug.ts:45`) and `formatRunName` hands back an existing directory for a name it has seen
+(`:20-27`), so whoever asks for that name second gets the first one's collateral: prep runs first, so a prep
+run asking for `ticket-<n>` would leave the resolver's re-run reusing the prep directory. And the launcher
+resumes an existing ask, taking the template from its `template:` line (`rooms/launch.sh:112-116`,
+`:126-127`), so a second launch that resumed would boot the room recorded *before* the repair.
+
+**Decision:** the launcher asks one question of `prepFirst()` in `src/launch.ts` — `prep`, `resolver` or
+`stop` — and `rooms/launch.sh` only obeys the answer. A refusal runs the prep room once, under
+`ticket-<n>-prep`, in its own detached worktree with the gate skipped, and then re-runs the original
+command rather than reusing its collateral: the ticket is read again, the template is picked again from the
+repaired body, and the preflight runs again in the new worktree. `AH_PREP_RAN=1` marks the pass spent, so a
+second refusal stops with one message and a ticket that is still red does not boot a second room.
+
+**Rejected:** looping until green — a room cannot repair a ticket whose ask is broken, and every launch
+would spend two rooms over the same body; deciding in `rooms/launch.sh` — nothing executes that script in
+the suite (`test/rooms.test.ts` only stats it), so the rule would be the one thing nobody checks; and
+resuming the prepared `run.yaml` — it is the file that records the pre-repair template, which is the exact
+choice the repair is meant to change.
+
+## D33 — A missing `claim-check` is not a disagreement (#70)
+
+**Context:** `cmdClaims` returned `1` for a row that disagrees *and* for a binary it could not find. With the
+chain in place that one code became a decision: the first live dry run of #70 printed `FAIL claims binary —
+claim-check is not on PATH` and the launcher answered `would boot ticket-prep first`, which would have spent
+a prep room discovering that a tool was not installed.
+
+**Decision:** the preflight exits `2` when it cannot run, `1` only when records disagree, and the launcher
+treats `2` as a stop with its own message (`install claim-check or pass --no-claims`).
+
+**Rejected:** treating both as repairable — a room is spent to learn something the first line of output
+already said; and skipping the gate when the binary is absent — silence has never been a pass here (D31,
+`UNACCOUNTED`), and a launch that quietly stops checking is the failure the gate exists to prevent.
+
+## D34 — The prep run gets its own name, `ticket-<n>-prep` (#70)
+
+**Context:** `nextRunName` reuses a directory whose requested name it has already seen
+(`src/run-slug.ts:20-27`, measured: with `_run/002-ticket-70` present, `run-slug.ts next _run ticket-70`
+printed `002-ticket-70`, and `ticket-70-prep` printed `003-ticket-70-prep`). Prep runs first and the resolver
+then asks for the default name, so if prep had asked for `ticket-<n>` the *resolver* would inherit prep's
+directory and its `template:` line. (The resolver's own directory is removed before prep starts —
+`rooms/launch.sh:186` — so the collision is the second asker's, not the first's.)
+
+**Decision:** the prep run asks for `ticket-<n>-prep`, so the two phases read apart in `ls _run/` and the
+resolver's re-run gets a fresh `ticket-<n>` of its own, with the template it picked from the repaired body.
+
+**Rejected:** reusing `ticket-<n>` for both — the second phase would overwrite the first's ask and inherit
+its template; a timestamp — unreadable history in `ls _run/`, which the ordinals exist to keep.
