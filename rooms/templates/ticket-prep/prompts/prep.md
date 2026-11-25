@@ -61,6 +61,12 @@ CC=~/Documents/dev/_system/tools/claim-check/bin/claim-check
 ticket should keep, not only the ones you changed. Read the body first
 (`gh issue view <n> --repo <owner>/<name> --json body`), keep what holds, and re-publish the whole set.
 
+`publish` re-derives every `before` row before it writes. Exit `1` means one of them disagrees and **nothing
+was written**: fix that row and publish again, do not re-run the same file. Exit `2` means it refused or could
+not read the input, and nothing was written either. `after` rows are counted as `K after row(s) not checked`, so
+a publish that derived nothing says so before the write. Run `claim-check` from the repo root: records resolve
+against the working directory, so `--repo` names the ticket while the checkout is wherever you stand.
+
 `after` rows describe what the fix will show and cannot be verified before the fix exists. Leave them.
 
 ## Report
