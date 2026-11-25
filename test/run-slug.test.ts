@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { formatRunName, nextRunName } from "../src/run-slug";
+import { defaultRequested, formatRunName, nextRunName } from "../src/run-slug";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,21 @@ import { join } from "node:path";
  * A run directory has to say when it was created, from `ls` alone — so its name starts with
  * a zero-padded ordinal and the name the human gave it.
  */
+/**
+ * `ls _run/` should say which ticket a directory belongs to; a timestamp is only for a run with no ticket.
+ */
+describe("the name a run gets when nobody typed one", () => {
+  const at = new Date(2026, 10, 24, 21, 54, 15);
+
+  test("a ticket names the run", () => {
+    expect(defaultRequested(69, at)).toBe("ticket-69");
+  });
+
+  test("no ticket falls back to a timestamp", () => {
+    expect(defaultRequested(undefined, at)).toBe("2026-11-24-215415");
+  });
+});
+
 describe("formatRunName", () => {
   test("the first run is 001", () => {
     expect(formatRunName([], "docs-audit")).toBe("001-docs-audit");

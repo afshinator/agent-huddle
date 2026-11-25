@@ -37,6 +37,16 @@ export function formatRunName(existing: readonly string[], requested: string): s
   return `${String(highest + 1).padStart(3, "0")}-${requested}`;
 }
 
+/**
+ * The name a run gets when nobody typed one: `ticket-<n>` for a run against a ticket, because `ls _run/`
+ * should say which ticket a directory belongs to, and a timestamp only when there is no ticket to name.
+ */
+export function defaultRequested(issue: number | undefined, now: Date): string {
+  if (issue !== undefined && Number.isFinite(issue)) return `ticket-${issue}`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
 /** Read the run root (absent means "no runs yet") and return the name to use. */
 export async function nextRunName(runRoot: string, requested: string): Promise<string> {
   let existing: string[];
@@ -49,11 +59,16 @@ export async function nextRunName(runRoot: string, requested: string): Promise<s
 }
 
 if (import.meta.path === Bun.main) {
-  const [command, runRoot, requested] = process.argv.slice(2);
-  if (command !== "next" || !runRoot || !requested) {
-    console.error("usage: bun src/run-slug.ts next <run-root> <requested-name>");
+  const argv = process.argv.slice(2);
+  const issueAt = argv.indexOf("--issue");
+  const issue = issueAt < 0 ? undefined : Number(argv[issueAt + 1]);
+  const positional = argv.filter((_, i) => issueAt < 0 || i < issueAt || i > issueAt + 1);
+  const [command, runRoot, requested] = positional;
+  if (command !== "next" || !runRoot) {
+    console.error("usage: bun src/run-slug.ts next <run-root> [<requested-name>] [--issue N]");
     process.exit(2);
   }
-  // One line on stdout: the directory name the launcher should use.
-  console.log(await nextRunName(runRoot, requested));
+  // One line on stdout: the directory name the launcher should use. An empty name means `--issue` or nothing.
+  const asked = requested !== undefined && requested !== "" ? requested : defaultRequested(issue, new Date());
+  console.log(await nextRunName(runRoot, asked));
 }

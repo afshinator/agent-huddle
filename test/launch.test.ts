@@ -1,11 +1,18 @@
 import { test, expect, describe } from "bun:test";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   askedFrom,
   blockerReason,
+  claimsRows,
   criteriaOf,
   dependencyReferences,
   eligibility,
   lockfileFor,
+  pickTemplate,
+  resolveClaimCheck,
+  templatePath,
   worktreeAction,
   warmPlan,
 } from "../src/launch";
@@ -277,5 +284,64 @@ describe("dependencies named in prose count too (#82)", () => {
   test("a prose-only blocker reaches the same refusal as a native one", () => {
     const states = dependencyReferences(body67).map((n) => ({ number: n, state: "open" }));
     expect(blockerReason(states)).toBe("blocked by #64 (open)");
+  });
+});
+
+/**
+ * One command per ticket (#68). The template is a consequence of the body, the claims preflight runs where the
+ * room will run, and a refusal is a row rather than a crash.
+ */
+describe("the template follows the ticket", () => {
+  test("a body carrying a claims block wants the claims room", () => {
+    expect(pickTemplate("# t\n\n```claims\n[]\n```\n")).toBe("ticket-resolver1-claims");
+  });
+
+  test("a body without one wants the base room", () => {
+    expect(pickTemplate("# t\n\nNo records here.\n")).toBe("ticket-resolver1");
+  });
+
+  test("the template path comes from this file's location, not the cwd", () => {
+    expect(templatePath("ticket-resolver1")).toMatch(/\/rooms\/templates\/ticket-resolver1\/template\.yaml$/);
+  });
+});
+
+describe("the claims preflight report", () => {
+  test("no block is fatal and says what to do", () => {
+    const rows = claimsRows({ hasBlock: false, beforeExit: null, unverified: null });
+    expect(rows[0]).toMatchObject({ ok: false, fatal: true, label: "claims block" });
+    expect(rows[0]!.detail).toContain("has no claims block");
+  });
+
+  test("a failing before phase is fatal, an unverified criterion only warns", () => {
+    const rows = claimsRows({ hasBlock: true, beforeExit: 1, unverified: 2 });
+    expect(rows.find((r) => r.label === "claims before phase")).toMatchObject({ ok: false, fatal: true });
+    expect(rows.find((r) => r.label === "claims unverified")).toMatchObject({ ok: false, fatal: false });
+  });
+
+  test("a clean block is green on every row", () => {
+    expect(claimsRows({ hasBlock: true, beforeExit: 0, unverified: 0 }).every((r) => r.ok)).toBe(true);
+  });
+
+  test("--no-claims says it skipped instead of pretending it passed", () => {
+    const rows = claimsRows({ hasBlock: false, beforeExit: null, unverified: null, skipped: true });
+    expect(rows[0]!.detail).toContain("skipped");
+  });
+});
+
+describe("where claim-check comes from", () => {
+  test("the repo's own override wins", () => {
+    expect(resolveClaimCheck({ AH_CLAIM_CHECK: import.meta.path, PATH: "" })).toBe(import.meta.path);
+  });
+
+  test("an override pointing at nothing resolves to nothing, never to PATH", () => {
+    expect(resolveClaimCheck({ AH_CLAIM_CHECK: "/nope/claim-check", PATH: process.env.PATH ?? "" })).toBeNull();
+  });
+
+  test("PATH is the documented convention, as for pi and herdr", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cc-path-"));
+    const bin = join(dir, "claim-check");
+    await writeFile(bin, "#!/bin/sh\nexit 0\n");
+    await chmod(bin, 0o755);
+    expect(resolveClaimCheck({ PATH: dir })).toBe(bin);
   });
 });

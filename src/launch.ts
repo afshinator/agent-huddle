@@ -8,7 +8,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // ---------------------------------------------------------------- lockfiles
 
@@ -165,6 +165,63 @@ export interface Ticket {
  * edges and the out-of-scope list had to be typed in by hand — by the person with the least context
  * about the code, which is the one place it should never come from (#81). The body is verbatim.
  */
+export type Row = { ok: boolean; fatal: boolean; label: string; detail: string };
+
+/**
+ * Which template a ticket wants, from the ticket. A ```claims block is the whole distinction: a room that
+ * checks records is a different room from one that only checks prose, and asking a human to pass the flag is
+ * asking them to remember a rule the body already states.
+ */
+export function pickTemplate(body: string): "ticket-resolver1-claims" | "ticket-resolver1" {
+  return /```claims\n/.test(body) ? "ticket-resolver1-claims" : "ticket-resolver1";
+}
+
+/** The path a template name resolves to, from this file's own location: no cwd assumptions. */
+export function templatePath(name: string): string {
+  return resolve(import.meta.dir, "..", "rooms", "templates", name, "template.yaml");
+}
+
+/**
+ * The claims binary, resolved the way this repo resolves every external tool: on `PATH`, then the repo's own
+ * `AH_`-prefixed override. No machine-specific absolute path in the source, and `null` means "say so", never
+ * "carry on quietly".
+ */
+export function resolveClaimCheck(env: NodeJS.ProcessEnv): string | null {
+  const override = env.AH_CLAIM_CHECK;
+  if (override !== undefined && override !== "") return existsSync(override) ? override : null;
+  for (const dir of (env.PATH ?? "").split(":")) {
+    if (dir === "") continue;
+    const candidate = join(dir, "claim-check");
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The claims preflight, as rows. Kept pure and separate from the shells it needs: `no block`, a failing
+ * `before` phase and an advisory `UNVERIFIED` are three different answers and only two of them block a room.
+ */
+export function claimsRows(input: { hasBlock: boolean; beforeExit: number | null; unverified: number | null; skipped?: boolean }): Row[] {
+  if (input.skipped) return [{ ok: true, fatal: false, label: "claims", detail: "skipped by --no-claims" }];
+  if (!input.hasBlock) {
+    return [{ ok: false, fatal: true, label: "claims block", detail: "ticket has no claims block; write one or pass --no-claims" }];
+  }
+  const rows: Row[] = [{ ok: true, fatal: false, label: "claims block", detail: "present" }];
+  rows.push({
+    ok: input.beforeExit === 0,
+    fatal: true,
+    label: "claims before phase",
+    detail: input.beforeExit === 0 ? "every claim holds" : `run --phase before exited ${input.beforeExit}`,
+  });
+  rows.push({
+    ok: input.unverified === 0,
+    fatal: false,
+    label: "claims unverified",
+    detail: input.unverified === 0 ? "none" : `${input.unverified} criterion(s) assert a repo fact no row covers`,
+  });
+  return rows;
+}
+
 export function askedFrom(ticket: Ticket): { task: string; definitionOfDone: string; source: "criteria" | "body" } {
   const criteria = criteriaOf(ticket.body);
   const task = [
@@ -336,7 +393,7 @@ function cmdCheck(argv: string[]): number {
   const repo = args.get("repo")!;
   const slug = args.get("slug") ?? "";
   const issueMode = args.get("issue") !== undefined;
-  const rows: Array<{ ok: boolean; fatal: boolean; label: string; detail: string }> = [];
+  const rows: Row[] = [];
   const isRepo = trySh("git", ["-C", repo, "rev-parse", "--git-dir"]) !== null;
   rows.push({ ok: isRepo, fatal: true, label: "git working tree", detail: repo });
   if (isRepo) {
@@ -365,7 +422,15 @@ function cmdCheck(argv: string[]): number {
       try {
         const body = sh("gh", ["issue", "view", String(issue), "--json", "body", "--jq", ".body"], repo);
         const blocked = blockerReason(blockersOf(repo, issue, body));
-        rows.push({ ok: blocked === null, fatal: true, label: `#${issue} unblocked`, detail: blocked ?? "" });
+        // The override the issue command already honours has to reach the gate that runs first, or the flag is
+        // dead: `check` runs on every launch, so a fatal row here refuses before `--ignore-blockers` is read.
+        const ignored = args.get("ignore-blockers") !== undefined;
+        rows.push({
+          ok: blocked === null || ignored,
+          fatal: true,
+          label: `#${issue} unblocked`,
+          detail: blocked === null ? "" : ignored ? `${blocked} (ignored by --ignore-blockers)` : blocked,
+        });
       } catch (e) {
         rows.push({ ok: false, fatal: true, label: `#${issue} unblocked`, detail: (e as Error).message });
       }
@@ -423,7 +488,7 @@ function cmdIssue(argv: string[]): number {
   const repo = args.get("repo")!;
   const issue = args.get("issue")!;
   const out = args.get("out")!;
-  const template = args.get("template")!;
+  const requested = args.get("template");
   const json = JSON.parse(sh("gh", ["issue", "view", issue, "--json", "number,title,state,labels,body"], repo)) as {
     number: number;
     title: string;
@@ -454,6 +519,9 @@ function cmdIssue(argv: string[]): number {
     return 1;
   }
   const asked = askedFrom({ ...json, labels });
+  // The template is a consequence of the ticket, not a question for a human: the body says whether the room
+  // will check records. `run.yaml` records the choice, because the resolved config deliberately drops it.
+  const template = requested ?? templatePath(pickTemplate(json.body));
   if (asked.source === "body") {
     process.stderr.write("launch: no acceptance-criteria heading in the body; the whole body is the bar\n");
   }
@@ -477,6 +545,56 @@ function cmdIssue(argv: string[]): number {
   return 0;
 }
 
+/**
+ * The claims preflight, run inside the worktree. Records resolve against the working directory
+ * (`claim-check`'s `root = process.cwd()`), so this must not run in the main checkout: that one may be dirty
+ * and the room would then disagree for reasons the room never sees.
+ */
+function cmdClaims(argv: string[]): number {
+  const args = argsOf(argv);
+  const repo = args.get("repo")!;
+  const issue = args.get("issue")!;
+  const worktree = args.get("worktree")!;
+  const skipped = args.get("no-claims") !== undefined;
+
+  if (!skipped) {
+    const cc = resolveClaimCheck(process.env);
+    if (cc === null) {
+      process.stderr.write("launch: FAIL claims binary — claim-check is not on PATH and $AH_CLAIM_CHECK is unset\n");
+      return 1;
+    }
+    const body = sh("gh", ["issue", "view", issue, "--json", "body", "--jq", ".body"], repo);
+    const hasBlock = /```claims\n/.test(body);
+    let beforeExit: number | null = null;
+    let unverified: number | null = null;
+    if (hasBlock) {
+      const slug = repoSlug(repo);
+      try {
+        execFileSync(cc, ["run", "--phase", "before", "--from-issue", issue, "--repo", slug], { cwd: worktree, stdio: "pipe" });
+        beforeExit = 0;
+      } catch (e) {
+        beforeExit = (e as { status?: number }).status ?? 1;
+        process.stderr.write(`launch: claims run disagreed — ${cc} run --phase before --from-issue ${issue} --repo ${slug}\n`);
+      }
+      try {
+        const out = execFileSync(cc, ["lint", "--json", "--from-issue", issue, "--repo", slug], { cwd: worktree, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+        unverified = (JSON.parse(out) as { unverified?: number }).unverified ?? null;
+      } catch {
+        unverified = null;
+      }
+    }
+    for (const row of claimsRows({ hasBlock, beforeExit, unverified })) {
+      process.stderr.write(`launch: ${row.ok ? "ok  " : row.fatal ? "FAIL" : "warn"} ${row.label}${row.detail === "" ? "" : ` — ${row.detail}`}\n`);
+    }
+    return hasBlock && beforeExit !== 0 ? 1 : 0;
+  }
+
+  for (const row of claimsRows({ hasBlock: false, beforeExit: null, unverified: null, skipped: true })) {
+    process.stderr.write(`launch: ok   ${row.label} — ${row.detail}\n`);
+  }
+  return 0;
+}
+
 if (import.meta.path === Bun.main) {
   const [command, ...rest] = process.argv.slice(2);
   const exit =
@@ -488,6 +606,8 @@ if (import.meta.path === Bun.main) {
           ? cmdCheck(rest)
           : command === "issue"
             ? cmdIssue(rest)
-            : (process.stderr.write("usage: bun src/launch.ts <worktree|warm|check|issue> --repo …\n"), 2);
+            : command === "claims"
+              ? cmdClaims(rest)
+              : (process.stderr.write("usage: bun src/launch.ts <worktree|warm|check|issue|claims> --repo …\n"), 2);
   process.exit(exit);
 }

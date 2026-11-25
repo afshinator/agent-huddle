@@ -31,6 +31,7 @@ ROOMS_DIR="$(cd "$(dirname "$0")" && pwd)"
 HUDDLE_ROOT="$(cd "$ROOMS_DIR/.." && pwd)"
 
 TEMPLATE_NAME=""
+TEMPLATE=""
 REPO=""
 SLUG=""
 BRANCH=0
@@ -41,6 +42,7 @@ WARM=1
 ISSUE=""
 ANY_STATE=0
 IGNORE_BLOCKERS=0
+NO_CLAIMS=0
 
 usage() {
   sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
@@ -59,6 +61,7 @@ while [ $# -gt 0 ]; do
     --issue) ISSUE="${2:-}"; shift 2 ;;
     --any-state) ANY_STATE=1; shift ;;
     --ignore-blockers) IGNORE_BLOCKERS=1; shift ;;
+    --no-claims) NO_CLAIMS=1; shift ;;
     --branch) BRANCH=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --check) CHECK_ONLY=1; shift ;;
@@ -68,9 +71,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$TEMPLATE_NAME" ] || { echo "launch: --template <name> is required" >&2; usage; }
-TEMPLATE="$ROOMS_DIR/templates/$TEMPLATE_NAME/template.yaml"
-[ -f "$TEMPLATE" ] || {
+[ -n "$TEMPLATE_NAME" ] && TEMPLATE="$ROOMS_DIR/templates/$TEMPLATE_NAME/template.yaml"
+[ -z "$TEMPLATE_NAME" ] || [ -f "$TEMPLATE" ] || {
   echo "launch: no template at $TEMPLATE" >&2
   echo "templates: $(ls "$ROOMS_DIR/templates" 2>/dev/null | tr '\n' ' ')" >&2
   exit 1
@@ -78,18 +80,25 @@ TEMPLATE="$ROOMS_DIR/templates/$TEMPLATE_NAME/template.yaml"
 
 REPO="${REPO:-$PWD}"
 REPO="$(cd "$REPO" && pwd)"
-REQUESTED="${SLUG:-$(date +%Y-%m-%d-%H%M%S)}"
+REQUESTED="${SLUG:-}"
 # Run names start with an ordinal so `ls _run/` shows creation order; an existing run keeps it.
-SLUG="$(bun "$HUDDLE_ROOT/src/run-slug.ts" next "$REPO/_run" "$REQUESTED")"
+# With no --slug the name comes from the ticket (`ticket-<n>`), and a timestamp only when there is no ticket.
+if [ -n "$ISSUE" ]; then
+  SLUG="$(bun "$HUDDLE_ROOT/src/run-slug.ts" next "$REPO/_run" "$REQUESTED" --issue "$ISSUE")"
+else
+  SLUG="$(bun "$HUDDLE_ROOT/src/run-slug.ts" next "$REPO/_run" "$REQUESTED")"
+fi
 [ -n "$SLUG" ] || { echo "launch: could not name the run" >&2; exit 1; }
 RUN_DIR="$REPO/_run/$SLUG"
 WORKTREE="$(dirname "$REPO")/$(basename "$REPO")-$SLUG"
-NAME="$TEMPLATE_NAME"
+NAME="${TEMPLATE_NAME:-}"
 
 # Preconditions: a repo, `_run/` ignored, gh when a ticket is involved. Fatal ones stop before
 # anything is created — a run half-set-up is worse than a run that never started.
 CHECK_ARGS=(--repo "$REPO" --slug "$SLUG")
 [ -n "$ISSUE" ] && CHECK_ARGS+=(--issue "$ISSUE")
+# The same overrides the issue command honours: a gate that runs first must not make a flag dead.
+[ "$IGNORE_BLOCKERS" = "1" ] && CHECK_ARGS+=(--ignore-blockers)
 if ! bun "$HUDDLE_ROOT/src/launch.ts" check "${CHECK_ARGS[@]}"; then
   echo "launch: stopping before anything was created" >&2
   exit 1
@@ -106,11 +115,16 @@ if [ -n "$ISSUE" ] && [ -z "$RUN_FILE" ]; then
     # An edited ask is the human's wording; regenerating it would silently drop the constraints.
     echo "launch: reusing the ask at $RUN_FILE — delete it to regenerate it from #$ISSUE" >&2
   else
-    ISSUE_ARGS=(--repo "$REPO" --issue "$ISSUE" --template "$TEMPLATE" --out "$RUN_FILE")
+    ISSUE_ARGS=(--repo "$REPO" --issue "$ISSUE" --out "$RUN_FILE")
+    [ -n "$TEMPLATE" ] && ISSUE_ARGS+=(--template "$TEMPLATE")
     [ "$ANY_STATE" = "1" ] && ISSUE_ARGS+=(--any-state)
-  [ "$IGNORE_BLOCKERS" = "1" ] && ISSUE_ARGS+=(--ignore-blockers)
+    [ "$IGNORE_BLOCKERS" = "1" ] && ISSUE_ARGS+=(--ignore-blockers)
     bun "$HUDDLE_ROOT/src/launch.ts" issue "${ISSUE_ARGS[@]}" || exit 1
   fi
+  # The template is a consequence of the ticket, so the ticket decides unless a human named one. `run.yaml`
+  # is the only record of it: the resolved config drops the reference so a past run cannot change its mind.
+  TEMPLATE="$(sed -n 's/^template: //p' "$RUN_FILE" | head -1)"
+  NAME="$(basename "$(dirname "$TEMPLATE")")"
 elif [ -z "$RUN_FILE" ]; then
   mkdir -p "$RUN_DIR"
   RUN_FILE="$RUN_DIR/run.yaml"
@@ -155,6 +169,21 @@ case "$WORKTREE_ACTION" in
   create) add_worktree ;;
   *) echo "launch: worktree action '$WORKTREE_ACTION' is not something this script does" >&2; exit 1 ;;
 esac
+
+# The ticket's own records, run where the room will run. Records resolve against the working directory, and
+# this worktree is the only clean checkout of the base commit: the main one may be dirty, and a disagreement
+# there would be about files the room never sees. Refusing here must not leave what it just created.
+if [ -n "$ISSUE" ]; then
+  CLAIMS_ARGS=(--repo "$REPO" --issue "$ISSUE" --worktree "$WORKTREE")
+  [ "$NO_CLAIMS" = "1" ] && CLAIMS_ARGS+=(--no-claims)
+  if ! bun "$HUDDLE_ROOT/src/launch.ts" claims "${CLAIMS_ARGS[@]}"; then
+    echo "launch: claims preflight refused — removing $WORKTREE and $RUN_DIR" >&2
+    git -C "$REPO" worktree remove --force "$WORKTREE" >&2 || true
+    git -C "$REPO" worktree prune
+    rm -rf "$RUN_DIR"
+    exit 1
+  fi
+fi
 
 if [ "$WARM" = "1" ]; then
   bun "$HUDDLE_ROOT/src/launch.ts" warm --repo "$REPO" --worktree "$WORKTREE" || exit 1
