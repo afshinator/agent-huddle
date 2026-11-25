@@ -157,7 +157,7 @@ add_worktree() {
 }
 
 case "$WORKTREE_ACTION" in
-  reuse) ;;
+  reuse) CREATED=0 ;;
   replace)
     git -C "$REPO" worktree remove --force "$WORKTREE" >&2
     git -C "$REPO" worktree prune
@@ -165,8 +165,9 @@ case "$WORKTREE_ACTION" in
       git -C "$REPO" branch -D "run/$SLUG" >&2
     fi
     add_worktree
+    CREATED=1
     ;;
-  create) add_worktree ;;
+  create) add_worktree; CREATED=1 ;;
   *) echo "launch: worktree action '$WORKTREE_ACTION' is not something this script does" >&2; exit 1 ;;
 esac
 
@@ -184,6 +185,12 @@ if [ -n "$ISSUE" ]; then
     git -C "$REPO" worktree remove --force "$WORKTREE" >&2 || true
     git -C "$REPO" worktree prune
     rm -rf "$RUN_DIR"
+    # The worktree is gone but its branch is not: `worktree add -b` created it, and a branch left behind
+    # makes the next attempt of the same slug die at `add -b` ("branch already exists"). Only a branch this
+    # invocation created is removed — a reused worktree's branch is not this script's to delete.
+    if [ "$CREATED" = "1" ] && [ "$BRANCH" = "1" ] && [ -n "$(git -C "$REPO" branch --list "run/$SLUG")" ]; then
+      git -C "$REPO" branch -D "run/$SLUG" >&2
+    fi
     # 2 is the preflight's own exit for a missing tool: no room repairs that, and one would spend itself
     # discovering it (src/launch.ts, cmdClaims).
     if [ "$CLAIMS_STATUS" != "1" ]; then
