@@ -201,6 +201,14 @@ export function resolveClaimCheck(env: NodeJS.ProcessEnv): string | null {
  * The claims preflight, as rows. Kept pure and separate from the shells it needs: `no block`, a failing
  * `before` phase and an advisory `UNVERIFIED` are three different answers and only two of them block a room.
  */
+/**
+ * The preflight stops a launch when a fatal row is not ok — and only then. A warning is printed and the room
+ * still starts, because coverage is advisory here for the same reason it is advisory in the tool itself.
+ */
+export function claimsRefused(rows: readonly Row[]): boolean {
+  return rows.some((row) => !row.ok && row.fatal);
+}
+
 export function claimsRows(input: { hasBlock: boolean; beforeExit: number | null; unverified: number | null; skipped?: boolean }): Row[] {
   if (input.skipped) return [{ ok: true, fatal: false, label: "claims", detail: "skipped by --no-claims" }];
   if (!input.hasBlock) {
@@ -583,10 +591,11 @@ function cmdClaims(argv: string[]): number {
         unverified = null;
       }
     }
-    for (const row of claimsRows({ hasBlock, beforeExit, unverified })) {
+    const rows = claimsRows({ hasBlock, beforeExit, unverified });
+    for (const row of rows) {
       process.stderr.write(`launch: ${row.ok ? "ok  " : row.fatal ? "FAIL" : "warn"} ${row.label}${row.detail === "" ? "" : ` — ${row.detail}`}\n`);
     }
-    return hasBlock && beforeExit !== 0 ? 1 : 0;
+    return claimsRefused(rows) ? 1 : 0;
   }
 
   for (const row of claimsRows({ hasBlock: false, beforeExit: null, unverified: null, skipped: true })) {

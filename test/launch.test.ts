@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   askedFrom,
   blockerReason,
+  claimsRefused,
   claimsRows,
   criteriaOf,
   dependencyReferences,
@@ -325,6 +326,15 @@ describe("the claims preflight report", () => {
   test("--no-claims says it skipped instead of pretending it passed", () => {
     const rows = claimsRows({ hasBlock: false, beforeExit: null, unverified: null, skipped: true });
     expect(rows[0]!.detail).toContain("skipped");
+  });
+
+  test("a missing block refuses, and a warning does not", () => {
+    // Regression: the exit code once tested `hasBlock && beforeExit !== 0`, so the one case that must stop a
+    // launch printed FAIL and exited 0.
+    expect(claimsRefused(claimsRows({ hasBlock: false, beforeExit: null, unverified: null }))).toBe(true);
+    expect(claimsRefused(claimsRows({ hasBlock: true, beforeExit: 1, unverified: 0 }))).toBe(true);
+    expect(claimsRefused(claimsRows({ hasBlock: true, beforeExit: 0, unverified: 3 }))).toBe(false);
+    expect(claimsRefused(claimsRows({ hasBlock: true, beforeExit: 0, unverified: 0 }))).toBe(false);
   });
 });
 
