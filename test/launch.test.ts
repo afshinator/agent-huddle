@@ -12,6 +12,7 @@ import {
   eligibility,
   lockfileFor,
   pickTemplate,
+  prepFirst,
   resolveClaimCheck,
   templatePath,
   worktreeAction,
@@ -335,6 +336,27 @@ describe("the claims preflight report", () => {
     expect(claimsRefused(claimsRows({ hasBlock: true, beforeExit: 1, unverified: 0 }))).toBe(true);
     expect(claimsRefused(claimsRows({ hasBlock: true, beforeExit: 0, unverified: 3 }))).toBe(false);
     expect(claimsRefused(claimsRows({ hasBlock: true, beforeExit: 0, unverified: 0 }))).toBe(false);
+  });
+});
+
+describe("what a refused preflight leads to (#70)", () => {
+  // One prep pass per launch, never a loop, and a template a human named is not overridden by a room the
+  // launcher picked for them.
+  test("a green gate goes straight to the resolver room", () => {
+    expect(prepFirst({ refused: false, prepRan: false, templateRequested: false })).toBe("resolver");
+  });
+
+  test("a refusal nobody has repaired yet runs the prep room once", () => {
+    expect(prepFirst({ refused: true, prepRan: false, templateRequested: false })).toBe("prep");
+  });
+
+  test("still refused after that pass stops instead of running prep again", () => {
+    expect(prepFirst({ refused: true, prepRan: true, templateRequested: false })).toBe("stop");
+  });
+
+  test("an explicit --template is the human's decision, so the chain stays out of it", () => {
+    expect(prepFirst({ refused: true, prepRan: false, templateRequested: true })).toBe("stop");
+    expect(prepFirst({ refused: true, prepRan: true, templateRequested: true })).toBe("stop");
   });
 });
 

@@ -173,16 +173,56 @@ esac
 # The ticket's own records, run where the room will run. Records resolve against the working directory, and
 # this worktree is the only clean checkout of the base commit: the main one may be dirty, and a disagreement
 # there would be about files the room never sees. Refusing here must not leave what it just created.
+REFUSED=0
+CLAIMS_STATUS=0
 if [ -n "$ISSUE" ]; then
   CLAIMS_ARGS=(--repo "$REPO" --issue "$ISSUE" --worktree "$WORKTREE")
   [ "$NO_CLAIMS" = "1" ] && CLAIMS_ARGS+=(--no-claims)
-  if ! bun "$HUDDLE_ROOT/src/launch.ts" claims "${CLAIMS_ARGS[@]}"; then
+  bun "$HUDDLE_ROOT/src/launch.ts" claims "${CLAIMS_ARGS[@]}" || CLAIMS_STATUS=$?
+  if [ "$CLAIMS_STATUS" != "0" ]; then
     echo "launch: claims preflight refused — removing $WORKTREE and $RUN_DIR" >&2
     git -C "$REPO" worktree remove --force "$WORKTREE" >&2 || true
     git -C "$REPO" worktree prune
     rm -rf "$RUN_DIR"
+    # 2 is the preflight's own exit for a missing tool: no room repairs that, and one would spend itself
+    # discovering it (src/launch.ts, cmdClaims).
+    if [ "$CLAIMS_STATUS" != "1" ]; then
+      echo "launch: stopping — the claims preflight could not run; install claim-check or pass --no-claims" >&2
+      exit 1
+    fi
+    REFUSED=1
+  fi
+fi
+
+# #70: a refusal the prep room can repair must not need a human to remember a second command. The decision is
+# in src/ where a test holds it; this block only obeys it, once.
+if [ "$REFUSED" = "1" ]; then
+  DECISION_ARGS=(--refused 1 --prep-ran "${AH_PREP_RAN:-0}")
+  [ -n "$TEMPLATE_NAME" ] && DECISION_ARGS+=(--template-requested)
+  DECISION="$(bun "$HUDDLE_ROOT/src/launch.ts" prep "${DECISION_ARGS[@]}")" || exit 1
+  if [ "$DECISION" = "stop" ]; then
+    echo "launch: stopping — the claims gate refused and prep cannot help here" >&2
     exit 1
   fi
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "launch: dry run — would boot $DECISION first, then re-run this launch" >&2
+    exit 0
+  fi
+  # Its own run name: the resolver's `ticket-<n>` directory was just removed, and handing prep that name
+  # would put both phases in one directory (run-slug reuses a name that already exists).
+  PREP_ARGS=(--repo "$REPO" --issue "$ISSUE" --template "$DECISION" --no-claims --slug "ticket-$ISSUE-prep")
+  [ "$ANY_STATE" = "1" ] && PREP_ARGS+=(--any-state)
+  [ "$IGNORE_BLOCKERS" = "1" ] && PREP_ARGS+=(--ignore-blockers)
+  AH_PREP_RAN=1 "$0" "${PREP_ARGS[@]}" || exit 1
+  # Ask the original question again: the ticket body changed, so the template is picked from the new one.
+  RESUME_ARGS=(--repo "$REPO" --issue "$ISSUE")
+  [ "$ANY_STATE" = "1" ] && RESUME_ARGS+=(--any-state)
+  [ "$IGNORE_BLOCKERS" = "1" ] && RESUME_ARGS+=(--ignore-blockers)
+  [ "$WARM" = "0" ] && RESUME_ARGS+=(--no-warm)
+  # `--branch` is the human's answer to "where does the fix land", and the second half of the launch is the
+  # one that produces it: dropping the flag would hand back a detached worktree nobody can merge.
+  [ "$BRANCH" = "1" ] && RESUME_ARGS+=(--branch)
+  AH_PREP_RAN=1 exec "$0" "${RESUME_ARGS[@]}"
 fi
 
 if [ "$WARM" = "1" ]; then

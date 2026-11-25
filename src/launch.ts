@@ -209,6 +209,29 @@ export function claimsRefused(rows: readonly Row[]): boolean {
   return rows.some((row) => !row.ok && row.fatal);
 }
 
+/** The room that repairs a ticket whose own records do not hold (#70). */
+export const PREP_TEMPLATE = "ticket-prep";
+
+/**
+ * What the launcher does when the ticket's own records do not hold (#70).
+ *
+ * `resolver` — nothing to repair: the gate passed, or a human skipped it.
+ * `prep`     — the gate refused and this launch has not spent its prep pass yet.
+ * `stop`     — the gate refused and prep cannot help: the pass is spent, or a human named the template.
+ *
+ * One pass, never a loop: a ticket that is still red after a repair is the human's problem, not a reason to
+ * boot a second prep room over the same body.
+ */
+export function prepFirst(input: {
+  refused: boolean;
+  prepRan: boolean;
+  templateRequested: boolean;
+}): "prep" | "resolver" | "stop" {
+  if (!input.refused) return "resolver";
+  if (input.prepRan || input.templateRequested) return "stop";
+  return "prep";
+}
+
 export function claimsRows(input: { hasBlock: boolean; beforeExit: number | null; unverified: number | null; skipped?: boolean }): Row[] {
   if (input.skipped) return [{ ok: true, fatal: false, label: "claims", detail: "skipped by --no-claims" }];
   if (!input.hasBlock) {
@@ -558,8 +581,22 @@ function cmdIssue(argv: string[]): number {
  * (`claim-check`'s `root = process.cwd()`), so this must not run in the main checkout: that one may be dirty
  * and the room would then disagree for reasons the room never sees.
  */
-function cmdClaims(argv: string[]): number {
+/**
+ * The launcher's answer to a refused claims preflight, as one word on stdout: `prep` (and the room that does
+ * it), `resolver`, or `stop`. The decision is here, where a test holds it; the script only obeys (#70).
+ */
+function cmdPrep(argv: string[]): number {
   const args = argsOf(argv);
+  const decision = prepFirst({
+    refused: args.get("refused") === "1",
+    prepRan: args.get("prep-ran") === "1",
+    templateRequested: args.get("template-requested") !== undefined,
+  });
+  process.stdout.write(decision === "prep" ? PREP_TEMPLATE : decision);
+  return 0;
+}
+
+function cmdClaims(argv: string[]): number {  const args = argsOf(argv);
   const repo = args.get("repo")!;
   const issue = args.get("issue")!;
   const worktree = args.get("worktree")!;
@@ -568,8 +605,10 @@ function cmdClaims(argv: string[]): number {
   if (!skipped) {
     const cc = resolveClaimCheck(process.env);
     if (cc === null) {
+      // 2, not 1: a missing tool is not a ticket a room can repair, and the launcher must not spend a prep
+      // room on it (#70). 1 stays "the ticket's own records disagree".
       process.stderr.write("launch: FAIL claims binary — claim-check is not on PATH and $AH_CLAIM_CHECK is unset\n");
-      return 1;
+      return 2;
     }
     const body = sh("gh", ["issue", "view", issue, "--json", "body", "--jq", ".body"], repo);
     const hasBlock = /```claims\n/.test(body);
@@ -617,6 +656,8 @@ if (import.meta.path === Bun.main) {
             ? cmdIssue(rest)
             : command === "claims"
               ? cmdClaims(rest)
-              : (process.stderr.write("usage: bun src/launch.ts <worktree|warm|check|issue|claims> --repo …\n"), 2);
+              : command === "prep"
+                ? cmdPrep(rest)
+                : (process.stderr.write("usage: bun src/launch.ts <worktree|warm|check|issue|claims|prep> --repo …\n"), 2);
   process.exit(exit);
 }
