@@ -2,8 +2,9 @@ name: ticket-prep
 # Repairs a ticket's ```claims block before a resolver room reads it. The launcher refuses a ticket whose
 # block is missing or disagrees (#68) and nothing could fix one. The room's output is a ticket body, not a
 # commit: it runs with `--no-claims` and without `--branch`, so its worktree is detached and nothing merges.
-# 6 hops: read the ticket, check each row, publish once, re-run it, report. A room still arguing after that
-# is arguing with a criterion, and that argument belongs to a human.
+# `max_hops: 6` covers the room's turns: read the ticket, check each row, publish once, report. `publish`
+# re-derives the rows it writes, so there is no separate re-run step; the spare hop is slack for one exchange
+# with the lead. A room still arguing after that is arguing with a criterion, and that argument belongs to a human.
 max_hops: 6
 # The lead routes. Only the lead hands out work.
 dispatch_scope: lead
