@@ -32,5 +32,8 @@ report here; the next run will say what each agent spent.
 
 ## Cleaned
 
-The run's collateral, worktree and `run/001-docs-audit` branch were removed on request after the room
-reached `DONE`; this note and the numbers above are what survive.
+The run's collateral, worktree and `run/001-docs-audit` branch were left behind by that request and removed
+on 2026-11-25, after the audit was found stale: the branch held no commit that `main` did not already have,
+and its `docs/DOCS-AUDIT.md` inventoried a tree that had moved (29 tracked `.md` files when 46 exist,
+`decisions.md` 536 lines when it is 764, and a `docs/stryker-evaluation.md` that had been deleted).
+This note and the numbers above are what survive.
