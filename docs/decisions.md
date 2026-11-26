@@ -793,3 +793,22 @@ criterion were false, since run 009's criterion 4 was "accounted for" by rows th
 punished, as the reviewer was rewarded here for stopping early; a per-claim command dump instead of
 completeness — the true claims are the count, and a dump buries the two lines that matter; and leaving the
 probe prohibition in place — it was already broken, silently, in the only run that produced evidence.
+
+## D36 — A criterion about the future gets an `after` record (#76)
+
+**Context:** `#59` landed from run 009 with 15 `before` records and none for the landing.
+`claim-check run --phase after` therefore printed `no records in phase after, nothing was checked` and
+exited `2`, and the merged tree was accepted on the suite the room ran, which proves the repo did not
+regress and says nothing about the ticket's criteria. The prep room could have written the missing rows the
+whole time: `publish` carries `after` records verbatim and prints `N after row(s) not checked`, and an
+all-`after` set is legal (`bin/claim.ts:679`, `:682`). Its prompt said the opposite in effect — "`after` rows
+describe what the fix will show and cannot be verified before the fix exists. Leave them."
+
+**Decision:** prep rule 8 and the remit bullet tell the prep agent to write the `after` record a criterion
+is missing, with the command that will show it, and to publish it even though nothing can derive it yet.
+The "leave them" sentence keeps its first half and gains the exception. `test/template-prompts.test.ts`
+pins the new sentence in `PREP_RULES`.
+
+**Rejected:** making a missing `after` record a refusal — a ticket with no `after` rows is legal and its
+criteria may all be `before` facts, so the refusal would fire on the wrong table; inventing rows for
+criteria that are not about the future — rule 7 already forbids a nearby fact standing in for a criterion.

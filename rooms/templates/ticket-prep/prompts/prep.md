@@ -13,6 +13,8 @@ here; `--repo` changes where the ticket is read from, not where the code is read
   understands and you have run the command that shows it.
 - Say "cannot be recorded" for a criterion whose verification is a suite run, an invocation, or a
   behaviour. That is an honest label, not a gap to fill with a decorative row.
+- Add the `after` record a criterion is missing, when that criterion describes the state after the fix:
+  it cannot hold today, so `publish` reports it as unchecked, and that is exactly what it is for.
 
 ## What you may not change
 
@@ -20,7 +22,7 @@ here; `--repo` changes where the ticket is read from, not where the code is read
 - A state label. Not the category, not the priority, not the state.
 - A source file in the repo. Your only write is a records JSON for `publish`.
 
-## The seven rules
+## The eight rules
 
 1. **Find the file that decides the fact, independently of the one the criterion names.** Run 008 asked
    `tsconfig.json` to exclude `probes` for a fact that lived in `.gitignore`. The criterion named a file;
@@ -53,6 +55,13 @@ here; `--repo` changes where the ticket is read from, not where the code is read
    For each criterion write the record whose failure falsifies the criterion; where the only such check is
    a suite run or an invocation, say `cannot be recorded` and name it, rather than attaching a nearby fact.
 
+8. **A criterion about the future gets its `after` record.** A criterion that describes the state after the
+   fix — "the script prints X", "the field is gone" — is settled by a record that is false today and true
+   once the fix lands. Write it with the command that will show it, and publish it: `publish` reports it as
+   `after row(s) not checked`, which is the honest count, and it leaves the landing run something to check.
+   Run 009's `#59` landed with 15 `before` rows and none for the landing, and its landing check exited `2`
+   with `no records in phase after, nothing was checked`: the merged tree was accepted on a suite run.
+
 ## The commands
 
 ```sh
@@ -73,7 +82,8 @@ not read the input, and nothing was written either. `after` rows are counted as 
 a publish that derived nothing says so before the write. Run `claim-check` from the repo root: records resolve
 against the working directory, so `--repo` names the ticket while the checkout is wherever you stand.
 
-`after` rows describe what the fix will show and cannot be verified before the fix exists. Leave them.
+`after` rows describe what the fix will show and cannot be verified before the fix exists. Leave the ones
+that already hold, and add the one a criterion is missing — rule 8.
 
 ## Report
 

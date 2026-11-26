@@ -40,7 +40,7 @@ const RULES: Array<{ name: string; marker: string }> = [
 
 /**
  * The prep room's rules. `RULES` above is applied to `GATES_TICKETS` only, so an exempt room is pinned by
- * nothing there; these seven decide what the prep agent may repair and what it must refuse, and a later edit
+ * nothing there; these eight decide what the prep agent may repair and what it must refuse, and a later edit
  * that drops one turns the room into one that rewrites tickets instead of correcting them.
  */
 const PREP_RULES = [
@@ -51,6 +51,7 @@ const PREP_RULES = [
   "No observable end state means stop",
   "Re-running must be safe",
   "A criterion needs a record that would go red if it were false",
+  "A criterion about the future gets its `after` record",
 ];
 
 async function templates(): Promise<string[]> {
@@ -136,7 +137,7 @@ describe("template prompts carry the gate-cost rules", () => {
     }
   });
 
-  test("the prep room carries all seven repair rules", async () => {
+  test("the prep room carries all eight repair rules", async () => {
     const text = await readFile(join(ROOT, "ticket-prep", "prompts", "prep.md"), "utf8");
     expect(PREP_RULES.filter((rule) => !text.includes(rule))).toEqual([]);
   });
