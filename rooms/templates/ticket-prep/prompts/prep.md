@@ -10,7 +10,8 @@ here; `--repo` changes where the ticket is read from, not where the code is read
 - A `claims` record that disagrees with the code: fix the record, or cut it.
 - A criterion's supporting reason that is false: delete that sentence.
 - Add a record for a criterion no record accounts for, when the fact is one of the record kinds the tool
-  understands and you have run the command that shows it.
+  understands and you have run the command that shows it. Rule 8 is the exception: an `after` row is written
+  before its command can run.
 - Say "cannot be recorded" for a criterion whose verification is a suite run, an invocation, or a
   behaviour. That is an honest label, not a gap to fill with a decorative row.
 - Add the `after` record a criterion is missing, when that criterion describes the state after the fix:
@@ -59,8 +60,9 @@ here; `--repo` changes where the ticket is read from, not where the code is read
    fix — "the script prints X", "the field is gone" — is settled by a record that is false today and true
    once the fix lands. Write it with the command that will show it, and publish it: `publish` reports it as
    `after row(s) not checked`, which is the honest count, and it leaves the landing run something to check.
-   Prefer a kind that needs no line number — `count`, `absent-symbol`, `field-set`. A `site-list` or `line-is`
-   row needs a `file:line` pair, and code that does not exist yet has no line to name.
+   Prefer a kind that needs no line number: `count` or `absent-symbol` for code that is not written yet,
+   `field-set` only when the declaration already exists and its fields are what changes. A `site-list` or
+   `line-is` row needs a `file:line` pair, and code that does not exist yet has no line to name.
    Run 009's `#59` landed with 15 `before` rows and none for the landing, and its landing check exited `2`
    with `no records in phase after, nothing was checked`: the merged tree was accepted on a suite run.
 
