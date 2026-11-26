@@ -818,9 +818,11 @@ criteria that are not about the future — rule 7 already forbids a nearby fact 
 **Context:** `absent-symbol` reads every file under `dir`, not only source, because prose that names the
 symbol is a place it appears (`bin/claim.ts:94-95`, `:354`, pinned by AC29 after `_system`#13 read a `.md`
 as absent). A run's own collateral is such prose. Smoke ticket #77 carried
-`{"symbol": "smokeAfterRow", "dir": "."}`: `publish` wrote it green, and within the hour the row was red
-with all ten derived hits under `_run/006-ticket-77/` — a path `.gitignore:9` ignores. The same claim scoped
-to `src` passes (`1 records, 0 disagreement(s)`). Of the eight `absent-symbol` rows in seven tickets, seven
+`{"symbol": "smokeAfterRow", "dir": "."}`: `publish` derived it green from the room's worktree (136 files
+walked), and the same row is red in the main checkout, where the run's own `_run/006-ticket-77/` collateral
+lives — 300 files walked and all ten derived hits under `_run/`, a path `.gitignore:9` ignores. The same
+claim scoped to `src` passes from either checkout (`1 records, 0 disagreement(s)`). Of the eight
+`absent-symbol` rows in five tickets, seven
 are already scoped to `src`, `src/lib/fastmail` or `fixtures/src`; `#77` is the only `.`.
 
 **Decision:** prep rule 9 tells the prep room to scope an absence claim to the tree that could declare the

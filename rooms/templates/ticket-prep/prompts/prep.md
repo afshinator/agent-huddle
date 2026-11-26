@@ -72,8 +72,10 @@ here; `--repo` changes where the ticket is read from, not where the code is read
    or a ticket body that names the symbol therefore counts, and `dir: "."` turns the row into a claim about
    the working directory rather than about the code. Scope it to `src`, `scripts`, `tests` — one row per
    root, because `dir` is a single path — and let the criterion say which roots it means. Measured: smoke
-   ticket #77 carried `{"symbol": "smokeAfterRow", "dir": "."}`, was green when `publish` wrote it, and
-   was red within the hour, when the room's own `_run/006-ticket-77/` collateral contained the symbol.
+   ticket #77 carried `{"symbol": "smokeAfterRow", "dir": "."}`. `publish` derived it green from the
+   room's worktree, 136 files walked; the same row is red in the main checkout, where the run's own
+   `_run/006-ticket-77/` collateral lives — 300 files walked, all ten hits under `_run/`. A `.`-scoped row
+   therefore answers a different question depending on which checkout it runs in.
 
 ## The commands
 
