@@ -23,7 +23,7 @@ here; `--repo` changes where the ticket is read from, not where the code is read
 - A state label. Not the category, not the priority, not the state.
 - A source file in the repo. Your only write is a records JSON for `publish`.
 
-## The eight rules
+## The nine rules
 
 1. **Find the file that decides the fact, independently of the one the criterion names.** Run 008 asked
    `tsconfig.json` to exclude `probes` for a fact that lived in `.gitignore`. The criterion named a file;
@@ -65,6 +65,15 @@ here; `--repo` changes where the ticket is read from, not where the code is read
    `line-is` row needs a `file:line` pair, and code that does not exist yet has no line to name.
    Run 009's `#59` landed with 15 `before` rows and none for the landing, and its landing check exited `2`
    with `no records in phase after, nothing was checked`: the merged tree was accepted on a suite run.
+
+9. **An absence claim is scoped to the tree that could declare the symbol.** `absent-symbol` reads every
+   file under `dir`, not only source, because prose that names the symbol is a place it appears — that is
+   AC29 in the tool's spec, and it exists because a `.md` naming a symbol once read as absent. A run log
+   or a ticket body that names the symbol therefore counts, and `dir: "."` turns the row into a claim about
+   the working directory rather than about the code. Scope it to `src`, `scripts`, `tests` — one row per
+   root, because `dir` is a single path — and let the criterion say which roots it means. Measured: smoke
+   ticket #77 carried `{"symbol": "smokeAfterRow", "dir": "."}`, was green when `publish` wrote it, and
+   was red within the hour, when the room's own `_run/006-ticket-77/` collateral contained the symbol.
 
 ## The commands
 

@@ -812,3 +812,25 @@ pins the new sentence in `PREP_RULES`.
 **Rejected:** making a missing `after` record a refusal — a ticket with no `after` rows is legal and its
 criteria may all be `before` facts, so the refusal would fire on the wrong table; inventing rows for
 criteria that are not about the future — rule 7 already forbids a nearby fact standing in for a criterion.
+
+## D37 — An absence claim is scoped to the tree that could declare the symbol (#77)
+
+**Context:** `absent-symbol` reads every file under `dir`, not only source, because prose that names the
+symbol is a place it appears (`bin/claim.ts:94-95`, `:354`, pinned by AC29 after `_system`#13 read a `.md`
+as absent). A run's own collateral is such prose. Smoke ticket #77 carried
+`{"symbol": "smokeAfterRow", "dir": "."}`: `publish` wrote it green, and within the hour the row was red
+with all ten derived hits under `_run/006-ticket-77/` — a path `.gitignore:9` ignores. The same claim scoped
+to `src` passes (`1 records, 0 disagreement(s)`). Of the eight `absent-symbol` rows in seven tickets, seven
+are already scoped to `src`, `src/lib/fastmail` or `fixtures/src`; `#77` is the only `.`.
+
+**Decision:** prep rule 9 tells the prep room to scope an absence claim to the tree that could declare the
+symbol — `src`, `scripts`, `tests`, one row per root, because `dir` is a single path — rather than `.`.
+The tool keeps its behaviour: an ignored run log does contain the name, so the row was answering the
+question it asked. The deeper fix — a walk that skips paths matched by `git check-ignore`, plus never
+scanning the records file being read — is `_system`'s ticket, because it changes a decided behaviour and
+needs its own AC and a fixture that is a git repo.
+
+**Rejected:** making `absent-symbol` read only `.ts`/`.tsx` — that reverts AC29 and reopens `_system`#13;
+refusing `dir: "."` — a whole-repo absence claim is sometimes exactly right, and the cost lands in narrow
+dirs; and `git ls-files` as the file list — it would hide a symbol declared in an untracked new file, which
+is what a working-tree row must see.
