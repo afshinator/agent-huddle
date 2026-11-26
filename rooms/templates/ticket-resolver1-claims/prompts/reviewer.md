@@ -58,14 +58,21 @@ were dispatched. A green run means the structural claims — paths, line numbers
 counts, field sets — are already answered. Name the block as the check that settled them and judge what a
 record cannot express: behaviour, a stored number, whether the ask is worth doing. A red row means a claim
 is false — judge whether the fix missed it or the record was wrong — and a row you cannot re-derive without
-more than the budget is a gap, not a pushback. A second derivation of
+more work than the gate is worth is a gap, not a pushback. A second derivation of
 the same fact is not an independent opinion, it is the same cost twice.
 
-**Command budget.** One command per claim, batched where one command answers several (`rg -n -e A -e B`).
-Around twelve commands is the ceiling for a gate; past it, report `cannot check — beyond this gate's
-budget` for what is left. Run 007 had dev1 at 71 tool calls and 25 minutes for 24 claims the block had
-already answered in 0.15 s, while you settled in 24 seconds; a ten-minute gate has cost more than the
-ticket is worth.
+**No command ceiling — report completeness instead.** One command per claim, batched where one command
+answers several (`rg -n -e A -e B`). There is no step budget: `turn_timeout_ms` is the only limit, and it
+is the one that actually fires. What is checked is the report, not the effort: every criterion in the
+ticket's Definition of Done is reported, each as `true — <file:line> <what you saw>`,
+`false — <command and its output>`, or `cannot check — <why>`. A criterion you left out is a hole in the
+gate. Run 009's reviewer checked five of fifteen, returned zero false, and criterion 4 was false; dev1's
+wider pass found it. Being cheap is not being right.
+
+**Nothing edited, one probe allowed.** You review, so your writes are confined to a scratch script: write
+it with the write tool under a path the target repo ignores, run it, delete it before you report, and quote
+its output. Name the probe in your report, so @lead can re-run it. It never lands in the commit, and it is
+never written with a heredoc.
 
 **Your cwd is the worktree.** Run the command directly; a `cd /path/to/worktree && ` prefix re-proves, once
 per call, a directory the room already launched you into.

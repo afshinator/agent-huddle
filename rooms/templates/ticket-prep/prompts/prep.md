@@ -20,7 +20,7 @@ here; `--repo` changes where the ticket is read from, not where the code is read
 - A state label. Not the category, not the priority, not the state.
 - A source file in the repo. Your only write is a records JSON for `publish`.
 
-## The six rules
+## The seven rules
 
 1. **Find the file that decides the fact, independently of the one the criterion names.** Run 008 asked
    `tsconfig.json` to exclude `probes` for a fact that lived in `.gitignore`. The criterion named a file;
@@ -46,6 +46,12 @@ here; `--repo` changes where the ticket is read from, not where the code is read
    over the same ticket must publish nothing, because a repair that re-publishes every row on every run
    makes the ticket's history unreadable and its diffs meaningless. Show the diff before you publish it
    and say what the re-run produced.
+
+7. **A criterion needs a record that would go red if it were false.** A row that passes either way — a
+   symbol that exists, a file that is present — accounts for nothing. Run 009's criterion 4 was covered by
+   rows that were all true while the criterion itself was false, and the gate reported "0 unaccounted".
+   For each criterion write the record whose failure falsifies the criterion; where the only such check is
+   a suite run or an invocation, say `cannot be recorded` and name it, rather than attaching a nearby fact.
 
 ## The commands
 

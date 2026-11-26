@@ -31,7 +31,8 @@ const LEAD = "lead.md";
 
 const RULES: Array<{ name: string; marker: string }> = [
   { name: "does not re-derive what is settled", marker: "Do not re-derive" },
-  { name: "carries a command budget", marker: "Command budget" },
+  { name: "reports every criterion rather than a sample", marker: "Definition of Done is reported" },
+  { name: "allows exactly one throwaway probe", marker: "one probe allowed" },
   { name: "names its own working directory", marker: "cwd is the worktree" },
   { name: "prints a report whole when it fits", marker: "Print a report whole" },
   { name: "treats a false reason as a false criterion", marker: "A false reason is a false criterion" },
@@ -39,7 +40,7 @@ const RULES: Array<{ name: string; marker: string }> = [
 
 /**
  * The prep room's rules. `RULES` above is applied to `GATES_TICKETS` only, so an exempt room is pinned by
- * nothing there; these six decide what the prep agent may repair and what it must refuse, and a later edit
+ * nothing there; these seven decide what the prep agent may repair and what it must refuse, and a later edit
  * that drops one turns the room into one that rewrites tickets instead of correcting them.
  */
 const PREP_RULES = [
@@ -49,6 +50,7 @@ const PREP_RULES = [
   "never move a state label",
   "No observable end state means stop",
   "Re-running must be safe",
+  "A criterion needs a record that would go red if it were false",
 ];
 
 async function templates(): Promise<string[]> {
@@ -134,7 +136,7 @@ describe("template prompts carry the gate-cost rules", () => {
     }
   });
 
-  test("the prep room carries all six repair rules", async () => {
+  test("the prep room carries all seven repair rules", async () => {
     const text = await readFile(join(ROOT, "ticket-prep", "prompts", "prep.md"), "utf8");
     expect(PREP_RULES.filter((rule) => !text.includes(rule))).toEqual([]);
   });

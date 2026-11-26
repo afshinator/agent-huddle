@@ -152,7 +152,7 @@ started.
 | An issue names its run `ticket-<n>` | `test/run-slug.test.ts`, #68 |
 | A requested name keeps its ordinal, and a name an existing run already carries reruns that directory | `test/run-slug.test.ts`, `2b9cd83` |
 | A refused preflight decides to run the prep room once, and stops when the pass is spent; a template named with `--template` keeps the chain out | `test/launch.test.ts`, #70, D32 |
-| The prep room carries its six repair rules, and a template that is not gating must be exempt with a reason | `test/template-prompts.test.ts`, #69, D30 |
+| The prep room carries its seven repair rules, and a template that is not gating must be exempt with a reason | `test/template-prompts.test.ts`, #69, D30, D35 |
 
 ## Not proven
 

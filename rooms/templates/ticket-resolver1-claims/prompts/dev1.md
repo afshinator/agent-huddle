@@ -54,10 +54,19 @@ Name the block as the check that settled them and spend Gate 1 on what a record 
 behaviour, a stored number, whether the ask is worth doing. A red row means a claim is false: quote it and
 say so, and do not spend commands re-proving it — the row is the evidence.
 
-**Command budget.** One command per claim, batched where one command answers several (`rg -n -e A -e B`).
-Around twelve commands is the ceiling for a gate; past it, report `cannot check — beyond this gate's
-budget` for what is left. A gate that runs ten minutes has cost more than the ticket is worth: run 007
-spent 71 tool calls and 25 minutes hand-rederiving 24 claims the block had already answered in 0.15 s.
+**No command ceiling — report completeness instead.** One command per claim, batched where one command
+answers several (`rg -n -e A -e B`). There is no step budget: `turn_timeout_ms` is the only limit, and it
+is the one that actually fires. What is checked is the report, not the effort: every criterion in the
+ticket's Definition of Done is reported, each as `true — <file:line> <what you saw>`,
+`false — <command and its output>`, or `cannot check — <why>`. A criterion you left out is a hole in the
+gate, and a green over a sample of the bar is a green nobody can merge on. Run 009's reviewer checked five
+of fifteen and returned zero false while criterion 4 was false; a budget cannot produce that answer and
+cannot be blamed for it.
+
+**Nothing edited, one probe allowed.** Source and tests are not touched in this phase. Verifying what code
+actually does sometimes needs a scratch script: write it with the write tool under a path the target repo
+ignores, run it, delete it before you report, and quote its output. Name the probe in your report, so the
+next agent can re-run it. It never lands in the commit, and it is never written with a heredoc.
 
 **Your cwd is the worktree.** The room launches you in it — a linked worktree, not the main checkout —
 so every command already runs there: run it directly, without a `cd /path/to/worktree && ` prefix. Run 007

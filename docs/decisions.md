@@ -687,6 +687,8 @@ careless edit.
 were spent on real commands, not on reasoning; and deleting the claims block from tickets before dispatch
 — the block is the evidence a gate is supposed to start from.
 
+**Superseded in part by D35:** the command budget this entry introduced was removed after run 009.
+
 ## D31 — Green means the rows hold, not that every criterion has one (T21)
 
 **Context:** #52's block passed pickup with 24 rows while criterion 1 asked for a `new: rollup.ts`
@@ -762,3 +764,29 @@ resolver's re-run gets a fresh `ticket-<n>` of its own, with the template it pic
 
 **Rejected:** reusing `ticket-<n>` for both — the second phase would overwrite the first's ask and inherit
 its template; a timestamp — unreadable history in `ls _run/`, which the ordinals exist to keep.
+
+## D35 — A gate is bounded by its report, not by a step count (#75, run 009)
+
+**Context:** run `009-ticket-59`, gate 1, with D30's budget in force. dev1 reported `Commands: 24` against
+the twelve-command ceiling and never wrote the `cannot check — beyond this gate's budget` line; the
+reviewer made 24 calls across its two turns, wrote `claims: 5 checked, 5 true, 0 false`, and missed the
+material defect — criterion 4 treats `reached_tp1 && !stopped_first` as a second definition of "hit" while
+`group-stats.ts:148`, `fragility/route.ts:207` and `getRecommendationStats.ts:278` take "hit" from
+`prospectIdsWithHits`. @lead confirmed dev1's finding at `_run/009-ticket-59/room.log` (`15:07:28`) and the
+room went on to gate 2, so the cheap pass produced a green on a ticket whose criterion was false. Neither
+agent used the escape hatch: a step ceiling in prose is not enforced, and the one gate that obeyed its
+spirit returned the wrong answer.
+
+**Decision:** the checkers' prompts carry no step budget — `turn_timeout_ms` is the only limit and it
+fires. In its place an output contract both prompts state and `test/template-prompts.test.ts` pins: every
+criterion in the ticket's Definition of Done is reported as true, false or cannot check, and a criterion
+left out is a hole in the gate. Phase 1 also permits exactly one throwaway probe — written with the write
+tool under an ignored path, deleted before reporting, quoted and named in the report, never a heredoc —
+because dev1's behaviour evidence in run 009 came from such a probe, taken while the prompt said edits were
+forbidden. The prep room gains a seventh rule: a criterion needs a record that would go red if the
+criterion were false, since run 009's criterion 4 was "accounted for" by rows that all passed.
+
+**Rejected:** keeping the ceiling and adding an enforcement check — the honest agent would be the one
+punished, as the reviewer was rewarded here for stopping early; a per-claim command dump instead of
+completeness — the true claims are the count, and a dump buries the two lines that matter; and leaving the
+probe prohibition in place — it was already broken, silently, in the only run that produced evidence.
