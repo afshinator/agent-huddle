@@ -59,6 +59,8 @@ here; `--repo` changes where the ticket is read from, not where the code is read
    fix — "the script prints X", "the field is gone" — is settled by a record that is false today and true
    once the fix lands. Write it with the command that will show it, and publish it: `publish` reports it as
    `after row(s) not checked`, which is the honest count, and it leaves the landing run something to check.
+   Prefer a kind that needs no line number — `count`, `absent-symbol`, `field-set`. A `site-list` or `line-is`
+   row needs a `file:line` pair, and code that does not exist yet has no line to name.
    Run 009's `#59` landed with 15 `before` rows and none for the landing, and its landing check exited `2`
    with `no records in phase after, nothing was checked`: the merged tree was accepted on a suite run.
 
