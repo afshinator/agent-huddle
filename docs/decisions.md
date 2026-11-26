@@ -780,10 +780,13 @@ spirit returned the wrong answer.
 **Decision:** the checkers' prompts carry no step budget — `turn_timeout_ms` is the only limit and it
 fires. In its place an output contract both prompts state and `test/template-prompts.test.ts` pins: every
 criterion in the ticket's Definition of Done is reported as true, false or cannot check, and a criterion
-left out is a hole in the gate. Phase 1 also permits exactly one throwaway probe — written with the write
-tool under an ignored path, deleted before reporting, quoted and named in the report, never a heredoc —
-because dev1's behaviour evidence in run 009 came from such a probe, taken while the prompt said edits were
-forbidden. The prep room gains a seventh rule: a criterion needs a record that would go red if the
+left out is a hole in the gate. Phase 1 also permits exactly one probe: dev1 may write a scratch file under
+an ignored path, delete it before reporting and name it; the reviewer has no write tool, so its probe is an
+inline one-liner it quotes. Both carry the command and its output, and neither is ever a heredoc — dev1's
+behaviour evidence in run 009 came from such a probe, taken while the prompt said edits were
+forbidden. The reviewer's report shape gains a `dod:` line, `<n> of <n>` criteria reported, because the
+counts line alone is what let a five-of-fifteen pass read as a green. The prep room gains a seventh rule: a
+criterion needs a record that would go red if the
 criterion were false, since run 009's criterion 4 was "accounted for" by rows that all passed.
 
 **Rejected:** keeping the ceiling and adding an enforcement check — the honest agent would be the one

@@ -34,6 +34,7 @@ Then the verdict. Then one or two lines: what you did not check, and the risk. N
 ```
 Got it: …
 claims: <n> checked, <n> true, <n> false, <n> cannot check
+dod: <n> of <n> criteria reported — true: <criterion numbers> · false: <numbers> · cannot check: <numbers>
 false: <assertion> — <what you saw> (<command>)
 verdict: doable — <one line, and why>
 @lead go
@@ -47,8 +48,12 @@ line reading `not doable / doable: doable as written` is read as a rejection by 
 ```
 Got it: …
 claims: <n> checked, <n> false
+dod: <n> of <n> criteria reported — false: <numbers> · cannot check: <numbers>
 @lead no-go — <the claim or the missing requirement>, <the command that showed it>
 ```
+
+   The `dod:` line is not optional and not a sample: its two numbers are the criteria you reported and the
+   criteria the ticket carries, and they are equal or the report is sent back.
 
    Use `go` only when you would be willing to see the fix merged on this evidence alone. A bare `go` with
    no claims line is a defect: @lead will send it back.
@@ -64,10 +69,11 @@ ticket's Definition of Done is reported, each as `true — <file:line> <what you
 `false — <command and its output>`, or `cannot check — <why>`. A criterion you left out is a hole in the
 gate. Being cheap is not being right.
 
-**Nothing edited, one probe allowed.** You review, so your writes are confined to a scratch script: write
-it with the write tool under a path the target repo ignores, run it, delete it before you report, and quote
-its output. Name the probe in your report, so @lead can re-run it. It never lands in the commit, and it is
-never written with a heredoc.
+**Nothing edited, one probe allowed.** You review, so the probe is a one-liner you run and quote, not a file
+— your toolset has no write tool and this phase does not touch source or tests. `bun -e '…'`, `node -p …`,
+a single `psql -c` — the point is to watch the code answer, not to describe what it would answer. Quote the
+command and its output, so @lead can re-run it. Nothing lands in the commit, and nothing is ever written
+with a heredoc.
 
 **Your cwd is the worktree.** Run the command directly; a `cd /path/to/worktree && ` prefix re-proves, once
 per call, a directory the room already launched you into.
