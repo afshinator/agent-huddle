@@ -771,7 +771,7 @@ its template; a timestamp — unreadable history in `ls _run/`, which the ordina
 the twelve-command ceiling and never wrote the `cannot check — beyond this gate's budget` line; the
 reviewer made 24 calls across its two turns, wrote `claims: 5 checked, 5 true, 0 false`, and missed the
 material defect — criterion 4 treats `reached_tp1 && !stopped_first` as a second definition of "hit" while
-`group-stats.ts:148`, `fragility/route.ts:207` and `getRecommendationStats.ts:278` take "hit" from
+`group-stats.ts:148`, `fragility/route.ts:207` and `getRecommendationStats.ts:257` take "hit" from
 `prospectIdsWithHits`. @lead confirmed dev1's finding at `_run/009-ticket-59/room.log` (`15:07:28`) and the
 room went on to gate 2, so the cheap pass produced a green on a ticket whose criterion was false. Neither
 agent used the escape hatch: a step ceiling in prose is not enforced, and the one gate that obeyed its
