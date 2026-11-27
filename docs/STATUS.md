@@ -131,7 +131,7 @@ started.
 | The room prints its banner (name, handles, run dir, ask, transcript) and the measured layout before dispatching, and appends every line to `room.log` | `test/coordinator.test.ts`, `test/room-log.test.ts`, #59 |
 | An agent's prose reaches the room from the stream deltas, before the turn settles; the settled text is not printed twice, and a dying turn closes the line | `test/chat-stream.test.ts`, `test/coordinator.test.ts`, #63 |
 | An agent's pane stream belongs to one boot: truncated on open, `log.jsonl` still append-only, and the pane clears herdr's restored scrollback first | `test/agent-stream.test.ts`, `test/pane-command.test.ts`, `test/coordinator.test.ts`, #61 |
-| A pane opens with `@handle — idle, never dispatched · slot n/m` and marks `@handle — working` once per turn, so an unused pane cannot read as activity | `test/coordinator.test.ts`, #62 |
+| A pane opens with `[started] pid=<pid>` and nothing else, and marks `handle — working` once per turn, so an unused pane cannot read as activity | `test/coordinator.test.ts`, #62 |
 | The agent pane carries tool calls and lifecycle lines, never the agent's prose | `test/coordinator.test.ts`, `test/agent-stream.test.ts`, #65 |
 | Only a speaking message's prefix takes the agent's colour; a handle named in text is italic instead | `test/chat-stream.test.ts`, `test/colors.test.ts`, #70, #77 |
 | A room note prints dim, so it cannot be read as somebody speaking | `test/coordinator.test.ts`, D19 |

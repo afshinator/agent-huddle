@@ -672,9 +672,10 @@ export interface HerdrPaneManager {
 The room pane is the coordinator's own terminal (the human launches the coordinator in it); it is **not** managed by this seam. Only agent panes are.
 
 **Pane content (v1.1, D7).** An agent pane shows that agent's **readable output stream** (`agents/<id>/output.log`), not `log.jsonl`: its deltas written as prose, one blank line between turns, lifecycle events as one prefixed line each (`[started]`, `[error] …`, `[exited]`). A turn that streamed no deltas writes its settled text, because a provider may send `text_end` without `text_delta`. `log.jsonl` remains on disk as the machine record and no pane tails raw JSON. Tool calls appear as one `[tool] <name> <args>` line, cut at 200 characters (D8). The pane opens only after that file exists: the coordinator awaits its header write before starting the
-tail (#42), so a pane never tails a path that is not there yet. Each agent pane therefore opens with two lines: `[started] pid=<pid>` and a state line —
-`@reviewer — idle, never dispatched · slot 2/2` — followed by `@handle — working` at the start of each
-turn, so a pane's own history says whether its agent has ever been used (#62). That file belongs to **one boot**: it
+tail (#42), so a pane never tails a path that is not there yet. Each agent pane therefore opens with one line,
+`[started] pid=<pid>`, and says nothing more until the room hands that agent a turn: `handle — working` is
+written at the start of each turn, once per turn, so an unused pane cannot be read as activity (T15, #62).
+The name carries no sigil in a pane: `@` marks an address, and a pane addresses nobody. That file belongs to **one boot**: it
 is truncated when the agent's stream is opened, so a pane never shows an earlier boot's lifecycle
 lines (#61). `log.jsonl` stays append-only — it is the machine record and nothing tails it. The pane
 script also clears the terminal before its tail, because herdr restores a pane's previous scrollback
