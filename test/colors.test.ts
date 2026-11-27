@@ -33,8 +33,7 @@ describe("paintTag", () => {
 
 describe("the palette is the emoji palette", () => {
   test("each named agent's colour is its mark's colour, sampled from the system font", () => {
-    // Measured, not chosen: the squares are drawn by the font, so the text has to match them
-    // (tools/emoji-palette.swift). 🟨 🟦 🟪
+    // Measured, not chosen: the squares are drawn by the font, so the text has to match them. 🟨 🟦 🟪
     expect(AGENT_RGB.lead).toEqual([238, 180, 0]);
     expect(AGENT_RGB.dev1).toEqual([5, 93, 242]);
     expect(AGENT_RGB.reviewer).toEqual([185, 49, 255]);
