@@ -619,7 +619,10 @@ one status request, and the room records that it asked. The request goes out as 
 "steer"`, not `followUp`: pi delivers a follow-up only when the agent stops, which is after the turn it
 was meant to rescue (`docs/rpc-commands.md`). A steer lands at the agent's next tool boundary, inside the
 same turn, so it costs no hop; it is sent once per turn, and a failed steer is a notice rather than the
-end of the chain.
+end of the chain. A steer therefore joins the turn instead of starting one: it must not replace the
+settle the room is already waiting on, and it must not clear the buffers that turn is still filling
+(`src/real/pi-agent-client-real.ts`, `prompt`). Run 007 stalled a nudged turn until `turn_timeout_ms`
+fired because the steer replaced that settle and left the room waiting on a promise nothing resolved.
 
 **The wording is the point:** the room records a turn's words (`settled.lastText`), so the request says
 the status must be written, and that a tool call is not an answer. An agent answering by running a command

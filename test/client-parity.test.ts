@@ -27,6 +27,24 @@ createInterface({ input: process.stdin }).on("line", (line: string) => {
 });
 `;
 
+const STEER_STUB = `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (o: unknown): void => { process.stdout.write(JSON.stringify(o) + "\\n"); };
+createInterface({ input: process.stdin }).on("line", (line: string) => {
+  if (line.trim() === "") return;
+  const cmd = JSON.parse(line) as { id?: string; type?: string; streamingBehavior?: string };
+  if (cmd.type === "prompt") {
+    out({ type: "agent_start" });
+    // A steer is the agent answering a status request and stopping: production settles the turn there.
+    if (cmd.streamingBehavior === "steer") {
+      out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "still on it" } });
+      out({ type: "agent_settled" });
+    }
+  }
+  if (cmd.id) out({ id: cmd.id, type: "response", success: true, data: {} });
+});
+`;
+
 const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 
 interface Observed {
@@ -64,10 +82,10 @@ async function stopMidTurn(client: PiAgentClient, agentId: string): Promise<Obse
   return { settle, errorEvents, afterStop, secondStop };
 }
 
-async function realClient(): Promise<{ client: RealPiAgentClient; dir: string }> {
+async function realClient(stubSource: string = HOLD_STUB): Promise<{ client: RealPiAgentClient; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), "ah-parity-"));
   const stub = join(dir, "hold-pi");
-  await writeFile(stub, HOLD_STUB, "utf8");
+  await writeFile(stub, stubSource, "utf8");
   await chmod(stub, 0o755);
   return { client: new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } }), dir };
 }
@@ -95,6 +113,43 @@ describe("PiAgentClient parity", () => {
         secondStop: "ok",
       } satisfies Observed);
       expect(fakeObserved).toEqual(realObserved);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  /**
+   * The room nudges a quiet turn with a `steer`, and the agent answers the status request and stops.
+   * The settle the caller is already waiting on has to be the one that resolves (T16): a steer that
+   * replaces it leaves `waitForSettled` with a promise nothing will resolve, and the turn only ends
+   * when `turn_timeout_ms` fires.
+   */
+  test("a steer mid-turn resolves the settle the caller is waiting on", async () => {
+    const steerMidTurn = async (
+      client: PiAgentClient,
+      agentId: string,
+      settleHeldTurn: () => void,
+    ): Promise<string> => {
+      await client.prompt(agentId, { message: "work until the room asks for a status line" });
+      const pending = client.waitForSettled(agentId, 2_000).then(
+        (r) => `resolved: ${r.lastText}`,
+        (e: Error) => `rejected: ${e.message}`,
+      );
+      await client.prompt(agentId, { message: "status only", streamingBehavior: "steer" });
+      settleHeldTurn();
+      return pending;
+    };
+
+    const { client: real, dir } = await realClient(STEER_STUB);
+    try {
+      await real.spawn(dev1, { cwd: dir });
+      // The stub settles itself when the steer arrives; the fake needs the same moment released.
+      const realSettle = await steerMidTurn(real, dev1.id, () => {});
+      const fake = await fakeClient();
+      const fakeSettle = await steerMidTurn(fake, dev1.id, () => fake.release(dev1.id, "still on it"));
+
+      expect(realSettle).toBe("resolved: still on it");
+      expect(fakeSettle).toBe(realSettle);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
