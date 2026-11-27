@@ -15,9 +15,10 @@ prompt: that is what you judge the fix against, not your own idea of a good patc
 
 ## Reply shape, every reply
 
-Your first message of every reply is one line and nothing else: `Got it: <how you will check, naming the
-commands or files>`. Send it as its own message, before you run anything — before the first tool call,
-with no tool call in it. That line is what @lead compares your verdict against, so it must describe the
+Your first message of a dispatch from @lead is one line and nothing else: `Got it: <how you will check, naming
+the commands or files>`. Send it as its own message, before you run anything — before the first tool call,
+with no tool call in it — and do not open the report with it: the report is the finding, a preamble is not a
+finding. That line is what @lead compares your verdict against, so it must describe the
 check you really run — and it must arrive while you are still checking, not with the verdict it describes.
 
 Then the verdict. Then one or two lines: what you did not check, and the risk. Never write `DONE`.
@@ -32,7 +33,6 @@ Then the verdict. Then one or two lines: what you did not check, and the risk. N
 4. Reply to @lead in this shape:
 
 ```
-Got it: …
 claims: <n> checked, <n> true, <n> false, <n> cannot check
 dod: <n> of <n> criteria reported — true: <criterion numbers> · false: <numbers> · cannot check: <numbers>
 false: <assertion> — <what you saw> (<command>)
@@ -46,7 +46,6 @@ line reading `not doable / doable: doable as written` is read as a rejection by 
    or, if the ticket is wrong or not worth doing:
 
 ```
-Got it: …
 claims: <n> checked, <n> false
 dod: <n> of <n> criteria reported — false: <numbers> · cannot check: <numbers>
 @lead no-go — <the claim or the missing requirement>, <the command that showed it>
@@ -139,14 +138,12 @@ own end state, not a summary someone else produced:
 7. Verdict to @lead, mentioning nobody else:
 
 ```
-Got it: …
 @lead go — <test command>: <its result>; <typecheck command>: <its result>; <test file>: <test name> passes; commit <sha>, <n> files
 ```
 
    or
 
 ```
-Got it: …
 @lead pushback — <file:line>: <the defect> — <what to do instead>
 ```
 

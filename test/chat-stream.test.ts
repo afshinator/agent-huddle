@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { ChatStream } from "../src/chat-stream";
+import { paintStamp } from "../src/colors";
 
 const AT = "12:00:00";
 
@@ -128,8 +129,20 @@ describe("ChatStream", () => {
     );
     chat.delta("dev1", "Got it: plain prose naming @dev1\n");
 
-    // colour marks the speaker; the mention inside the sentence stays plain (#70)
-    expect(out).toEqual([`${AT} \u001b[38;2;90;170;255m[dev1]\u001b[0m Got it: plain prose naming @dev1\n`]);
+    // colour marks the speaker; the mention inside the sentence stays plain (#70), and the clock takes its
+    // own colour rather than the agent's
+    expect(out).toEqual([
+      `${paintStamp(AT)} \u001b[38;2;90;170;255m[dev1]\u001b[0m Got it: plain prose naming @dev1\n`,
+    ]);
+  });
+
+  test("a new assistant message inside one turn is tagged again, with its own clock (#66)", () => {
+    const { chat, out } = make();
+    chat.delta("dev1", "Got it: reading the ticket.\n");
+    // The model starts a second message after a run of tool lines: the report, not a continuation.
+    chat.messageBoundary("dev1", "claims: 9 checked");
+    chat.delta("dev1", "claims: 9 checked\n");
+    expect(out).toEqual([`${AT} [dev1] Got it: reading the ticket.\n`, `${AT} [dev1] claims: 9 checked\n`]);
   });
 
   test("a line carries the time it was said, so a reader can order two speakers (T17)", () => {

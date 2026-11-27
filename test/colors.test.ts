@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { AGENT_MARK, AGENT_RGB, FALLBACK_MARKS, FALLBACK_RGB, colorOf, markMentions, markOf, paintTag, stripAnsi, colorEnabled } from "../src/colors";
+import { AGENT_MARK, AGENT_RGB, FALLBACK_MARKS, FALLBACK_RGB, STAMP_RGB, colorOf, markMentions, markOf, paintStamp, paintTag, stripAnsi, colorEnabled } from "../src/colors";
 
 const RED = "\u001b[38;2;255;0;0m";
 const BLUE = "\u001b[38;2;0;0;255m";
@@ -28,6 +28,18 @@ describe("paintTag", () => {
     expect(paintTag("@lead", () => null)).toBe("[lead]");
     // A handle without the `@` prints the same: the sigil is mention syntax, not part of the name.
     expect(paintTag("lead", () => null)).toBe("[lead]");
+  });
+});
+
+describe("paintStamp", () => {
+  test("the clock carries a colour of its own, not an agent's", () => {
+    const clock = "\u001b[38;2;" + STAMP_RGB.join(";") + "m";
+    expect(paintStamp("12:00:00")).toBe(`${clock}12:00:00${RESET}`);
+  });
+
+  test("that colour belongs to no agent, so a reader can tell time from speaker", () => {
+    const spoken = [...Object.values(AGENT_RGB), ...FALLBACK_RGB];
+    expect(spoken.some((rgb) => rgb.join(";") === STAMP_RGB.join(";"))).toBe(false);
   });
 });
 
