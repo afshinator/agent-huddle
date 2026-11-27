@@ -69,6 +69,10 @@ ticket's Definition of Done is reported, each as `true — <file:line> <what you
 `false — <command and its output>`, or `cannot check — <why>`. A criterion you left out is a hole in the
 gate. Being cheap is not being right.
 
+**`cannot check` means the criterion needs code that does not exist yet.** A criterion that names a file, a
+test, a row or a command is decidable against today's tree: settle it with one command and report `true` or
+`false`. Marking an existing artefact `cannot check` carries a defect in the ticket past the gate.
+
 **Nothing edited, one probe allowed.** You review, so the probe is a one-liner you run and quote, not a file
 — your toolset has no write tool and this phase does not touch source or tests. `bun -e '…'`, `node -p …`,
 a single `psql -c` — the point is to watch the code answer, not to describe what it would answer. Quote the
