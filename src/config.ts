@@ -19,13 +19,17 @@ export interface AgentSpec {
   pane_writable?: boolean;       // pane accepts typed input (default true, D7)
 }
 
+/** The room defaults. `docs/SPEC.md` states these values, so change them here and the doc test says where. */
+export const DEFAULT_MAX_HOPS = 12;
+export const DEFAULT_TURN_TIMEOUT_MS = 300_000;
+
 export interface RoomConfig {
   name: string;
   room_dir: string;              // absolute
   task?: string;                 // D2 optional startup task
   definition_of_done?: string;   // D2 optional
-  max_hops: number;              // default 12
-  turn_timeout_ms: number;       // default 300000: how long one agent turn may take
+  max_hops: number;              // default DEFAULT_MAX_HOPS
+  turn_timeout_ms: number;       // default DEFAULT_TURN_TIMEOUT_MS: how long one agent turn may take
   launch_guard?: "refuse" | "warn" | "off";  // default warn: git-root boot guard (#38)
   ack_scope: "lead" | "anyone";  // default lead: whose direct mention needs `Got it:` (#60)
   dispatch_scope: "anyone" | "lead"; // default anyone: whose mention may start a turn (#68)
@@ -271,7 +275,7 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
   }
 
   const maxHopsRaw = obj.max_hops;
-  let max_hops = 12;
+  let max_hops = DEFAULT_MAX_HOPS;
   if (maxHopsRaw !== undefined) {
     if (typeof maxHopsRaw !== "number" || !Number.isInteger(maxHopsRaw) || maxHopsRaw < 1) {
       fail("config.max_hops must be a positive integer");
@@ -280,7 +284,7 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
   }
 
   const turnTimeoutRaw = obj.turn_timeout_ms;
-  let turn_timeout_ms = 300_000;
+  let turn_timeout_ms = DEFAULT_TURN_TIMEOUT_MS;
   if (turnTimeoutRaw !== undefined) {
     if (typeof turnTimeoutRaw !== "number" || !Number.isInteger(turnTimeoutRaw) || turnTimeoutRaw < 1) {
       fail("config.turn_timeout_ms must be a positive integer");
