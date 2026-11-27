@@ -12,7 +12,11 @@ jobs:
       # Live pi/herdr tests need local credentials and a herdr pane.
       PI_TEST_INTEGRATION: "0"
     steps:
+      # Full history: `test/doc-pointers.test.ts` checks that a commit sha cited in the docs is a commit,
+      # and a depth-1 clone cannot answer that (15 citations read as "not a commit" before this).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
