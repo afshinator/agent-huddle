@@ -76,7 +76,7 @@ describe("extractMentions", () => {
 
   test("a scoped package name is not a mention", () => {
     // `@testing-library/react` reads as `@testing-library` to the handle grammar, so a ticket room
-    // printed "unknown agent mention(s): @testing-library" three times in one run (#79).
+    // printed "unknown agent mention(s): @testing-library" three times in one run (9275c44).
     expect(resolveMentions("check @testing-library/react and @types/node", cfg)).toEqual({
       targets: [],
       unknownHandles: [],

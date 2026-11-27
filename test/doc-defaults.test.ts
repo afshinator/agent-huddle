@@ -2,28 +2,40 @@
 //
 // A stated default is a value copied out of the code: right until the code moves and then silently wrong.
 // The expected value here comes from the import, never from a remembered figure. A doc that stops stating
-// one is a failure too — `null` is not a number, so a reworded line cannot read as green.
+// one is a failure too — `null` is not the constant, so a reworded line cannot read as green.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { DEFAULT_MAX_HOPS, DEFAULT_TURN_TIMEOUT_MS } from "../src/config";
+import {
+  DEFAULT_ACK_SCOPE,
+  DEFAULT_DISPATCH_SCOPE,
+  DEFAULT_LAUNCH_GUARD,
+  DEFAULT_MAX_HOPS,
+  DEFAULT_TURN_TIMEOUT_MS,
+} from "../src/config";
 
 const repo = new URL("..", import.meta.url).pathname;
 const SPEC = readFileSync(repo + "docs/SPEC.md", "utf8").split("\n");
 
-/** The `// default N` a SPEC interface line states, or null when it states none. */
-function statedDefault(field: string): number | null {
-  // The interface form, `max_hops: number;`, so a YAML example (`max_hops: 20`) is not the line read.
-  const line = SPEC.find((l) => new RegExp(`^\\s*${field}: \\w+;`).test(l));
-  const stated = line?.match(/\/\/\s*default\s+([\d_]+)/);
-  return stated === undefined || stated === null ? null : Number(stated[1]!.replaceAll("_", ""));
+/** The `// default x` a SPEC interface line states, or null when no line states one. */
+function statedDefault(field: string): string | null {
+  // The interface form, so a YAML example (`max_hops: 20  # …`) is not the line read.
+  const line = SPEC.find((l) => new RegExp(`^\\s*${field}\\??:`).test(l) && l.includes("// default"));
+  const stated = line?.match(/\/\/\s*default\s+([\w_]+)/);
+  return stated === undefined || stated === null ? null : stated[1]!.replaceAll("_", "");
 }
 
-describe("the defaults SPEC states are the ones the code decides", () => {
-  test("max_hops", () => {
-    expect(statedDefault("max_hops")).toBe(DEFAULT_MAX_HOPS);
-  });
+const cases: Array<[string, string]> = [
+  ["max_hops", String(DEFAULT_MAX_HOPS)],
+  ["turn_timeout_ms", String(DEFAULT_TURN_TIMEOUT_MS)],
+  ["launch_guard", DEFAULT_LAUNCH_GUARD],
+  ["ack_scope", DEFAULT_ACK_SCOPE],
+  ["dispatch_scope", DEFAULT_DISPATCH_SCOPE],
+];
 
-  test("turn_timeout_ms", () => {
-    expect(statedDefault("turn_timeout_ms")).toBe(DEFAULT_TURN_TIMEOUT_MS);
-  });
+describe("the defaults SPEC states are the ones the code decides", () => {
+  for (const [field, decided] of cases) {
+    test(field, () => {
+      expect(statedDefault(field)).toBe(decided);
+    });
+  }
 });

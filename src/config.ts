@@ -22,6 +22,9 @@ export interface AgentSpec {
 /** The room defaults. `docs/SPEC.md` states these values, so change them here and the doc test says where. */
 export const DEFAULT_MAX_HOPS = 12;
 export const DEFAULT_TURN_TIMEOUT_MS = 300_000;
+export const DEFAULT_LAUNCH_GUARD = "warn";
+export const DEFAULT_ACK_SCOPE = "lead";
+export const DEFAULT_DISPATCH_SCOPE = "anyone";
 
 export interface RoomConfig {
   name: string;
@@ -30,9 +33,9 @@ export interface RoomConfig {
   definition_of_done?: string;   // D2 optional
   max_hops: number;              // default DEFAULT_MAX_HOPS
   turn_timeout_ms: number;       // default DEFAULT_TURN_TIMEOUT_MS: how long one agent turn may take
-  launch_guard?: "refuse" | "warn" | "off";  // default warn: git-root boot guard (#38)
-  ack_scope: "lead" | "anyone";  // default lead: whose direct mention needs `Got it:` (#60)
-  dispatch_scope: "anyone" | "lead"; // default anyone: whose mention may start a turn (#68)
+  launch_guard?: "refuse" | "warn" | "off";  // default DEFAULT_LAUNCH_GUARD: git-root boot guard (#38)
+  ack_scope: "lead" | "anyone";  // default DEFAULT_ACK_SCOPE: whose direct mention needs `Got it:` (#60)
+  dispatch_scope: "anyone" | "lead"; // default DEFAULT_DISPATCH_SCOPE: whose mention may start a turn (#68)
   lead: AgentSpec;
   agents: AgentSpec[];
 }
@@ -297,12 +300,12 @@ export async function loadConfig(yamlPath: string, cwd = process.cwd()): Promise
     fail(`config.launch_guard must be one of ${[...LAUNCH_GUARDS].join(", ")}`);
   }
 
-  const dispatchScopeRaw = obj.dispatch_scope ?? "anyone";
+  const dispatchScopeRaw = obj.dispatch_scope ?? DEFAULT_DISPATCH_SCOPE;
   if (typeof dispatchScopeRaw !== "string" || !DISPATCH_SCOPES.has(dispatchScopeRaw)) {
     fail(`config.dispatch_scope must be one of ${[...DISPATCH_SCOPES].join(", ")}`);
   }
 
-  const ackScopeRaw = obj.ack_scope ?? "lead";
+  const ackScopeRaw = obj.ack_scope ?? DEFAULT_ACK_SCOPE;
   if (typeof ackScopeRaw !== "string" || !ACK_SCOPES.has(ackScopeRaw)) {
     fail(`config.ack_scope must be one of ${[...ACK_SCOPES].join(", ")}`);
   }

@@ -165,7 +165,7 @@ describe("is the ticket ready for an agent", () => {
   });
 });
 
-describe("the ask is built from the whole ticket (#81)", () => {
+describe("the ask is built from the whole ticket (2957787)", () => {
   const ticket = {
     number: 54,
     title: "detailParser: read the November markup",
@@ -202,7 +202,7 @@ describe("the ask is built from the whole ticket (#81)", () => {
   });
 });
 
-describe("a blocked ticket is not dispatchable (#81)", () => {
+describe("a blocked ticket is not dispatchable (2957787)", () => {
   test("an open blocker is named", () => {
     expect(blockerReason([{ number: 64, state: "open" }, { number: 65, state: "closed" }])).toBe(
       "blocked by #64 (open)",
@@ -224,7 +224,7 @@ describe("a blocked ticket is not dispatchable (#81)", () => {
   });
 });
 
-describe("dependencies named in prose count too (#82)", () => {
+describe("dependencies named in prose count too (5ae0c30)", () => {
   // The real bodies. #54 carries a native edge *and* the sentence; #64 carries the sentence that
   // must NOT read as a blocker, because it is about what it blocks, not what blocks it.
   const body54 = [

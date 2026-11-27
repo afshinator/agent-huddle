@@ -1,5 +1,6 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DEFAULT_LAUNCH_GUARD } from "./config";
 import type { LoadedConfig } from "./config";
 import { RoomStore, reconcileState } from "./store";
 import { buildRolePrompt, buildSocialContract } from "./prompts";
@@ -427,7 +428,7 @@ export class Coordinator {
    * Runs before the first spawn, so a refusal costs nothing.
    */
   private async checkLaunchDir(): Promise<void> {
-    const mode = this.config.config.launch_guard ?? "warn";
+    const mode = this.config.config.launch_guard ?? DEFAULT_LAUNCH_GUARD;
     if (mode === "off") return;
     const launch = await inspectLaunchDir(this.cwd);
     // A linked worktree is a repository root but a throwaway one: it is where AGENTS.md
@@ -698,7 +699,7 @@ export class Coordinator {
     this.stdout.write(roomLine(handle, stampNow(), this.style(text), (h) => this.colourFor(h)));
   }
 
-  /** Mentions are inverted when styling is on; with it off the text is untouched (#77, #86). */
+  /** Mentions are inverted when styling is on; with it off the text is untouched (#77, 1715407). */
   private style(text: string): string {
     if (!this.color) return text;
     return markMentions(text, (handle) => this.colourFor(handle) !== null);

@@ -40,7 +40,7 @@ turn is checkable and is the lead's own judgement, which is the only judgement a
 **Cost, accepted:** a chain can end "completed" with the DoD unmet, and a lead that never writes the
 line runs to the hop cap. `hasDoneSignal` in `src/turn-loop.ts`.
 
-**Amendment (#78):** the DoD prose is appended to *every* agent's system prompt (`buildDonePrompt`),
+**Amendment (d65ff65):** the DoD prose is appended to *every* agent's system prompt (`buildDonePrompt`),
 not only the lead's. It was lead-only until a ticket room needed a dev and a reviewer to work to the
 same bar; a peer measured against a bar it cannot read invents one. The lead alone still certifies.
 
@@ -539,21 +539,21 @@ acting on, and before this the record could not tell them apart because only too
 and a stale table would print a confident wrong number. Also rejected: blocking the summary on a
 provider that never answers; a five-second race leaves it out.
 
-## D23 — Gate 1 asks both verifiers at once, and a prefix is a name, not an address (#83)
+## D23 — Gate 1 asks both verifiers at once, and a prefix is a name, not an address (b675953)
 
-**Amendment (#83):** gate 1 is one message to `@dev1` and `@reviewer`, not one then the other. The
+**Amendment (b675953):** gate 1 is one message to `@dev1` and `@reviewer`, not one then the other. The
 second opinion is clean because it never saw the first, not because it waited for it; serialising cost a
 lead turn in the middle of work the lead could have handed out at the start. The room still dispatches
 one turn at a time within a chain, so what the change buys is the missing lead round-trip, not two
 simultaneous turns.
 
-**Amendment (#83):** a message's prefix prints the handle without its `@` — `[lead]`, not `[@lead]`. The
+**Amendment (b675953):** a message's prefix prints the handle without its `@` — `[lead]`, not `[@lead]`. The
 sigil is mention syntax, which is how one agent addresses another; it is not part of the agent's name, and
 a prefix carrying it reads as a name with a character in it. Colour still marks the speaker (D17/#70) and
 a name inside a sentence is still marked (#77), and the mark is inverse video because italic was too quiet
-to find in a wall of prose (#86).
+to find in a wall of prose (1715407).
 
-## D24 — A verifier may read the database and may never write it (#84)
+## D24 — A verifier may read the database and may never write it (8980ddf)
 
 **Context:** run `002-ticket-64` had a verifier query production to check the ticket's counts, because
 the ticket's claims are database measurements and nothing said what was allowed. It found the one false
@@ -586,7 +586,7 @@ nothing written still halts, which is the honest case.
 stream was always empty and the salvage branch never fired. Every stub test passed because the fake
 client's `spawn` never cleared anything.
 
-## D26 — One message's targets are dispatched together, not one after another (#85)
+## D26 — One message's targets are dispatched together, not one after another (ab35cc4)
 
 **Context:** a gate that asks two agents the same question ran them in series: the second agent sat idle
 for the whole of the first agent's turn. Run `003-ticket-54` showed it plainly — the lead addressed

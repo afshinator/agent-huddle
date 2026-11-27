@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import type { Dirent } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 const repo = new URL("..", import.meta.url).pathname;
 const read = (p: string) => readFileSync(repo + p, "utf8");
@@ -71,6 +72,22 @@ describe("docs point at things that exist", () => {
     const bad = facts
       .filter(([, file, needle]) => !existsSync(repo + file) || !read(file).includes(needle))
       .map(([claim, file, needle]) => `${claim}: ${file} does not contain ${JSON.stringify(needle)}`);
+    expect(bad).toEqual([]);
+  });
+
+  test("every commit sha the docs cite is a commit in this repo", () => {
+    // A sha is the durable form of "the work behind this paragraph". All-digit tokens are values, not shas.
+    const bad: string[] = [];
+    for (const doc of ["docs/decisions.md", "docs/SPEC.md", "docs/STATUS.md", "AGENTS.md"]) {
+      for (const [token] of read(doc).matchAll(/\b[0-9a-f]{7}\b/g)) {
+        if (/^[0-9]+$/.test(token)) continue;
+        try {
+          execFileSync("git", ["cat-file", "-e", `${token}^{commit}`], { cwd: repo, stdio: "ignore" });
+        } catch {
+          bad.push(`${doc}: ${token} is not a commit`);
+        }
+      }
+    }
     expect(bad).toEqual([]);
   });
 
