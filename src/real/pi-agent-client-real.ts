@@ -156,19 +156,26 @@ export class RealPiAgentClient implements PiAgentClient {
 
   async prompt(agentId: string, req: PromptRequest): Promise<void> {
     const agent = this.requireAgent(agentId);
-    // A dispatch starts a turn: clear both buffers here, not on `agent_start`, which arrives
-    // once per assistant message and would discard the ones before it (§T11).
-    agent.textBuffer = "";
-    agent.turnMessages = [];
+    // A steer feeds the turn already in flight: it must neither replace that turn's settle nor clear
+    // the buffers it is still filling, or `waitForSettled` waits on a promise nothing resolves (§T16).
+    const steersLiveTurn = req.streamingBehavior === "steer" && agent.pendingSettle !== null;
+    let rejectSettle: ((e: Error) => void) | null = null;
+    if (!steersLiveTurn) {
+      // A dispatch starts a turn: clear both buffers here, not on `agent_start`, which arrives
+      // once per assistant message and would discard the ones before it (§T11).
+      agent.textBuffer = "";
+      agent.turnMessages = [];
 
-    let resolveSettle!: (r: SettledResult) => void;
-    let rejectSettle!: (e: Error) => void;
-    const promise = new Promise<SettledResult>((res, rej) => {
-      resolveSettle = res;
-      rejectSettle = rej;
-    });
-    promise.catch(() => {}); // a rejected settle is observed via waitForSettled
-    agent.pendingSettle = { promise, resolve: resolveSettle, reject: rejectSettle };
+      let resolveSettle!: (r: SettledResult) => void;
+      let reject!: (e: Error) => void;
+      const promise = new Promise<SettledResult>((res, rej) => {
+        resolveSettle = res;
+        reject = rej;
+      });
+      promise.catch(() => {}); // a rejected settle is observed via waitForSettled
+      agent.pendingSettle = { promise, resolve: resolveSettle, reject };
+      rejectSettle = reject;
+    }
 
     const cmd: Record<string, unknown> = { type: "prompt", message: req.message };
     if (req.streamingBehavior) cmd.streamingBehavior = req.streamingBehavior;
@@ -176,8 +183,11 @@ export class RealPiAgentClient implements PiAgentClient {
     try {
       await this.command(agent, cmd);
     } catch (e) {
-      agent.pendingSettle = null;
-      rejectSettle(e as Error);
+      // A steer that could not be delivered must not cancel the turn it was feeding.
+      if (!steersLiveTurn) {
+        agent.pendingSettle = null;
+        rejectSettle!(e as Error);
+      }
       throw e;
     }
   }
