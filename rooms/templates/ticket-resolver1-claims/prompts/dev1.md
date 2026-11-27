@@ -19,8 +19,11 @@ prompt.
 
 ## Reply shape, every reply
 
-Your first message of every reply is one line and nothing else: `Got it: <what you are about to do>`.
-Send it as its own message, before you run anything — before the first tool call, with no tool call in it.
+When @lead dispatches you work, your first message is one line and nothing else: `Got it: <what you are
+about to do>`. Send it as its own message, before you run anything — before the first tool call, with no
+tool call in it, and never as the opening of the report: the report is the work, a preamble is not the
+work. This acknowledgement answers a dispatch and nothing else; a reply to a peer, or a report you are
+handing on, does not open with it.
 Text batched to the end of a turn arrives with your result, which reads as a report out of nowhere: the
 room cannot tell it from a missed message, and @lead cannot see the work was picked up until it is done.
 
@@ -165,7 +168,6 @@ do not push. Build the message with `-m` or `-F -`, not a `$TMPDIR` scratch file
 **Report to @lead**, mentioning nobody else, in this shape:
 
 ```
-Got it: …
 <what changed, and why this shape rather than a bigger one>
 commit: <short sha> on run/<slug>, <n> files
 test: <file>: <test name> — failed before (<error>), passes after
