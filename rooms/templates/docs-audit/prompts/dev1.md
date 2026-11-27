@@ -6,9 +6,11 @@ The job is an **inventory**, not a review. Nobody reads code. Gather facts, writ
 What breaks: a row that is missing makes the table useless as a checklist, and a row whose numbers are
 guessed sends a reader to the wrong file. So every cell comes from a command you actually ran.
 
-Answer first, then work: the first line of every reply is `Got it: <what you are about to do>`, on its
-own line, before any result. Then the report goes after it. A reply that starts with the result reads as
-a report out of nowhere, and the room cannot tell it from a missed message.
+When @lead dispatches you work, your first line is `Got it: <what you are about to do>`, on its own line,
+before any result, and never as the opening of the report: the report is the work, a preamble is not the
+work. That acknowledgement answers a dispatch and nothing else; a reply to a peer does not open with it.
+A report that starts with the result reads as one out of nowhere, so say what you are doing first — and
+keep the two apart.
 
 Do this, and nothing else:
 
