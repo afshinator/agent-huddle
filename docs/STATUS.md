@@ -32,8 +32,9 @@ who named the room is not overruled by one the launcher picked.
 **A room, defined by one YAML file.** A template (or a standalone room file) declares the lead and
 specialists: id, handle,
 role, prompt (inline or file), provider, model, thinking level, tool allowlist, `pane_writable`. Room
-keys: `name`, `room_dir`, `task`, `definition_of_done`, `max_hops` (12), `turn_timeout_ms` (300000),
-`launch_guard` (`warn`), `lead`, `agents`. Unknown keys are rejected; reserved handles (`@all`,
+keys: `name`, `room_dir`, `task`, `definition_of_done`, `max_hops`, `turn_timeout_ms`, `launch_guard`,
+`lead`, `agents` — the defaults are `src/config.ts`, except `launch_guard`, which defaults where it is
+applied (`src/coordinator.ts:430`). Unknown keys are rejected; reserved handles (`@all`,
 `@everyone`, `@lead`) are rejected naming the offending field; the handle grammar lives once in
 `src/router.ts` and is derived from it, never restated.
 
@@ -206,8 +207,8 @@ started.
 - **No reroute.** A failed agent halts the chain; the lead does not re-dispatch.
 - **One room per process.** No multi-room, and an in-flight chain is not resumed across restart
   (`chain` is rebuilt as `null`).
-- **Tool arguments print verbatim**, cut at 200 characters: a call carrying file contents or a token
-  shows it in the pane.
+- **Tool arguments print verbatim**, cut at a fixed width (`src/agent-stream.ts`): a call carrying file
+  contents or a token shows it in the pane.
 - **Telemetry during a write outage is lost** (no buffering, by design; reported once on stderr).
 - **Panes from a previous crashed run are unidentifiable** — pane ids are not recorded across runs.
 - **A model that declines to use a tool produces no `tool` line**, and no test asserts otherwise: a

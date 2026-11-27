@@ -18,7 +18,7 @@
 #                                    detached otherwise: this is where the room's output goes
 #   3. the room itself, whose agents write in that worktree
 #
-# The decisions that used to be a checklist live in src/launch.ts, where they are tested (#80):
+# The decisions that used to be a checklist live in src/launch.ts, where they are tested (e12c556):
 # whether the existing worktree is at the base commit or must be replaced, whether dependencies are
 # cloned from the checkout you launched from or installed, and whether the ticket may be handed to a
 # room at all. Forgetting any of them used to fail silently.

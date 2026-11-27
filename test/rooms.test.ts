@@ -62,7 +62,7 @@ test("every shipped template is self-contained: its prompts sit in its own direc
   expect(stray).toEqual([]);
 });
 
-test("gate 1 asks both verifiers in one message, not one after the other (#83)", async () => {
+test("gate 1 asks both verifiers in one message, not one after the other (b675953)", async () => {
   const lead = await readFile(join(templatesDir, "ticket-resolver1", "prompts", "lead.md"), "utf8");
   const gate1 = lead.slice(lead.indexOf("Gate 1"), lead.indexOf("Gate 2"));
   // Both handles in one dispatch line: the room queues both from a single lead turn, so the lead is
@@ -72,7 +72,7 @@ test("gate 1 asks both verifiers in one message, not one after the other (#83)",
   expect(gate1).not.toMatch(/When @dev1 reports/i);
 });
 
-test("both verifiers are told what the database is for, so neither improvises a rule (#84)", async () => {
+test("both verifiers are told what the database is for, so neither improvises a rule (8980ddf)", async () => {
   for (const role of ["dev1", "reviewer"]) {
     const text = await readFile(join(templatesDir, "ticket-resolver1", "prompts", `${role}.md`), "utf8");
     // Run 002: dev1 reached for psql on its own because the ticket's claims were counts. That turned

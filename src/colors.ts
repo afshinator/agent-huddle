@@ -70,7 +70,7 @@ function toAnsi256([r, g, b]: Rgb): number {
  *
  * Colour marks who is speaking, so a name inside a sentence stays uncoloured (#70); inverse video marks
  * the name as an address rather than a word — `@reviewer verify this` reads as a hand-off (#77). Italic
- * was too quiet to find in a wall of prose, so the mark is a solid block (#86).
+ * was too quiet to find in a wall of prose, so the mark is a solid block (1715407).
  * Only handles the room knows, and only where the `@` starts a word, so `a@dev1.com` and `@dev12`
  * are left alone.
  */

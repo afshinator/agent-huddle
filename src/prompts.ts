@@ -26,7 +26,7 @@ export async function buildRolePrompt(
   if (custom !== null) parts.push(custom);
   if (agent.id === config.config.lead.id) parts.push(buildLeadPrompt(config));
   // Every agent is measured against the same bar, so every agent is told what it is; a dev that
-  // has to guess it builds to its own (#78).
+  // has to guess it builds to its own (d65ff65).
   parts.push(buildDonePrompt(config));
   return parts.join("\n\n");
 }

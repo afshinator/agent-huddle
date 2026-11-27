@@ -4,7 +4,7 @@
  * `rooms/launch.sh` used to carry them: six steps a human had to remember before booting a room —
  * clean the last worktree, warm the dependencies, write the ask, check the ticket is triaged, keep the
  * base commit honest. Each of those is mechanical, and each failed silently when forgotten, so they
- * live here where a test can hold them (#80). The shell script keeps only what needs git and gh.
+ * live here where a test can hold them (e12c556). The shell script keeps only what needs git and gh.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -163,7 +163,7 @@ export interface Ticket {
  *
  * The first version of this carried the title and nothing else, so the constraints, the dependency
  * edges and the out-of-scope list had to be typed in by hand — by the person with the least context
- * about the code, which is the one place it should never come from (#81). The body is verbatim.
+ * about the code, which is the one place it should never come from (2957787). The body is verbatim.
  */
 export type Row = { ok: boolean; fatal: boolean; label: string; detail: string };
 
@@ -273,7 +273,7 @@ export function askedFrom(ticket: Ticket): { task: string; definitionOfDone: str
  *
  * GitHub's native links are the reliable signal, but they are a thing somebody has to remember to
  * add: #54 carries both, and a ticket that only says "must not merge before #64" in prose is exactly
- * the one a native-only gate lets through (#82). Only the Dependencies section counts — a mention in
+ * the one a native-only gate lets through (5ae0c30). Only the Dependencies section counts — a mention in
  * "References" or a `Blocks #n` line names work that comes *after* this ticket, not before it.
  */
 export function dependencyReferences(body: string): number[] {
@@ -407,7 +407,7 @@ function cmdWarm(argv: string[]): number {
   if (plan.mode === "clone") {
     // `cp -R src dst` copies *into* dst when dst exists, which nests a second tree inside the first.
     rmSync(join(worktree, "node_modules"), { recursive: true, force: true });
-    // Same volume, so this is a copy-on-write clone: measured 8.1s vs 42.7s for `npm ci` (#80).
+    // Same volume, so this is a copy-on-write clone: measured 8.1s vs 42.7s for `npm ci` (e12c556).
     trySh("cp", ["-cR", join(repo, "node_modules"), join(worktree, "node_modules")]) ??
       sh("cp", ["-R", join(repo, "node_modules"), join(worktree, "node_modules")]);
   } else {
@@ -491,7 +491,7 @@ function issueState(repo: string, issue: number): string {
  * Every reason this ticket must wait: GitHub's native links, plus the ones its body states in prose.
  *
  * Both are read because either can be missing. #54 has both; a ticket that only says "must not merge
- * before #64" is the one a native-only gate waves through (#82).
+ * before #64" is the one a native-only gate waves through (5ae0c30).
  */
 function blockersOf(repo: string, issue: number, body: string): Array<{ number: number; state: string }> {
   const merged = new Map<number, string>();
@@ -537,7 +537,7 @@ function cmdIssue(argv: string[]): number {
     return 1;
   }
   // A ticket can be triaged and still be unsafe to dispatch: its own body asks for another ticket
-  // first, and GitHub records that as a native dependency (#81).
+  // first, and GitHub records that as a native dependency (2957787).
   let blocked: string | null;
   try {
     blocked = blockerReason(blockersOf(repo, json.number, json.body));

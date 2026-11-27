@@ -161,7 +161,7 @@ export interface RoomConfig {
   name: string;
   room_dir: string;              // absolute after load
   task?: string;                 // D2 optional startup task
-  definition_of_done?: string;   // D2 optional; appended to every agent's prompt (#78)
+  definition_of_done?: string;   // D2 optional; appended to every agent's prompt (d65ff65)
   max_hops: number;              // default 12
   turn_timeout_ms: number;       // default 300000
   launch_guard?: "refuse" | "warn" | "off";  // default warn
@@ -184,15 +184,15 @@ export interface LoadedConfig {
 
 ---
 
-### 3.2 Launching a run (`rooms/launch.sh`, #80)
+### 3.2 Launching a run (`rooms/launch.sh`, e12c556)
 
 A run is created by one command, and the launcher owns the steps a human used to remember:
 
 | Step | Who decides |
 |---|---|
 | repo is a git tree, `_run/` ignored, `gh` authed for a ticket run | launcher, `check` subcommand; fatal ones stop before anything is created |
-| the ask (`run.yaml`) | `--issue <n>` writes the ticket's whole body verbatim into `task:` — constraints, dependencies and out-of-scope included — and its acceptance-criteria section into `definition_of_done:`, falling back to the whole body when there is no such heading, never to an empty bar (#81) |
-| may this ticket be handed to a room | `eligibility`: only `ready-for-agent` passes (`--any-state` overrides); `blockerReason`: a dependency that is still open refuses the run and names it (`--ignore-blockers` overrides). Two sources, because either can be missing: GitHub's native links, and the body's `## Dependencies` lines that *open* by naming what the ticket waits for (`Needs…`, `Blocked by…`, `Requires…`, `Depends on…`). A line about what this ticket blocks is the other direction and is not read as a blocker — reading it as one refused the only runnable ticket (#82). A failed read of the dependencies refuses too: "no blockers" and "could not ask" must not look alike |
+| the ask (`run.yaml`) | `--issue <n>` writes the ticket's whole body verbatim into `task:` — constraints, dependencies and out-of-scope included — and its acceptance-criteria section into `definition_of_done:`, falling back to the whole body when there is no such heading, never to an empty bar (2957787) |
+| may this ticket be handed to a room | `eligibility`: only `ready-for-agent` passes (`--any-state` overrides); `blockerReason`: a dependency that is still open refuses the run and names it (`--ignore-blockers` overrides). Two sources, because either can be missing: GitHub's native links, and the body's `## Dependencies` lines that *open* by naming what the ticket waits for (`Needs…`, `Blocked by…`, `Requires…`, `Depends on…`). A line about what this ticket blocks is the other direction and is not read as a blocker — reading it as one refused the only runnable ticket (5ae0c30). A failed read of the dependencies refuses too: "no blockers" and "could not ask" must not look alike |
 | the worktree | `worktreeAction`: create, reuse, replace (behind, clean, branch merged), or refuse (behind and dirty, or behind and unmerged) |
 | dependencies | `warmPlan`: clone the launching checkout's `node_modules` when the lockfile hashes match; install when they differ or no source tree exists; refuse when two lockfiles disagree |
 | the ticket's ` ```claims ` block | `claimsRows`: a ticket with no block is fatal (`--no-claims` skips the check); with one, `claim-check run --phase before` must exit 0, and a non-zero exit is a refusal the prep room may repair. A missing `claim-check` binary exits 2, which stops the launch there — a missing tool is not something a room can repair (`#70`) |
@@ -310,7 +310,7 @@ and every agent's prompt ends with the run's own bar:
 The definition of done for this run is: {definition_of_done}
 ```
 
-A peer that is measured against the bar is told the bar (#78): a dev that has to infer it builds to
+A peer that is measured against the bar is told the bar (d65ff65): a dev that has to infer it builds to
 its own, and a reviewer cannot rule on whether it was met. The lead alone still self-certifies.
 
 ---
@@ -410,7 +410,7 @@ Human input always resets the chain (`hopCount = 0`, `nudgeIssued = false`, new 
 - Human message `@lead` → lead only.
 - Human may type in the room pane at any time; input is queued and delivered at the next settle boundary (never interrupts an in-flight turn mid-stream).
 - **Typing in an agent's pane** (v1.1, D7) posts a public room message with that agent's handle implied: text typed in `@dev1`'s pane becomes `@dev1 <text>` in `messages.jsonl`, with `from: supervisor`. It is visible to everyone and activates only that agent — there is no private channel in v1.
-- **A pane line routes by its pane, not by its words** (#40). Dispatch targets are pinned to that agent, so a handle the supervisor types into the line stays a word in the message: typing `@lead look` in `@dev1`'s pane activates dev1 and the lead ingests the text as context. `mentions[]` still records every handle the text contains, because it records the text. The unknown-handle notice still fires for `@nobody`, but not for an `@` that is part of a path or an address: a scoped package (`@testing-library/react`) and an email (`dev1@example.com`) are not mentions (#79).
+- **A pane line routes by its pane, not by its words** (#40). Dispatch targets are pinned to that agent, so a handle the supervisor types into the line stays a word in the message: typing `@lead look` in `@dev1`'s pane activates dev1 and the lead ingests the text as context. `mentions[]` still records every handle the text contains, because it records the text. The unknown-handle notice still fires for `@nobody`, but not for an `@` that is part of a path or an address: a scoped package (`@testing-library/react`) and an email (`dev1@example.com`) are not mentions (9275c44).
 
 ### 6.5 Definition of Done (v1 boundary)
 
@@ -568,7 +568,7 @@ pane: the room is the conversation, not the machine log.
 Every agent gets a colour, and the `[handle]` prefix of the messages it speaks is printed in it; a
 handle named inside somebody's text stays **uncoloured**, because colour marks the speaker and not the
 subject (#70) — it is **inverted** instead, so `@reviewer verify this` reads as an address and not as a
-word (#77, #86). Only handles the room knows are styled, and only where the `@` starts a word. The agent panes cannot carry an escape — herdr prints a pane title as text — so each title starts with a
+word (#77, 1715407). Only handles the room knows are styled, and only where the `@` starts a word. The agent panes cannot carry an escape — herdr prints a pane title as text — so each title starts with a
 coloured mark instead (`🟨 @lead`), taken from the same table in `src/colors.ts`. `output.log` is a file
 and stays plain. The table lives in
 `src/colors.ts` and nowhere else (#66). Colours are 24-bit RGB so they do not

@@ -88,7 +88,7 @@ describe("buildRolePrompt", () => {
 
   test("non-lead knows the run's definition of done", async () => {
     // The lead is not the only agent measured against the bar: a dev that has to guess it
-    // builds to its own, and a reviewer cannot say whether the bar was met (#78).
+    // builds to its own, and a reviewer cannot say whether the bar was met (d65ff65).
     const result = await buildRolePrompt(dev1, cfg({ dod: "A test that fails first." }));
     expect(result).toContain("The definition of done for this run is: A test that fails first.");
   });
