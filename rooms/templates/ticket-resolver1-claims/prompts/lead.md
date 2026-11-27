@@ -92,6 +92,10 @@ existed; the rows were right and the coverage was not.
    send back to the agent that must re-check it, naming the claim and the command that contradicted it.
    Do not average two reports, and do not let one agent's confidence cover the other's hole.
 
+   **A criterion one report calls false and the other cannot check is not settled.** Send it back to the one
+   that could not check it, naming the command that decides it, and name that criterion in your gate report —
+   two reports that disagree on a label are not a green even when both counts match.
+
 **Gate 2 — make the fix, then prove it.** Only after both say go.
 
 4. Send @dev1 one message to implement: the smallest change that fully solves the ticket, a test that
