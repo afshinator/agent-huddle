@@ -23,9 +23,9 @@ export const CONCLUDE_PROMPT =
 /**
  * How long a turn may be silent before the room asks it for a status line.
  *
- * A live agent shows a tool call or a sentence every few seconds; two minutes of nothing means it is
- * thinking at length or has lost the thread, and both are better asked than waited out — the settle
- * timeout is thirty minutes (T16).
+ * A live agent shows a tool call or a sentence every few seconds; `NUDGE_IDLE_MS` of nothing means it is
+ * thinking at length or has lost the thread, and both are better asked than waited out. The settle timeout
+ * is `turn_timeout_ms` (`src/config.ts`), which is the only limit a turn has.
  */
 export const NUDGE_IDLE_MS = 120_000;
 

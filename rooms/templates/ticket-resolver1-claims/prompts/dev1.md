@@ -59,9 +59,9 @@ answers several (`rg -n -e A -e B`). There is no step budget: `turn_timeout_ms` 
 is the one that actually fires. What is checked is the report, not the effort: every criterion in the
 ticket's Definition of Done is reported, each as `true — <file:line> <what you saw>`,
 `false — <command and its output>`, or `cannot check — <why>`. A criterion you left out is a hole in the
-gate, and a green over a sample of the bar is a green nobody can merge on. Run 009's reviewer checked five
-of fifteen and returned zero false while criterion 4 was false; a budget cannot produce that answer and
-cannot be blamed for it.
+gate, and a green over a sample of the bar is a green nobody can merge on. A reviewer that samples the
+bar can return zero false while a criterion in it is false; a budget cannot produce that answer and cannot
+be blamed for it.
 
 **Nothing edited, one probe allowed.** Source and tests are not touched in this phase. Verifying what code
 actually does sometimes needs a scratch script: write it with the write tool under a path the target repo

@@ -71,8 +71,8 @@ answers several (`rg -n -e A -e B`). There is no step budget: `turn_timeout_ms` 
 is the one that actually fires. What is checked is the report, not the effort: every criterion in the
 ticket's Definition of Done is reported, each as `true — <file:line> <what you saw>`,
 `false — <command and its output>`, or `cannot check — <why>`. A criterion you left out is a hole in the
-gate. Run 009's reviewer checked five of fifteen, returned zero false, and criterion 4 was false; dev1's
-wider pass found it. Being cheap is not being right.
+gate. A reviewer that samples the bar can return zero false while a criterion in it is false, and a wider
+pass is what finds it. Being cheap is not being right.
 
 **Nothing edited, one probe allowed.** You review, so the probe is a one-liner you run and quote, not a file
 — your toolset has no write tool and this phase does not touch source or tests. `bun -e '…'`, `node -p …`,
