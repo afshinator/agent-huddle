@@ -1,6 +1,6 @@
 # v1 Spec — Config-Driven Multi-Agent Chat Room (`pi` + `herdr`)
 
-Status: pre-implementation. Single source of truth for `/to-tickets` and `/implement`.
+Status: implemented. The design is here; what ships and what is proven is `STATUS.md`, and why each choice was made is `decisions.md`.
 
 ---
 
@@ -195,6 +195,8 @@ A run is created by one command, and the launcher owns the steps a human used to
 | may this ticket be handed to a room | `eligibility`: only `ready-for-agent` passes (`--any-state` overrides); `blockerReason`: a dependency that is still open refuses the run and names it (`--ignore-blockers` overrides). Two sources, because either can be missing: GitHub's native links, and the body's `## Dependencies` lines that *open* by naming what the ticket waits for (`Needs…`, `Blocked by…`, `Requires…`, `Depends on…`). A line about what this ticket blocks is the other direction and is not read as a blocker — reading it as one refused the only runnable ticket (#82). A failed read of the dependencies refuses too: "no blockers" and "could not ask" must not look alike |
 | the worktree | `worktreeAction`: create, reuse, replace (behind, clean, branch merged), or refuse (behind and dirty, or behind and unmerged) |
 | dependencies | `warmPlan`: clone the launching checkout's `node_modules` when the lockfile hashes match; install when they differ or no source tree exists; refuse when two lockfiles disagree |
+| the ticket's ` ```claims ` block | `claimsRows`: a ticket with no block is fatal (`--no-claims` skips the check); with one, `claim-check run --phase before` must exit 0, and a non-zero exit is a refusal the prep room may repair. A missing `claim-check` binary exits 2, which stops the launch there — a missing tool is not something a room can repair (`#70`) |
+| the ask, before a resolver room sees it | `prepFirst`: a refused launch boots the `ticket-prep` room over the same body and relaunches afterwards; if a prep room has already run (`AH_PREP_RAN`) or `--template` named a room, it stops instead of booting a second one. A repair the prep room made is republished to the ticket, and the rerun reads the repaired body |
 
 The decisions live in `src/launch.ts` and are unit-tested; the shell script keeps the git and gh calls.
 Nothing is silently reused: a worktree cut from an older commit is replaced or refused, because a run
@@ -744,7 +746,7 @@ export interface Telemetry {
 
 ## 12. `/to-tickets` tracer-bullet slices
 
-Each ticket is one fresh context window, ships a working increment, and depends only on earlier tickets. Tests use the fakes; the final ticket swaps in real `pi`/`herdr`.
+Each ticket is one fresh context window, ships a working increment, and depends only on earlier tickets. Tests use the fakes; the final ticket swaps in real `pi`/`herdr`. The per-slice ticket files (`docs/tickets/T1..T19`) were deleted once every slice landed; this table and the tests it names are the record, and the reasons behind the slices are in `decisions.md`.
 
 **How to write a DoD bullet** (post-RCA rule; a bullet that says "persists state" cannot fail):
 
