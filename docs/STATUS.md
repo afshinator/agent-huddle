@@ -138,7 +138,7 @@ started.
 | Per-agent tokens and cost printed at the end, `unknown` where the provider is silent | `test/coordinator.test.ts`, D22 |
 | `… said go. DONE` ends the chain; `almost DONE` does not, and an empty reply owes no ack | `test/turn-loop.test.ts`, D21 |
 | A turn's messages print on their own lines even when the provider streams them glued | `test/chat-stream.test.ts`, `test/pi-protocol.test.ts`, D20 |
-| A turn's settled text is every assistant message it contains, and a message boundary starts a new room line | `test/pi-protocol.test.ts` (two stubs), `docs/tickets/T11-settled-text-per-turn.md` |
+| A turn's settled text is every assistant message it contains, and a message boundary starts a new room line | `test/pi-protocol.test.ts` (two stubs) |
 | `dispatch_scope: anyone` (default) dispatches every mention; `lead` makes a peer's mention context | `test/turn-loop.test.ts` (both scopes), `test/config.test.ts`, D18 |
 | The startup task prints as a brief block and notices as `·`, never as a participant's message | `test/coordinator.test.ts`, D19 |
 | The caller decides colour; the coordinator cannot see a terminal through a wrapped stdout | `src/index.ts`, `test/coordinator.test.ts`, #67 |

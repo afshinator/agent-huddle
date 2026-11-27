@@ -1,7 +1,7 @@
 # Runbook
 
 The operating procedure for a supervised room. Everything here is a command you can copy; the
-reasoning lives in `docs/SPEC.md`, `docs/decisions.md` and `docs/handoff-2026-11-21.md`.
+reasoning lives in `docs/SPEC.md` and `docs/decisions.md`.
 
 A room is a **template** (agents, budgets, prompts) plus a **run** (an ask, a worktree, a branch). The
 room's agents write real files, so every run happens in a linked worktree, and nothing is pushed.
