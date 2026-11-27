@@ -94,6 +94,10 @@ started.
 | A line typed into an agent's pane during an active chain becomes a public `@that agent` message and dispatches it | #3 |
 | `launch_guard: warn` records the repo root and branch at boot | #3 (record only — see #48) |
 | Three agents (lead, dev, reviewer) across three providers boot, audit and reach `DONE` | `2026-11-21-docs-audit` |
+| Launcher's claims preflight refuses a ticket, removes the worktree and run dir it had just created, then re-asks and boots the prep room | `2026-11-25-prep-and-claims-runs` |
+| Prep room repairs a ticket and the same command boots the resolver room on the repaired body, with no second launch | `2026-11-25-prep-and-claims-runs` |
+| Prep room refuses a ticket whose ask has no observable end state, publishing nothing | `2026-11-25-prep-and-claims-runs` |
+| A room ends without `DONE` when its own gate is red — the lead declines to certify | `2026-11-25-prep-and-claims-runs` |
 
 ## Proven against the real thing (`test:live`, and probes)
 
@@ -182,6 +186,8 @@ started.
 - The `launch_guard` **refusal** path was run through the CLI (#38) but not in a real room: nobody has
   watched `refuse` stop a boot at the terminal. The other half is proven both ways: a linked worktree is
   left alone under `refuse`, and a main checkout is refused (`test/launch-guard.test.ts`, `test/coordinator.test.ts`).
+  This is the repo-cleanliness guard, not the claims gate — a claims refusal removing its own worktree and
+  run dir is in the proven table above.
 - A pane line typed while **no** chain is active, and a pane line typed into a `pane_writable: false`
   pane, are proven by test only.
 
