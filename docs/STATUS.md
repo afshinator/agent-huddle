@@ -166,14 +166,16 @@ started.
   collateral, creates the worktree, resolves the config and boots; the `ticket-prep` room booted through it
   on smoke tickets (#71, #72–#75), read the ticket, published one corrected row or refused, and stopped.
 - **The prep chain has run live end to end once.** `#70`'s path — refusal, prep room, re-asked launch,
-  template re-picked from the repaired body — ran on the #75 smoke ticket: `_run/004-ticket-75-prep`
-  (`ticket-prep`, verdict `repaired`) then `_run/005-ticket-75` on `ticket-resolver1-claims`, which reached
-  `DONE`. The second half is thin: #75's criterion already held at `HEAD`, so the resolver room closed it as
-  already-satisfied rather than fixing code.
-- **The prep room's three judgement branches have each been observed once**, in `_run/001-prep-noop`
-  (`Verdict: already-correct`, published nothing), `_run/002-prep-reason` (`Verdict: repaired`, the false
-  supporting reason cut), and `_run/003-prep-noend` (`Verdict: refused — no observable end state`). One
-  observation each, on purpose-built smoke tickets, not on tickets that mattered.
+  template re-picked from the repaired body — ran on the #75 smoke ticket: runs `004-ticket-75-prep`
+  (`ticket-prep`, verdict `repaired`) then `005-ticket-75` on `ticket-resolver1-claims`, which reached
+  `DONE`. `docs/runs/2026-11-25-prep-and-claims-runs.md` quotes the verdict lines and the command that
+  re-derives each of those facts. The second half is thin: #75's criterion already held at `HEAD`, so the
+  resolver room closed it as already-satisfied rather than fixing code.
+- **The prep room's three judgement branches have each been observed once**, in runs `001-prep-noop`
+  (`Verdict: already-correct`, published nothing), `002-prep-reason` (`Verdict: repaired`, the false
+  supporting reason cut), and `003-prep-noend` (`Verdict: refused — no observable end state`); the same
+  run note carries the quoted lines. One observation each, on purpose-built smoke tickets, not on tickets
+  that mattered.
 - A provider other than `commandcode` (deepseek-v4-pro, deepseek-v4.1-flash); one provider is measured.
 - Crash (SIGKILL) of the coordinator: panes from that run are not tracked and will leak.
 - `definition_of_done` is never checked; `DONE` is the lead's self-certification.
