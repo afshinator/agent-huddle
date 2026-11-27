@@ -255,7 +255,8 @@ describe("A pane says whether its agent has been used (#62)", () => {
       try {
         await waitUntil(() => {
           try {
-            return readFileSync(pane, "utf8").includes("@lead — working");
+            // A pane addresses nobody, so the line carries the name without the sigil.
+            return readFileSync(pane, "utf8").split("\n").includes("lead — working");
           } catch {
             return false;
           }
@@ -286,7 +287,7 @@ describe("A pane says whether its agent has been used (#62)", () => {
       await coordinator.boot();
 
       const dev1 = await readFile(join(dir, "agents", "dev1", "output.log"), "utf8");
-      expect(dev1.split("@dev1 — working").length - 1).toBe(2);
+      expect(dev1.split("\n").filter((line) => line === "dev1 — working")).toHaveLength(2);
     });
   }, 20_000);
 
@@ -301,8 +302,8 @@ describe("A pane says whether its agent has been used (#62)", () => {
       await coordinator.boot();
 
       const dev1 = await readFile(join(dir, "agents", "dev1", "output.log"), "utf8");
-      expect(dev1.split("@dev1 — working").length - 1).toBe(1);
-      expect(dev1.indexOf("@dev1 — working")).toBeLessThan(dev1.indexOf("[tool] bash"));
+      expect(dev1.split("\n").filter((line) => line === "dev1 — working")).toHaveLength(1);
+      expect(dev1.indexOf("dev1 — working")).toBeLessThan(dev1.indexOf("[tool] bash"));
     });
   }, 20_000);
 });
@@ -458,8 +459,9 @@ describe("Agent colours in the room (#66)", () => {
       const titles = panes.calls
         .filter((c) => c.op === "open")
         .map((c) => (c.payload as { title: string }).title);
-      // A title is herdr's own text, so the colour travels as a mark; the handle stays greppable.
-      expect(titles).toEqual(["🟨 @lead", "🟦 @dev1"]);
+      // A title is herdr's own text, so the colour travels as a mark. A title addresses nobody, so the
+      // name carries no sigil; `@` is mention syntax and stays in the messages that use it.
+      expect(titles).toEqual(["🟨 lead", "🟦 dev1"]);
     });
   });
 
@@ -1020,7 +1022,7 @@ describe("Coordinator (fakes)", () => {
       // Prose belongs to the room (#65): the pane shows the machine-adjacent lines only.
       const stream = await waitForText(join(dir, "agents", "lead", "output.log"), "[tool] bash");
       expect(stream).not.toContain("Answered in prose.");
-      expect(stream).toContain("@lead — working");
+      expect(stream.split("\n")).toContain("lead — working");
       // The room got the prose instead.
       await waitUntil(() => out.join("").includes("Answered in prose."), 2000);
       // The machine record is unchanged: one JSON line per event, prose included.

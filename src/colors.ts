@@ -98,8 +98,16 @@ export function markMentions(text: string, known: (handle: string) => boolean): 
 /** The `[handle]` prefix a room message carries, coloured. The `@` is mention syntax, not the name. */
 export function paintTag(handle: string, colour: (handle: string) => string | null): string {
   const code = colour(handle);
-  const name = handle.replace(/^@/, "");
+  const name = plainName(handle);
   return code === null ? `[${name}]` : `\u001b[${code}m[${name}]${RESET}`;
+}
+
+/**
+ * The name with the sigil dropped, for anywhere nothing is being addressed: a chat tag, a pane title,
+ * the pane's own `working` line. `@` marks an address, so it cannot appear where there is no recipient.
+ */
+export function plainName(handle: string): string {
+  return handle.replace(/^@/, "");
 }
 
 /** Drop every escape sequence: `room.log` is meant to be greppable. */

@@ -18,7 +18,7 @@ import { guardMessage, guardWarning, inspectLaunchDir, LaunchGuardError } from "
 import type { RoomMessage } from "./messages";
 import type { RoomState, RoomStatus } from "./state";
 import { ChatStream, roomLine } from "./chat-stream";
-import { colorOf, markMentions, markOf } from "./colors";
+import { colorOf, markMentions, markOf, plainName } from "./colors";
 import { stampNow } from "./stamp";
 
 /** The banner shows the ask as a pointer, not a transcript: its first non-blank line. */
@@ -271,7 +271,7 @@ export class Coordinator {
           id: `agent-${agent.id}`,
           // A title cannot carry an escape — herdr prints it as text — so the agent's colour is a
           // mark in the title instead (#72).
-          title: `${markOf(agent.id, agentIndex)} ${agent.handle}`,
+          title: `${markOf(agent.id, agentIndex)} ${plainName(agent.handle)}`,
           command: ["sh", scriptPath],
           slot: agentIndex + 1,
           slots: this.config.allAgents.length,
@@ -533,7 +533,8 @@ export class Coordinator {
     if (this.working.has(agentId)) return;
     const handle = this.config.agentById.get(agentId)?.handle ?? agentId;
     this.working.add(agentId);
-    this.watchFailure("agent pane write", agentId, this.agentStream.line(agentId, `${handle} — working`));
+    // A pane has no recipient: the sigil is mention syntax, so it never appears here.
+    this.watchFailure("agent pane write", agentId, this.agentStream.line(agentId, `${plainName(handle)} — working`));
   }
 
   private async appendAgentLog(agentId: string, event: string, text: string): Promise<void> {
