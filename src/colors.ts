@@ -50,13 +50,28 @@ export const FALLBACK_RGB: Rgb[] = [
 /** `"rgb"` is 24-bit truecolor; `"256"` uses the 256-colour cube when a terminal lacks it. */
 export const PALETTE_MODE: "rgb" | "256" = "rgb";
 
+/**
+ * The `HH:MM:SS` clock beside a line. Its own colour, in this same file, so a reader can tell the time
+ * from the speaker at a glance: it is not an agent's colour, and plain text is what it was before.
+ */
+export const STAMP_RGB: Rgb = [120, 120, 132];
+
 const RESET = "\u001b[0m";
 
 /** `r;g;b` in the form the escape needs, or `38;5;n` in 256-colour mode. */
-export function colorOf(id: string, slot: number, table: Record<string, Rgb> = AGENT_RGB): string {
-  const rgb = table[id] ?? FALLBACK_RGB[slot % FALLBACK_RGB.length]!;
+function fg(rgb: Rgb): string {
   if (PALETTE_MODE === "256") return `38;5;${toAnsi256(rgb)}`;
   return `38;2;${rgb[0]};${rgb[1]};${rgb[2]}`;
+}
+
+/** The clock, painted in `STAMP_RGB` with the same escape form an agent's tag uses. */
+export function paintStamp(stamp: string): string {
+  return `\u001b[${fg(STAMP_RGB)}m${stamp}${RESET}`;
+}
+
+/** The SGR payload for an agent's tag, or for a fallback slot. */
+export function colorOf(id: string, slot: number, table: Record<string, Rgb> = AGENT_RGB): string {
+  return fg(table[id] ?? FALLBACK_RGB[slot % FALLBACK_RGB.length]!);
 }
 
 /** Rough 6x6x6 cube mapping, only used when `PALETTE_MODE` is `"256"`. */

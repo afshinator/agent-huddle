@@ -6,11 +6,12 @@
  * Here, each delta is printed as it arrives and each complete line is flushed, so a reader watches
  * the conversation instead of reading its minutes.
  *
- * The prefix is printed once per turn, matching the settled message format (`[handle] text`, the
- * rest of the text following unprefixed), and a partial line is only ever held, never printed with
- * an invented newline.
+ * The prefix is printed once per burst, matching the settled message format (`[handle] text`, the
+ * rest of the text following unprefixed): a new assistant message inside the turn starts a burst of
+ * its own, so a report that follows a run of tool lines names its speaker and its time (#66), and a
+ * partial line is only ever held, never printed with an invented newline.
  */
-import { paintTag } from "./colors";
+import { paintStamp, paintTag } from "./colors";
 
 export interface ChatSink {
   write(s: string): void;
@@ -38,7 +39,10 @@ export function roomLine(
   const trailing = text.endsWith("\n");
   const [first = "", ...rest] = (trailing ? text.slice(0, -1) : text).split("\n");
   const body = [first, ...rest.map((line) => (line === "" ? "" : " ".repeat(CONTINUATION_INDENT) + line))].join("\n");
-  return `${stamp} ${paintTag(handle, colour)} ${body}${trailing ? "\n" : ""}`;
+  // The clock takes its own colour, and follows the same switch as the tag: no colour means no escapes
+  // anywhere on the line, so `room.log` stays plain.
+  const clock = colour(handle) === null ? stamp : paintStamp(stamp);
+  return `${clock} ${paintTag(handle, colour)} ${body}${trailing ? "\n" : ""}`;
 }
 
 /** A continuation inside one burst: every line starts four spaces in, none carries a tag. */
@@ -108,6 +112,9 @@ export class ChatStream {
    */
   messageBoundary(agentId: string, text: string): void {
     if (text === "") return;
+    // A new assistant message starts a new burst even inside one turn: the report that follows a run of
+    // tool lines names its speaker and its time, instead of hanging under the turn's first tag (#66).
+    this.lastSpeaker = undefined;
     const held = this.partial.get(agentId) ?? "";
     if (!held.endsWith(text) || held.length === text.length) return;
     this.partial.set(agentId, `${held.slice(0, held.length - text.length).replace(/\n?$/, "\n")}${text}`);
