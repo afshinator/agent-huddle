@@ -93,6 +93,7 @@ started.
 | Readable prose and one `[tool] …` line per call in real `herdr` panes | #3 |
 | A line typed into an agent's pane during an active chain becomes a public `@that agent` message and dispatches it | #3 |
 | `launch_guard: warn` records the repo root and branch at boot | #3 (record only — see #48) |
+| Three agents (lead, dev, reviewer) across three providers boot, audit and reach `DONE` | `2026-11-21-docs-audit` |
 
 ## Proven against the real thing (`test:live`, and probes)
 
@@ -156,20 +157,23 @@ started.
 
 ## Not proven
 
-- **Nothing beyond two agents.** Run #3 used one lead, one specialist, one provider and a two-turn task.
-  `@all`, three or more agents, a lead that refuses to emit `DONE`, a chain that reaches `max_hops`, and a
-  reviewer that pushes work back to another specialist are unproven in a manned room. `rooms/templates/docs-audit`
-  is a three-agent room staged for exactly that; until it runs, three agents are configuration, not behaviour.
+- **Nothing beyond three agents.** Run #3 used one lead, one specialist, one provider and a two-turn task;
+  the three-agent `docs-audit` room did reach `DONE` in a manned room (`2026-11-21-docs-audit`, three
+  providers), so three agents are behaviour, not configuration. Unproven above that: `@all`, a fourth agent,
+  a lead that refuses to emit `DONE`, a chain that reaches `max_hops`, and a reviewer that pushes work back
+  to another specialist.
 - **The template/run launcher is verified to the boot, and once past it.** `rooms/launch.sh` writes the
   collateral, creates the worktree, resolves the config and boots; the `ticket-prep` room booted through it
-  on a smoke ticket (#71, log not kept — the run's `_run/` collateral was deleted afterwards), read the
-  ticket, published one corrected row and stopped. What is unproven past the boot is everything below.
-- **The prep chain has never run live end to end.** `#70`'s path — refusal, prep room, re-asked launch,
-  template re-picked from the repaired body — is exercised with `--dry-run` and a hand-set `AH_PREP_RAN`,
-  not by a launch that actually refused and actually repaired.
-- **The prep room's three judgement branches are unobserved.** On #71 it repaired one disagreeing record;
-  nobody has watched it cut a reason that is false, publish nothing on a ticket whose block already holds,
-  or refuse a ticket whose ask has no observable end state.
+  on smoke tickets (#71, #72–#75), read the ticket, published one corrected row or refused, and stopped.
+- **The prep chain has run live end to end once.** `#70`'s path — refusal, prep room, re-asked launch,
+  template re-picked from the repaired body — ran on the #75 smoke ticket: `_run/004-ticket-75-prep`
+  (`ticket-prep`, verdict `repaired`) then `_run/005-ticket-75` on `ticket-resolver1-claims`, which reached
+  `DONE`. The second half is thin: #75's criterion already held at `HEAD`, so the resolver room closed it as
+  already-satisfied rather than fixing code.
+- **The prep room's three judgement branches have each been observed once**, in `_run/001-prep-noop`
+  (`Verdict: already-correct`, published nothing), `_run/002-prep-reason` (`Verdict: repaired`, the false
+  supporting reason cut), and `_run/003-prep-noend` (`Verdict: refused — no observable end state`). One
+  observation each, on purpose-built smoke tickets, not on tickets that mattered.
 - A provider other than `commandcode` (deepseek-v4-pro, deepseek-v4.1-flash); one provider is measured.
 - Crash (SIGKILL) of the coordinator: panes from that run are not tracked and will leak.
 - `definition_of_done` is never checked; `DONE` is the lead's self-certification.
