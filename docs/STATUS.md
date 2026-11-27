@@ -210,7 +210,9 @@ started.
 - **Tool arguments print verbatim**, cut at a fixed width (`src/agent-stream.ts`): a call carrying file
   contents or a token shows it in the pane.
 - **Telemetry during a write outage is lost** (no buffering, by design; reported once on stderr).
-- **Panes from a previous crashed run are unidentifiable** — pane ids are not recorded across runs.
+- **Panes from a previous crashed run are yours to close.** Their ids are in that run's `state.json`
+  (`src/coordinator.ts:279`, written at `:281`), so a hard-killed run's panes can be found and closed by hand
+  (`docs/RUNBOOK.md`); no later run reads them.
 - **A model that declines to use a tool produces no `tool` line**, and no test asserts otherwise: a
   model's choice is not a check.
 - **`launch_guard` cannot see a launch from a subdirectory** of a repository, and a worktree of the tree
