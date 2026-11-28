@@ -561,6 +561,32 @@ describe("the launch as a value (#78)", () => {
     }
   });
 
+  test("the child invocations parse back into the flags they were built from", () => {
+    const argsOf = (kind: "prep" | "reAsk"): string[] => {
+      const step = planLaunch(launch({ warm: false }), facts()).find((s) => s.kind === kind);
+      if (step === undefined || (step.kind !== "prep" && step.kind !== "reAsk")) throw new Error(`no ${kind} step`);
+      return step.args;
+    };
+
+    // A hand-built argument list that the parser cannot read is a launch that dies in the refusal chain.
+    const prep = parseLaunchFlags(argsOf("prep"));
+    expect({
+      template: prep.template,
+      requested: prep.requested,
+      prepRan: prep.prepRan,
+      noClaims: prep.noClaims,
+    }).toEqual({ template: "ticket-prep", requested: "ticket-75-prep", prepRan: true, noClaims: true });
+
+    const reAsk = parseLaunchFlags(argsOf("reAsk"));
+    expect({
+      template: reAsk.template,
+      requested: reAsk.requested,
+      branch: reAsk.branch,
+      warm: reAsk.warm,
+      prepRan: reAsk.prepRan,
+    }).toEqual({ template: null, requested: null, branch: true, warm: false, prepRan: true });
+  });
+
   test("the flags are the ones the shell used to parse", () => {
     expect(
       parseLaunchFlags([
