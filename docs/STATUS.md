@@ -159,6 +159,7 @@ started.
 | A requested name keeps its ordinal, and a name an existing run already carries reruns that directory | `test/run-slug.test.ts`, `2b9cd83` |
 | A refused preflight decides to run the prep room once, and stops when the pass is spent; a template named with `--template` keeps the chain out | `test/launch.test.ts`, #70, D32 |
 | The prep room carries its nine repair rules, and a template that is not gating must be exempt with a reason | `test/template-prompts.test.ts`, #69, D30, D35, D36, D37 |
+| Every agent granted `write` is told what a refused call means: scaffold and extend, retry smaller than the call that failed, report the refusal; the writers are derived from each template's agents, so the prep room's `prep` is covered too | `test/template-prompts.test.ts`, #83 |
 
 ## Not proven
 

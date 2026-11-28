@@ -26,5 +26,10 @@ Do this, and nothing else:
 Do not read source code. Do not judge whether a doc is stale or correct. Do not edit any file other than
 `docs/DOCS-AUDIT.md`. Do not paste file contents into the table — a heading, not a summary.
 
+**A call refused for truncation is never retried unchanged.** Write the table's header and the rows you
+have, then extend it with `edit`, one block of rows per call. When a write comes back refused for
+truncation, the retry is smaller than the call that failed, and you say in your reply that the call was
+refused.
+
 Budget: under two minutes. If you are still gathering after that, something is wrong: write the rows you
 have, say which files are missing, and reply.

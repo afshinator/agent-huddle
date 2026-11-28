@@ -158,6 +158,10 @@ carries from then on:
 - **Print a report whole when it fits.** A fifty-line report is one tool result. The green-suite cut above
   is the exception, not the rule: never truncate a report you will have to re-read, because the re-run
   costs a turn and returns the same bytes.
+- **A call refused for truncation is never retried unchanged.** A file too large for one response is
+  scaffolded with its types and skeleton, then extended with `edit`, one section per call. When a write
+  comes back refused for truncation, the retry is smaller than the call that failed, and you say in your
+  reply that the call was refused — a silent retry spends the turn again.
 
 **Commit on `run/<slug>`** once the suite is green: one commit, a message that says why the change
 exists, ending its subject with the ticket number as `(<n>)` — this repo's convention is

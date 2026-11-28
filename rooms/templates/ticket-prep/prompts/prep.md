@@ -102,6 +102,10 @@ against the working directory, so `--repo` names the ticket while the checkout i
 `after` rows describe what the fix will show and cannot be verified before the fix exists. Leave the ones
 that already hold, and add the one a criterion is missing — rule 8.
 
+**A call refused for truncation is never retried unchanged.** Write the records you are sure of first, then
+write the file again with the rest added, so the retry carries less than the call that failed — and say in
+your reply that a call was refused rather than retrying it silently.
+
 ## Report
 
 One message, whole, when you are done:

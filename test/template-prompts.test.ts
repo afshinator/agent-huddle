@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 /**
  * The rules that decide how much a gate costs, pinned across every template.
@@ -141,5 +142,47 @@ describe("template prompts carry the gate-cost rules", () => {
   test("the prep room carries all nine repair rules", async () => {
     const text = await readFile(join(ROOT, "ticket-prep", "prompts", "prep.md"), "utf8");
     expect(PREP_RULES.filter((rule) => !text.includes(rule))).toEqual([]);
+  });
+});
+
+/** The two fields this test needs from a template's agent entry. */
+type Writer = { id: string; tools?: string[]; system_prompt_file?: string };
+
+/**
+ * Every prompt that grants `write` carries the rule for a call the harness refused.
+ *
+ * Run 008's dev1 lost seven responses to the provider's cap, two of them mid-`write` with an unterminated
+ * argument string, then wrote the same file in one small call after one sentence of steering: the rule was
+ * missing, not the capability. The writers come from each template's own agent list, under any id — the
+ * prep room's writer is `prep`, not `dev1` — so a fourth template is covered the day it exists.
+ */
+describe("every agent that may write is told what a refused call means", () => {
+  test("a prompt granting write carries the rule", async () => {
+    const marker = "refused for truncation";
+    const missing: string[] = [];
+    const checked: string[] = [];
+
+    for (const name of await templates()) {
+      const source = await readFile(join(ROOT, name, "template.yaml"), "utf8");
+      const config = parseYaml(source) as { lead?: Writer; agents?: Writer[] };
+      const agents = [config.lead, ...(config.agents ?? [])].filter((a): a is Writer => a !== undefined);
+      // A template whose agents this parse cannot see would pass while checking nothing.
+      expect(agents.length).toBeGreaterThan(0);
+
+      for (const agent of agents) {
+        if (!agent.tools?.includes("write")) continue;
+        if (agent.system_prompt_file === undefined) {
+          missing.push(`${name}: ${agent.id} grants write and names no system_prompt_file`);
+          continue;
+        }
+        const text = await readFile(join(ROOT, name, agent.system_prompt_file), "utf8");
+        if (!text.includes(marker)) missing.push(`${name}/${agent.system_prompt_file} (${agent.id})`);
+        else checked.push(`${name}:${agent.id}`);
+      }
+    }
+
+    expect(missing).toEqual([]);
+    // A run that checked no prompt would prove nothing, so the derivation has to have found one.
+    expect(checked.length).toBeGreaterThan(0);
   });
 });
