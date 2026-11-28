@@ -151,10 +151,11 @@ type Writer = { id: string; tools?: string[]; system_prompt_file?: string };
 /**
  * Every prompt that grants `write` carries the rule for a call the harness refused.
  *
- * Run 008's dev1 lost seven responses to the provider's cap, two of them mid-`write` with an unterminated
- * argument string, then wrote the same file in one small call after one sentence of steering: the rule was
- * missing, not the capability. The writers come from each template's own agent list, under any id — the
- * prep room's writer is `prep`, not `dev1` — so a fourth template is covered the day it exists.
+ * Run 008's dev1 lost eight responses to the provider's cap between 23:06 and 23:30, two of them
+ * mid-`write` with an unterminated argument string, then wrote the same file in one small call after one
+ * sentence of steering: the rule was missing, not the capability. The writers come from each template's own
+ * agent list, under any id — the prep room's writer is `prep`, not `dev1` — so a fourth template is covered
+ * the day it exists.
  */
 describe("every agent that may write is told what a refused call means", () => {
   test("a prompt granting write carries the rule", async () => {
