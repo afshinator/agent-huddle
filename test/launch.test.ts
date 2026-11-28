@@ -17,6 +17,8 @@ import {
   templatePath,
   worktreeAction,
   warmPlan,
+  warmUp,
+  type WarmIo,
 } from "../src/launch";
 import {
   parseLaunchFlags,
@@ -93,6 +95,107 @@ describe("warm: copy the source tree or install", () => {
         worktreeLock: null,
       }).mode,
     ).toBe("refuse");
+  });
+});
+
+describe("warm: the effects, driven through parameters (#90)", () => {
+  const dirs = { repo: "/src", worktree: "/wt" };
+
+  interface State {
+    files?: string[];
+    worktreeModules?: boolean;
+    sourceModules?: boolean;
+    sourceLock?: string | null;
+    worktreeLock?: string | null;
+  }
+
+  /** Every call the warm-up makes, in order, with a clock that ticks once per read. */
+  const fake = (state: State, tick = 2_500_000_000) => {
+    const calls: string[] = [];
+    let elapsed = 0;
+    const io: WarmIo = {
+      readdir: (dir) => {
+        calls.push(`readdir ${dir}`);
+        return state.files ?? [];
+      },
+      exists: (path) => {
+        calls.push(`exists ${path}`);
+        return path.startsWith(dirs.worktree) ? state.worktreeModules === true : state.sourceModules === true;
+      },
+      lock: (dir, lockfile) => {
+        calls.push(`lock ${dir} ${lockfile}`);
+        return dir === dirs.worktree ? (state.worktreeLock ?? null) : (state.sourceLock ?? null);
+      },
+      remove: (path) => calls.push(`remove ${path}`),
+      copy: (from, to) => calls.push(`copy ${from} ${to}`),
+      install: (cmd, cwd) => calls.push(`install ${cmd.join(" ")} ${cwd}`),
+      now: () => {
+        elapsed += tick;
+        return elapsed;
+      },
+    };
+    const effects = () => calls.filter((c) => /^(remove|copy|install) /.test(c));
+    return { io, calls, effects };
+  };
+
+  const warmed = { files: ["bun.lock"], sourceModules: true, worktreeModules: false, sourceLock: "a", worktreeLock: "a" };
+
+  test("a matching lockfile and a warmed source: remove, then copy, and say how long it took", () => {
+    const warm = fake(warmed);
+    expect(warmUp(dirs, warm.io)).toEqual({
+      code: 0,
+      row: "launch: warm clone in 2.5s — the lockfile matches the source checkout",
+    });
+    // Remove first: `cp -R src dst` copies into an existing dst and nests a second tree inside it.
+    expect(warm.effects()).toEqual(["remove /wt/node_modules", "copy /src/node_modules /wt/node_modules"]);
+  });
+
+  test("no lockfile: nothing is touched", () => {
+    const warm = fake({ ...warmed, files: [] });
+    expect(warmUp(dirs, warm.io)).toEqual({ code: 0, row: "launch: warm skipped — no lockfile in the worktree" });
+    expect(warm.effects()).toEqual([]);
+  });
+
+  test("two lockfiles: refuse, and touch nothing", () => {
+    const warm = fake({ ...warmed, files: ["pnpm-lock.yaml", "bun.lock"] });
+    expect(warmUp(dirs, warm.io)).toEqual({
+      code: 1,
+      row: "launch: warm refused — bun.lock and pnpm-lock.yaml are both present; pick one",
+    });
+    expect(warm.effects()).toEqual([]);
+  });
+
+  test("a worktree that already has modules: nothing to do", () => {
+    const warm = fake({ ...warmed, worktreeModules: true });
+    expect(warmUp(dirs, warm.io)).toEqual({ code: 0, row: "launch: warm skipped — the worktree is already warmed" });
+    expect(warm.effects()).toEqual([]);
+  });
+
+  test("no modules in the source: install from the lockfile's manager, in the worktree", () => {
+    const warm = fake({ ...warmed, sourceModules: false });
+    expect(warmUp(dirs, warm.io)).toEqual({
+      code: 0,
+      row: "launch: warm install in 2.5s — no node_modules in the source checkout to clone",
+    });
+    expect(warm.effects()).toEqual(["install bun install --frozen-lockfile /wt"]);
+  });
+
+  test("a lockfile that cannot be read: install rather than compare", () => {
+    const warm = fake({ ...warmed, sourceLock: null });
+    expect(warmUp(dirs, warm.io)).toEqual({
+      code: 0,
+      row: "launch: warm install in 2.5s — a lockfile could not be read, so it cannot be compared",
+    });
+    expect(warm.effects()).toEqual(["install bun install --frozen-lockfile /wt"]);
+  });
+
+  test("locks that differ: install with the manager that lockfile names", () => {
+    const warm = fake({ ...warmed, files: ["package-lock.json"], worktreeLock: "b" });
+    expect(warmUp(dirs, warm.io)).toEqual({
+      code: 0,
+      row: "launch: warm install in 2.5s — the worktree's package-lock.json differs from the source checkout",
+    });
+    expect(warm.effects()).toEqual(["install npm ci /wt"]);
   });
 });
 

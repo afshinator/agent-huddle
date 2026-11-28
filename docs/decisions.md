@@ -886,3 +886,26 @@ that is failing in a loop, and the pane was where the failure was already invisi
 
 **Cost:** three more `watchFailure` sites (14 → 17 lines, no existing message edited), one new notice per
 harness failure in the transcript, and a room that can now say "failed" where it used to say nothing.
+
+## D40 — The warm-up's effects take their IO as parameters, and return the row (#90)
+
+**Context:** `warmPlan` decides and was tested; the code that read the worktree's listing, hashed two
+lockfiles, removed a tree, attempted `cp -cR` and fell back to `cp -R`, or ran an install, was reachable only
+by spawning `warm`, and nothing spawned it. A lockfile name added to `LOCKFILES` was invisible to the probe,
+because the probe retyped the list.
+
+**Decision:** one exported `warmUp(dirs, io)` takes seven IO operations and a clock, and returns
+`{ code, row }`; `cmdWarm` parses `--repo`/`--worktree`, passes the real implementations, writes the row and
+returns the code. The row is a value so the elapsed seconds come from an injected clock and a fake can assert
+the text exactly. The lockfile is `lockfileFor(io.readdir(worktree))` — `lockfileFor` already filters against
+`LOCKFILES` and reports `ambiguous:`, so the copy is deleted rather than exported, and ambiguity keeps its
+single owner. `copy` hides the volume trick, so the fake sees one call and not a fallback decision.
+
+**Rejected:** injecting only `copy` and `install`, leaving the probes and the clock in `cmdWarm` — the
+listing, the two hashes and the printed duration would stay untested, which is most of what this seam is for.
+Exporting `LOCKFILES` and keeping the `existsSync` filter — the filter loop survives, and a caller has to
+remember to use the export. Asserting the row by regex on real output — a real clock makes the seconds
+nondeterministic, so the test would prove the format and not the branch.
+
+**Cost:** `cmdWarm` is no longer testable end to end without a directory, the fake answers seven methods, and
+the IO test is longer than the decision test it sits beside.

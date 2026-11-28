@@ -7,7 +7,7 @@
  * live here where a test can hold them (e12c556). The shell script keeps only what needs git and gh.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 // ---------------------------------------------------------------- lockfiles
@@ -391,44 +391,66 @@ function cmdWorktree(argv: string[]): number {
 
 function cmdWarm(argv: string[]): number {
   const args = argsOf(argv);
-  const repo = args.get("repo")!;
-  const worktree = args.get("worktree")!;
-  const lockfile = lockfileFor([
-    ...new Set([
-      ...["bun.lock", "bun.lockb", "pnpm-lock.yaml", "package-lock.json", "yarn.lock"].filter((l) =>
-        existsSync(join(worktree, l)),
-      ),
-    ]),
-  ]);
+  const result = warmUp({ repo: args.get("repo")!, worktree: args.get("worktree")! }, realWarmIo);
+  process.stderr.write(`${result.row}\n`);
+  return result.code;
+}
+
+/** Everything the warm-up touches outside its own values, and the clock it reports in. */
+export interface WarmIo {
+  readdir(dir: string): string[];
+  exists(path: string): boolean;
+  /** A lockfile's hash, or `null` when it is absent, unreadable, or not one name. */
+  lock(dir: string, lockfile: string | null): string | null;
+  remove(path: string): void;
+  copy(from: string, to: string): void;
+  install(cmd: readonly string[], cwd: string): void;
+  now(): number;
+}
+
+const realWarmIo: WarmIo = {
+  readdir: (dir) => readdirSync(dir),
+  exists: (path) => existsSync(path),
+  lock: (dir, lockfile) => lockHash(dir, lockfile),
+  remove: (path) => rmSync(path, { recursive: true, force: true }),
+  copy: (from, to) => {
+    // Same volume, so this is a copy-on-write clone: measured 8.1s vs 42.7s for `npm ci` (e12c556).
+    trySh("cp", ["-cR", from, to]) ?? sh("cp", ["-R", from, to]);
+  },
+  install: (cmd, cwd) => {
+    sh(cmd[0]!, [...cmd.slice(1)], cwd);
+  },
+  now: () => Bun.nanoseconds(),
+};
+
+/**
+ * The warm-up's effects, with its IO handed in, returning the row `warm` prints instead of printing it.
+ *
+ * `warmPlan` decides and is cheap to test; everything that reads a directory, removes a tree or runs a
+ * package manager went untested until it moved behind these parameters (D40, #90). The lockfile comes from
+ * `lockfileFor` over the worktree's own listing, so the list of names has one owner.
+ */
+export function warmUp(dirs: { repo: string; worktree: string }, io: WarmIo): { code: number; row: string } {
+  const lockfile = lockfileFor(io.readdir(dirs.worktree));
   const plan = warmPlan({
     lockfile,
-    worktreeHasModules: existsSync(join(worktree, "node_modules")),
-    sourceHasModules: existsSync(join(repo, "node_modules")),
-    sourceLock: lockHash(repo, lockfile),
-    worktreeLock: lockHash(worktree, lockfile),
+    worktreeHasModules: io.exists(join(dirs.worktree, "node_modules")),
+    sourceHasModules: io.exists(join(dirs.repo, "node_modules")),
+    sourceLock: io.lock(dirs.repo, lockfile),
+    worktreeLock: io.lock(dirs.worktree, lockfile),
   });
-  if (plan.mode === "skip") {
-    process.stderr.write(`launch: warm skipped — ${plan.reason}\n`);
-    return 0;
-  }
-  if (plan.mode === "refuse") {
-    process.stderr.write(`launch: warm refused — ${plan.reason}\n`);
-    return 1;
-  }
-  const started = Bun.nanoseconds();
+  if (plan.mode === "skip") return { code: 0, row: `launch: warm skipped — ${plan.reason}` };
+  if (plan.mode === "refuse") return { code: 1, row: `launch: warm refused — ${plan.reason}` };
+  const started = io.now();
   if (plan.mode === "clone") {
     // `cp -R src dst` copies *into* dst when dst exists, which nests a second tree inside the first.
-    rmSync(join(worktree, "node_modules"), { recursive: true, force: true });
-    // Same volume, so this is a copy-on-write clone: measured 8.1s vs 42.7s for `npm ci` (e12c556).
-    trySh("cp", ["-cR", join(repo, "node_modules"), join(worktree, "node_modules")]) ??
-      sh("cp", ["-R", join(repo, "node_modules"), join(worktree, "node_modules")]);
+    io.remove(join(dirs.worktree, "node_modules"));
+    io.copy(join(dirs.repo, "node_modules"), join(dirs.worktree, "node_modules"));
   } else {
-    const cmd = INSTALL[lockfile!]!;
-    sh(cmd[0]!, [...cmd.slice(1)], worktree);
+    io.install(INSTALL[lockfile!]!, dirs.worktree);
   }
-  const seconds = (Bun.nanoseconds() - started) / 1e9;
-  process.stderr.write(`launch: warm ${plan.mode} in ${seconds.toFixed(1)}s — ${plan.reason}\n`);
-  return 0;
+  const seconds = (io.now() - started) / 1e9;
+  return { code: 0, row: `launch: warm ${plan.mode} in ${seconds.toFixed(1)}s — ${plan.reason}` };
 }
 
 function cmdCheck(argv: string[]): number {
