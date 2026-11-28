@@ -74,6 +74,11 @@ export interface RecordedCall {
  * | `agent_settled` | `aborted` | nothing else it carries |
  * | `tool_execution_start` | `toolName`, `args`, `toolCallId` | nothing else it carries |
  * | `tool_execution_end` | `toolName`, `toolCallId`, `isError`, `durationMs`, `result` text | `result.details` (bulk, never printed) |
+ * | `response` | `id`, `success`, `data`, `error` (command correlation, no event) | nothing else it carries |
+ *
+ * Every other record type `pi` documents (`message_start`, `turn_end`, `agent_end`, the retry and
+ * compaction notices) is ignored: no event depends on it today. A field the room needs starts in the table
+ * above, so the next one is a deliberate row rather than a silent drop.
  *
  * A missing `durationMs` is kept as a missing field. The harness documents it as "absent when the tool
  * did not run"; `0` means it ran and took no measurable time, and coalescing the two throws away the
