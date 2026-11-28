@@ -125,6 +125,7 @@ started.
 | `launch_guard` refuse / warn / off, and a refusal writes no room files | `test/coordinator.test.ts`, `test/launch-guard.test.ts`, #38 |
 | A linked worktree is left alone by both `warn` and `refuse`; a main checkout is not | `test/launch-guard.test.ts`, `test/coordinator.test.ts`, D12, #48 |
 | The fake and the real `PiAgentClient` agree on what a stop does to a turn in flight | `test/client-parity.test.ts`, #52 |
+| The fake and the real client agree on what a turn means — steer, a settle timeout and its wording, a child exiting mid-turn, and the verdict an already-settled turn carries — because those rules live in `src/seams/turn.ts`, not in each client | `test/client-parity.test.ts`, #88, D42 |
 | The test harness fails a test that ends with a chain still running, naming it | `test/coordinator.test.ts`, #53 |
 | `AH_DEBUG=1` traces boot, the signal, each stop and each child's exit with code and signal | `test/debug.test.ts`, `test/pi-protocol.test.ts`, `test/coordinator.test.ts`, #55 |
 | A startup task that names agents dispatches only the lead, and pushes the text to the named agents as context | `test/turn-loop.test.ts`, #57 |

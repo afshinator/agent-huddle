@@ -80,6 +80,23 @@ createInterface({ input: process.stdin }).on("line", (line: string) => {
 });
 `;
 
+const TRUNCATED_STUB = `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (o: unknown): void => { process.stdout.write(JSON.stringify(o) + "\\n"); };
+createInterface({ input: process.stdin }).on("line", (line: string) => {
+  if (line.trim() === "") return;
+  const cmd = JSON.parse(line) as { id?: string; type?: string };
+  if (cmd.type === "prompt") {
+    // A turn cut off by the output budget: the message says how it stopped, and it settles.
+    out({ type: "agent_start" });
+    out({ type: "message_end", message: { role: "assistant", content: [], stopReason: "length" } });
+    out({ type: "agent_settled", aborted: false });
+  }
+  if (cmd.type === "get_last_assistant_text") out({ id: cmd.id, type: "response", command: cmd.type, success: true, data: { text: "cut short" } });
+  else if (cmd.id) out({ id: cmd.id, type: "response", success: true, data: {} });
+});
+`;
+
 const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 
 interface Observed {
@@ -271,6 +288,70 @@ describe("PiAgentClient parity", () => {
 
       expect(shape(realSettled)).toEqual({ stopReason: "error", errorMessage: "529 overloaded", lastText: null });
       expect(shape(fakeSettled)).toEqual(shape(realSettled));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  /**
+   * #88: the budget and the wording of a settle timeout are shared, so a caller must read the same
+   * rejection through either client. The real client aborts the turn after the timeout; the stub answers
+   * the abort, because a stub that ignores it would test the command timeout instead.
+   */
+  test("a settle timeout rejects with the same message through either implementation", async () => {
+    const timeoutOf = async (client: PiAgentClient, agentId: string): Promise<string> => {
+      await client.prompt(agentId, { message: "work until the room gives up" });
+      try {
+        await client.waitForSettled(agentId, 250);
+        return "resolved";
+      } catch (e) {
+        return `rejected: ${(e as Error).message}`;
+      }
+    };
+
+    const { client: real, dir } = await realClient(HOLD_STUB);
+    try {
+      await real.spawn(dev1, { cwd: dir });
+      const realTimeout = await timeoutOf(real, dev1.id);
+
+      const fake = new FakePiAgentClient();
+      await fake.spawn(dev1, { cwd: "/fake" });
+      fake.script(dev1.id, [{ hold: true }]);
+      const fakeTimeout = await timeoutOf(fake, dev1.id);
+
+      expect(realTimeout).toBe("rejected: settle timeout after 250ms");
+      expect(fakeTimeout).toBe(realTimeout);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  /**
+   * #88: a turn that settled before anyone asked still carries its verdict. The real client answers from
+   * its per-turn record, the fake from the turn it settled last; before the shared module the fake
+   * dropped `stopReason` here and no test compared the two.
+   */
+  test("an already-settled turn carries the same verdict through either implementation", async () => {
+    const settledTwice = async (client: PiAgentClient, agentId: string): Promise<unknown> => {
+      await client.prompt(agentId, { message: "write until the budget runs out" });
+      await client.waitForSettled(agentId, 5_000);
+      // The turn is over: this call answers from the record, not from a promise.
+      const again = await client.waitForSettled(agentId, 5_000);
+      return { lastText: again.lastText, stopReason: again.stopReason, errorMessage: again.errorMessage };
+    };
+
+    const { client: real, dir } = await realClient(TRUNCATED_STUB);
+    try {
+      await real.spawn(dev1, { cwd: dir });
+      const realAgain = await settledTwice(real, dev1.id);
+
+      const fake = new FakePiAgentClient();
+      await fake.spawn(dev1, { cwd: "/fake" });
+      fake.script(dev1.id, [{ lastText: "cut short", stopReason: "length" }]);
+      const fakeAgain = await settledTwice(fake, dev1.id);
+
+      expect(realAgain).toEqual({ lastText: "cut short", stopReason: "length", errorMessage: undefined });
+      expect(fakeAgain).toEqual(realAgain);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { AgentSpec } from "../config";
+import { awaitSettle, childExitedMessage, settledResult, steersInFlight } from "./turn";
 
 export interface SpawnOptions {
   cwd: string;
@@ -150,6 +151,10 @@ interface FakeAgent {
   shutdown: boolean;
   script: ScriptedTurn[];
   lastText: string | null;
+  /** How the turn that settled last stopped, so a caller asking again gets the same record. */
+  lastAborted: boolean;
+  stopReason?: string;
+  errorMessage?: string;
   settle: { promise: Promise<SettledResult>; resolve: (r: SettledResult) => void; reject: (e: Error) => void } | null;
 }
 
@@ -204,9 +209,14 @@ export class FakePiAgentClient implements PiAgentClient {
     const a = this.requireAgent(agentId);
     this.record("prompt", agentId, req);
     // A steer feeds a turn already in flight: it must not replace that turn's settle, which is what a
-    // new prompt would do. The real client's turn keeps running and settles once (T16).
-    if (req.streamingBehavior === "steer" && a.settle !== null) return;
+    // new prompt would do. `steersInFlight` is the rule the real client applies too.
+    if (steersInFlight(req.streamingBehavior, a.settle !== null)) return;
     const turn = a.script.shift() ?? { lastText: null };
+    // A new turn clears what the last one said about how it stopped, exactly as the real client's
+    // `prompt` clears its per-turn verdict (§T11).
+    a.lastAborted = false;
+    a.stopReason = undefined;
+    a.errorMessage = undefined;
 
     let resolveSettle!: (r: SettledResult) => void;
     let rejectSettle!: (e: Error) => void;
@@ -233,13 +243,19 @@ export class FakePiAgentClient implements PiAgentClient {
       // A held turn means the settle never arrives, not that the model said nothing:
       // production streams deltas before it settles, so the fake must too (#63).
       if (turn.hold) return;
-      const result: SettledResult = {
+      const result = settledResult({
         aborted: turn.aborted ?? false,
         lastText: turn.lastText ?? null,
-        ...(turn.stopReason === undefined ? {} : { stopReason: turn.stopReason }),
-        ...(turn.errorMessage === undefined ? {} : { errorMessage: turn.errorMessage }),
-      };
+        stopReason: turn.stopReason,
+        errorMessage: turn.errorMessage,
+      });
       a.lastText = result.lastText;
+      a.lastAborted = result.aborted;
+      a.stopReason = result.stopReason;
+      a.errorMessage = result.errorMessage;
+      // A settled turn is no longer pending, the way the real client clears `pendingSettle` when the
+      // harness settles it: anything asked afterwards answers from the record, not from a promise.
+      a.settle = null;
       resolveSettle(result);
       this.bus.emit(agentId, { type: "settled", result });
     });
@@ -257,7 +273,11 @@ export class FakePiAgentClient implements PiAgentClient {
     const settle = a.settle;
     a.settle = null;
     a.lastText = lastText;
-    const result: SettledResult = { aborted: false, lastText };
+    // A released turn carries no verdict: the script never said how it stopped.
+    a.lastAborted = false;
+    a.stopReason = undefined;
+    a.errorMessage = undefined;
+    const result = settledResult({ aborted: false, lastText });
     settle.resolve(result);
     this.bus.emit(agentId, { type: "settled", result });
   }
@@ -340,18 +360,16 @@ export class FakePiAgentClient implements PiAgentClient {
     this.record("waitForSettled", agentId, timeoutMs);
     const failure = this.takeFailure("waitForSettled");
     if (failure) throw failure.error;
-    if (!a.settle) return { aborted: false, lastText: a.lastText };
-    // Same budget and same wording as the real client: a fake that waits forever cannot exercise
-    // what a turn does when its provider goes quiet (see `client-parity.test.ts`).
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await new Promise<SettledResult>((resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`settle timeout after ${timeoutMs}ms`)), timeoutMs);
-        a.settle!.promise.then(resolve, reject);
+    if (!a.settle) {
+      // The turn already settled: the caller still gets the record it left, not a bare text.
+      return settledResult({
+        aborted: a.lastAborted,
+        lastText: a.lastText,
+        stopReason: a.stopReason,
+        errorMessage: a.errorMessage,
       });
-    } finally {
-      clearTimeout(timer);
     }
+    return await awaitSettle(a.settle.promise, timeoutMs);
   }
 
   async shutdown(agentId: string): Promise<void> {
@@ -362,11 +380,10 @@ export class FakePiAgentClient implements PiAgentClient {
     this.record("shutdown", agentId, undefined);
     // The real client rejects a pending settle when its child exits; without this the
     // fake let a held turn outlive shutdown, hiding what a stop mid-turn really does.
-    // Same wording as the real client (`src/real/pi-agent-client-real.ts`), because the
-    // message reaches a notice and test/client-parity.test.ts compares the two (#52).
+    // The wording comes from the shared module, because it reaches a notice (#52, #88).
     const settle = a.settle;
     a.settle = null;
-    settle?.reject(new Error(`pi process for ${agentId} exited before settling`));
+    settle?.reject(new Error(childExitedMessage(agentId)));
   }
 
   subscribe(agentId: string, fn: (event: AgentEvent) => void): void {
@@ -381,7 +398,7 @@ export class FakePiAgentClient implements PiAgentClient {
   private ensure(agentId: string): FakeAgent {
     let a = this.agents.get(agentId);
     if (!a) {
-      a = { spawned: false, shutdown: false, script: [], lastText: null, settle: null };
+      a = { spawned: false, shutdown: false, script: [], lastText: null, lastAborted: false, settle: null };
       this.agents.set(agentId, a);
     }
     return a;

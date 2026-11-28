@@ -940,3 +940,25 @@ refused, which reads as finished.
 `lead idle, dev1 busy`: the launch printed the refusal, wrote nothing into the directory and exited `1`; with
 `--reuse-live` it ran the same dry run to exit `0`. A directory whose agents are all `exited` (a copy of a
 finished run's state) passed without the flag.
+
+## D42 — What a turn means lives in one module, not in both clients (#88)
+
+**Context:** the fake re-derived the steer rule, the settle timeout and its wording, and the child-exited
+wording, and `test/client-parity.test.ts` existed to notice when the copies drifted. They had already drifted
+once: at `0e48519^` the fake carried the steer guard while the real client replaced `pendingSettle` on every
+prompt. And a fourth semantic was not a copy but a live divergence: a turn that settled before anyone asked
+returned `{ aborted, lastText, ...verdict }` through the real client and `{ aborted, lastText }` through the
+fake, so `stopReason` and `errorMessage` vanished on one side with no test comparing it.
+
+**Decision:** `src/seams/turn.ts` holds `steersInFlight`, `awaitSettle`, `childExitedMessage` and
+`settledResult`; both clients call them. The fake keeps its script, its recorder and its timing. Both clients
+also keep the last settle's record (`lastAborted`, `stopReason`, `errorMessage`) and answer a later
+`waitForSettled` from it, which is what makes the divergence go away rather than get a second implementation.
+The budget and the wording are one function because a caller that shares one and not the other is the bug.
+
+**Rejected:** leaving the parity test as the only guard — it notices the copies disagree, not that both are
+wrong, and it did neither for the early return nobody compared; a base class or shared `waitForSettled` — the
+real client's version also aborts the turn on timeout, and that is a fact about the harness, not about a turn.
+
+**Cost:** one more module in the seam, and the fake inherits the real client's per-turn reset rules
+(`lastAborted`, verdict cleared on a new prompt) it previously did not need.

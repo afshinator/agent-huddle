@@ -641,6 +641,12 @@ export type AgentEvent =
 
 Real implementation: spawns `pi --mode rpc`, parses JSONL, correlates by `id`, emits `stream` on `text_delta`, `settled` on `agent_settled`. Fake: in-memory map of `agentId → {messages, replayScript}`, returns scripted responses, records all calls for assertions.
 
+What a **turn** means is not part of either implementation: `src/seams/turn.ts` holds the rules both call —
+`steersInFlight`, `awaitSettle` (the budget and the `settle timeout after <n>ms` wording together),
+`childExitedMessage`, and `settledResult` (the only place the optional verdict fields are added). The fake keeps
+only what a fake must own: the script and the timing. A divergence is then a missing import, not a passing
+parity test (#88, D42).
+
 The completed text reaches the caller through `SettledResult.lastText`, and the provider's verdict on how the turn stopped rides beside it (`stopReason`, `errorMessage`); nothing prints that verdict yet (#82). The real client asks `pi` for the authoritative text at settle time (`get_last_assistant_text`) and puts it there, so no seam method exposes the last text separately (removed in v1; #21).
 
 **Failure semantics** (required section: a seam is signatures *plus* this grammar):

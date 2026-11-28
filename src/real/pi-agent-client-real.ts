@@ -12,6 +12,7 @@ import type {
   SpawnOptions,
 } from "../seams/pi-agent-client";
 import { AgentListeners, requireAgentEntry } from "../seams/pi-agent-client";
+import { awaitSettle, childExitedMessage, settledResult, steersInFlight } from "../seams/turn";
 import { errorMessage } from "../errors";
 import { shellWord } from "../shell";
 import type { Debug } from "../debug";
@@ -32,6 +33,8 @@ interface RealAgent {
   /** Messages this dispatch has already finished, in order: one turn can hold several (§T11). */
   turnMessages: string[];
   lastText: string | null;
+  /** How the turn that settled last stopped, so a caller asking again reads the same record (#88). */
+  lastAborted?: boolean;
   /** The provider's verdict from the turn's last `message_end`; the seam keeps it (#81). */
   stopReason?: string;
   /** The provider's own error text, when it sent one. */
@@ -181,7 +184,8 @@ export class RealPiAgentClient implements PiAgentClient {
     const agent = this.requireAgent(agentId);
     // A steer feeds the turn already in flight: it must neither replace that turn's settle nor clear
     // the buffers it is still filling, or `waitForSettled` waits on a promise nothing resolves (§T16).
-    const steersLiveTurn = req.streamingBehavior === "steer" && agent.pendingSettle !== null;
+    // The rule itself is shared with the fake (`src/seams/turn.ts`), so the two cannot drift.
+    const steersLiveTurn = steersInFlight(req.streamingBehavior, agent.pendingSettle !== null);
     let rejectSettle: ((e: Error) => void) | null = null;
     if (!steersLiveTurn) {
       // A dispatch starts a turn: clear both buffers here, not on `agent_start`, which arrives
@@ -255,15 +259,17 @@ export class RealPiAgentClient implements PiAgentClient {
     const agent = this.requireAgent(agentId);
     const settle = agent.pendingSettle;
     // A turn that settled before anyone asked still carries its verdict: the provider's stop reason is
-    // part of what the turn was, not part of the promise (#81).
-    if (!settle) return { aborted: false, lastText: agent.lastText, ...this.verdict(agent) };
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await new Promise<SettledResult>((resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`settle timeout after ${timeoutMs}ms`)), timeoutMs);
-        settle.promise.then(resolve, reject);
+    // part of what the turn was, not part of the promise (#81). The shape comes from the shared module.
+    if (!settle) {
+      return settledResult({
+        aborted: agent.lastAborted ?? false,
+        lastText: agent.lastText,
+        ...this.verdict(agent),
       });
+    }
+
+    try {
+      return await awaitSettle(settle.promise, timeoutMs);
     } catch (e) {
       agent.pendingSettle = null;
       try {
@@ -272,8 +278,6 @@ export class RealPiAgentClient implements PiAgentClient {
         // abort already in progress or process gone
       }
       throw e;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -370,7 +374,7 @@ export class RealPiAgentClient implements PiAgentClient {
       const settle = a?.pendingSettle;
       if (settle) {
         a!.pendingSettle = null;
-        settle.reject(new Error(`pi process for ${agent.id} exited before settling`));
+        settle.reject(new Error(childExitedMessage(agent.id)));
       }
     });
   }
@@ -453,12 +457,13 @@ export class RealPiAgentClient implements PiAgentClient {
 
       void this.settleText(agent).then(
         (lastText) => {
-          const result: SettledResult = {
+          const result = settledResult({
             aborted: !!rec.aborted,
             lastText,
             ...this.verdict(agent),
-          };
+          });
           agent.lastText = lastText;
+          agent.lastAborted = !!rec.aborted;
           agent.pendingSettle = null;
           this.bus.emit(agentId, { type: "settled", result });
           settle.resolve(result);
