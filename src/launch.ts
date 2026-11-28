@@ -391,7 +391,7 @@ function cmdWorktree(argv: string[]): number {
 
 function cmdWarm(argv: string[]): number {
   const args = argsOf(argv);
-  const result = warmUp({ repo: args.get("repo")!, worktree: args.get("worktree")! }, realWarmIo);
+  const result = warmUp({ repo: args.get("repo")!, worktree: args.get("worktree")! });
   process.stderr.write(`${result.row}\n`);
   return result.code;
 }
@@ -409,7 +409,14 @@ export interface WarmIo {
 }
 
 const realWarmIo: WarmIo = {
-  readdir: (dir) => readdirSync(dir),
+  // An absent directory reads as one with no lockfile: the row the `existsSync` probe printed, not a crash.
+  readdir: (dir) => {
+    try {
+      return readdirSync(dir);
+    } catch {
+      return [];
+    }
+  },
   exists: (path) => existsSync(path),
   lock: (dir, lockfile) => lockHash(dir, lockfile),
   remove: (path) => rmSync(path, { recursive: true, force: true }),
@@ -430,7 +437,10 @@ const realWarmIo: WarmIo = {
  * package manager went untested until it moved behind these parameters (D40, #90). The lockfile comes from
  * `lockfileFor` over the worktree's own listing, so the list of names has one owner.
  */
-export function warmUp(dirs: { repo: string; worktree: string }, io: WarmIo): { code: number; row: string } {
+export function warmUp(
+  dirs: { repo: string; worktree: string },
+  io: WarmIo = realWarmIo,
+): { code: number; row: string } {
   const lockfile = lockfileFor(io.readdir(dirs.worktree));
   const plan = warmPlan({
     lockfile,

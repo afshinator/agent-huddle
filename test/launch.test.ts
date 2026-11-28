@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -196,6 +197,34 @@ describe("warm: the effects, driven through parameters (#90)", () => {
       row: "launch: warm install in 2.5s — the worktree's package-lock.json differs from the source checkout",
     });
     expect(warm.effects()).toEqual(["install npm ci /wt"]);
+  });
+
+  test("a worktree that is not there reads as one with no lockfile, not as a crash", () => {
+    // The existsSync probe printed this row; a readdir that throws would have replaced it with a stack trace.
+    expect(warmUp({ repo: tmpdir(), worktree: join(tmpdir(), "ah-no-such-worktree") })).toEqual({
+      code: 0,
+      row: "launch: warm skipped — no lockfile in the worktree",
+    });
+  });
+
+  test("the real io copies a matching tree, so the fallback path is exercised too", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ah-warm-"));
+    try {
+      const repo = join(root, "src");
+      const worktree = join(root, "wt");
+      await mkdir(join(repo, "node_modules", "pkg"), { recursive: true });
+      await mkdir(worktree, { recursive: true });
+      await writeFile(join(repo, "bun.lock"), "same\n");
+      await writeFile(join(worktree, "bun.lock"), "same\n");
+      await writeFile(join(repo, "node_modules", "pkg", "index.js"), "x\n");
+      const result = warmUp({ repo, worktree });
+      expect(result.row.startsWith("launch: warm clone in ")).toBe(true);
+      expect(result.row.endsWith("— the lockfile matches the source checkout")).toBe(true);
+      expect(result.code).toBe(0);
+      expect(existsSync(join(worktree, "node_modules", "pkg", "index.js"))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
