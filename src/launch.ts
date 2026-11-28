@@ -182,6 +182,18 @@ export function templatePath(name: string): string {
 }
 
 /**
+ * The run file's first line, writer and reader together: they are one seam (#78).
+ *
+ * It used to be a template literal here and a `sed` in `rooms/launch.sh`, so a change to one was invisible
+ * to the other. The launcher now reads it through `templateFromRunFile`.
+ */
+export const TEMPLATE_KEY = "template: ";
+
+export function templateFromRunFile(text: string): string | null {
+  return new RegExp(`^${TEMPLATE_KEY}(.*)$`, "m").exec(text)?.[1] ?? null;
+}
+
+/**
  * The claims binary, resolved the way this repo resolves every external tool: on `PATH`, then the repo's own
  * `AH_`-prefixed override. No machine-specific absolute path in the source, and `null` means "say so", never
  * "carry on quietly".
@@ -566,7 +578,7 @@ function cmdIssue(argv: string[]): number {
   mkdirSync(out.slice(0, out.lastIndexOf("/")), { recursive: true });
   writeFileSync(
     out,
-    `template: ${template}\n` +
+    `${TEMPLATE_KEY}${template}\n` +
       block("task", asked.task) +
       block("definition_of_done", asked.definitionOfDone) +
       `# Generated from #${json.number}: the whole body, and the bar taken from its ${asked.source === "criteria" ? "acceptance criteria" : "body"}.\n` +

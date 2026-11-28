@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,6 +18,15 @@ import {
   worktreeAction,
   warmPlan,
 } from "../src/launch";
+import {
+  parseLaunchFlags,
+  performLaunch,
+  planLaunch,
+  type Launch,
+  type LaunchDeps,
+  type LaunchFacts,
+  type LaunchFlags,
+} from "../src/launch-plan";
 
 describe("which lockfile a repo uses", () => {
   test("picks the one it has", () => {
@@ -375,5 +384,205 @@ describe("where claim-check comes from", () => {
     await writeFile(bin, "#!/bin/sh\nexit 0\n");
     await chmod(bin, 0o755);
     expect(resolveClaimCheck({ PATH: dir })).toBe(bin);
+  });
+});
+
+describe("the launch as a value (#78)", () => {
+  const launch = (over: Partial<LaunchFlags> = {}): Launch => {
+    const flags: LaunchFlags = {
+      repo: "/repo",
+      issue: "75",
+      requested: null,
+      template: null,
+      runFile: "/repo/_run/004-ticket-75/run.yaml",
+      branch: true,
+      dryRun: false,
+      checkOnly: false,
+      warm: true,
+      noClaims: false,
+      anyState: false,
+      ignoreBlockers: false,
+      prepRan: false,
+      ...over,
+    };
+    return {
+      flags,
+      slug: "004-ticket-75",
+      runFile: flags.runFile ?? "/repo/_run/004-ticket-75/run.yaml",
+      runDir: "/repo/_run/004-ticket-75",
+      worktree: "/repo-004-ticket-75",
+      template: "/rooms/templates/ticket-resolver1-claims/template.yaml",
+      name: "ticket-resolver1-claims",
+    };
+  };
+
+  const facts = (over: Partial<LaunchFacts> = {}): LaunchFacts => ({
+    worktreeAction: "create",
+    claimsStatus: 1,
+    created: true,
+    branch: true,
+    prepRan: false,
+    templateRequested: false,
+    config: "/repo/_run/004-ticket-75/run.resolved.yaml",
+    ...over,
+  });
+
+  /** Rows copied from a real refusal: `_run/chain.out` lines 15, 17 and 22 of the #75 dispatch. */
+  const REFUSAL_ROWS =
+    "launch: FAIL claims before phase — run --phase before exited 1\n" +
+    "launch: claims preflight refused — removing /repo-004-ticket-75 and /repo/_run/004-ticket-75\n" +
+    "launch: ok   branch run/004-ticket-75-prep\n";
+
+  function fakeDeps(answer: { worktree: string; worktreeStatus?: number; claims: number; config: string }) {
+    const calls: string[] = [];
+    const writes: string[] = [];
+    let boots = 0;
+    const deps: LaunchDeps = {
+      exec: (cmd, args) => {
+        calls.push(`${cmd} ${args.join(" ")}`);
+        if (cmd === "bun" && args[0].endsWith("launch.ts") && args[1] === "worktree") {
+          return { status: answer.worktreeStatus ?? 0, stdout: `${answer.worktree}\n`, stderr: "" };
+        }
+        if (cmd === "bun" && args[0].endsWith("launch.ts") && args[1] === "claims") {
+          return { status: answer.claims, stdout: "", stderr: REFUSAL_ROWS };
+        }
+        if (cmd === "bun" && args[0].endsWith("room-run.ts")) {
+          return { status: 0, stdout: `${answer.config}\n`, stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+      boot: () => {
+        boots += 1;
+        return 0;
+      },
+      write: (line) => void writes.push(line),
+    };
+    return { deps, calls, writes, boots: () => boots };
+  }
+
+  test("a refusal is cleanup, then the prep pass, then the re-ask, and nothing is booted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-plan-"));
+    try {
+      await writeFile(join(dir, "run.yaml"), "template: x\n");
+      const config = join(dir, "run.resolved.yaml");
+      await writeFile(config, "name: room\n");
+      const l = launch({ runFile: join(dir, "run.yaml") });
+      const f = fakeDeps({ worktree: "create", claims: 1, config });
+
+      expect(planLaunch(l, facts()).map((s) => s.kind)).toEqual(["cleanup", "prep", "reAsk"]);
+      expect(performLaunch(l, f.deps)).toBe(0);
+
+      expect(f.boots()).toBe(0);
+      const prep = f.calls.findIndex((c) => c.includes("--template ticket-prep"));
+      const reAsk = f.calls.findIndex((c) => c.includes("--issue 75") && c.includes("launch-plan.ts") && !c.includes("ticket-prep"));
+      expect(prep).toBeGreaterThan(-1);
+      expect(reAsk).toBeGreaterThan(prep);
+      expect(f.calls[prep]).toContain("--slug ticket-75-prep");
+      expect(f.calls[prep]).toContain("--prep-ran");
+      // The chain, in the order the room printed it: the preflight's row, then the cleanup.
+      const at = (needle: string) => f.writes.findIndex((w) => w.includes(needle));
+      expect(at("FAIL claims before phase")).toBeGreaterThan(-1);
+      expect(at("claims preflight refused")).toBeGreaterThan(at("FAIL claims before phase"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the cleanup removes the branch only when this launch created it", () => {
+    expect(planLaunch(launch(), facts({ created: true, branch: true }))[0]).toEqual({
+      kind: "cleanup",
+      branch: "run/004-ticket-75",
+    });
+    expect(planLaunch(launch(), facts({ created: false, branch: true }))[0]).toEqual({ kind: "cleanup", branch: null });
+  });
+
+  test("the cleanup's branch deletion reaches git only for the created case", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-plan-"));
+    try {
+      await writeFile(join(dir, "run.yaml"), "template: x\n");
+      const config = join(dir, "run.resolved.yaml");
+      await writeFile(config, "name: room\n");
+      const l = launch({ runFile: join(dir, "run.yaml") });
+      const reused = fakeDeps({ worktree: "reuse", claims: 1, config });
+      await performLaunch(l, reused.deps);
+      expect(reused.calls.some((c) => c.includes("branch -D run/004-ticket-75"))).toBe(false);
+
+      const created = fakeDeps({ worktree: "create", claims: 1, config });
+      await performLaunch(l, created.deps);
+      expect(created.calls.some((c) => c.includes("branch -D run/004-ticket-75"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a refused worktree plans nothing and removes nothing", async () => {
+    expect(planLaunch(launch(), facts({ worktreeAction: "refuse", claimsStatus: 0 }))).toEqual([]);
+
+    const dir = await mkdtemp(join(tmpdir(), "ah-plan-"));
+    try {
+      await writeFile(join(dir, "run.yaml"), "template: x\n");
+      const config = join(dir, "run.resolved.yaml");
+      await writeFile(config, "name: room\n");
+      const f = fakeDeps({ worktree: "refuse", worktreeStatus: 1, claims: 0, config });
+      expect(performLaunch(launch({ runFile: join(dir, "run.yaml") }), f.deps)).toBe(1);
+      expect(f.calls.some((c) => c.includes("worktree remove"))).toBe(false);
+      expect(f.boots()).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the successful tail is warm, summary, and a dry run stops before booting", async () => {
+    const l = launch({ dryRun: true, warm: false });
+    expect(planLaunch(l, facts({ claimsStatus: 0 })).map((s) => s.kind)).toEqual(["summary", "dryRun"]);
+
+    const dir = await mkdtemp(join(tmpdir(), "ah-plan-"));
+    try {
+      await writeFile(join(dir, "run.yaml"), "template: x\n");
+      const config = join(dir, "run.resolved.yaml");
+      await writeFile(config, "name: room\n");
+      const f = fakeDeps({ worktree: "reuse", claims: 0, config });
+      expect(performLaunch(launch({ runFile: join(dir, "run.yaml"), dryRun: true, warm: false }), f.deps)).toBe(0);
+      expect(f.boots()).toBe(0);
+      expect(
+        f.writes.some(
+          (w) => w === `launch: dry run, not booting. Resolved config: ${config}`,
+        ),
+      ).toBe(true);
+      expect(
+        f.writes.some((w) =>
+          w.startsWith(
+            "launch: template=ticket-resolver1-claims run=/repo/_run/004-ticket-75 worktree=/repo-004-ticket-75 branch=run/004-ticket-75",
+          ),
+        ),
+      ).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the flags are the ones the shell used to parse", () => {
+    expect(
+      parseLaunchFlags([
+        "--repo", "/r", "--issue", "81", "--slug", "s", "--template", "ticket-resolver1",
+        "--branch", "--dry-run", "--no-warm", "--any-state", "--ignore-blockers", "--no-claims", "--prep-ran",
+      ]),
+    ).toEqual({
+      repo: "/r",
+      issue: "81",
+      requested: "s",
+      template: "ticket-resolver1",
+      runFile: null,
+      branch: true,
+      dryRun: true,
+      checkOnly: false,
+      warm: false,
+      noClaims: true,
+      anyState: true,
+      ignoreBlockers: true,
+      prepRan: true,
+    });
+    expect(() => parseLaunchFlags(["--nope"])).toThrow("unknown argument");
+    expect(() => parseLaunchFlags(["--issue"])).toThrow("needs a value");
   });
 });

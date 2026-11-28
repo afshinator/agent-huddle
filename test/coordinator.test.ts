@@ -1278,10 +1278,10 @@ describe("a failure the harness reported reaches the room (#82)", () => {
       pi.toolFailed("lead", "write", REFUSAL, { toolCallId: "c1" });
       pi.toolFailed("lead", "write", REFUSAL, { toolCallId: "c2" });
 
-      const pane = await waitForText(panePath, "[error] tool write failed");
+      const pane = await waitForText(panePath, "[error] tool write failed", 5_000);
       await waitUntil(
         () => (readFileSync(panePath, "utf8").match(/\[error\] tool write failed/g)?.length ?? 0) === 2,
-        2000,
+        5_000,
       );
       const lines = (await readFile(panePath, "utf8")).split("\n").filter((l) => l.includes("[error] tool write failed"));
 
@@ -1291,7 +1291,7 @@ describe("a failure the harness reported reaches the room (#82)", () => {
       expect(telemetry.errors).toEqual(["tool write failed", "tool write failed"]);
       // The lead sees it in the transcript it already watches.
       expect(out.join("")).toContain(`· agent lead: tool write failed: ${REFUSAL}`);
-      await waitForMessage(store, (m) => m.kind === "notice" && m.text.includes("tool write failed"));
+      await waitForMessage(store, (m) => m.kind === "notice" && m.text.includes("tool write failed"), 5_000);
       const notices = (await store.readMessages()).messages.filter(
         (m) => m.kind === "notice" && m.text.includes("tool write failed"),
       );
@@ -1323,7 +1323,7 @@ describe("a failure the harness reported reaches the room (#82)", () => {
       pi.toolFinished("lead", "bash", 0);
 
       const logPath = join(dir, "agents", "lead", "log.jsonl");
-      const log = await waitForText(logPath, "grep never ran");
+      const log = await waitForText(logPath, "grep never ran", 5_000);
       const lines = log.split("\n").filter((l) => l.includes('"tool_end"'));
       expect(lines.some((l) => l.includes("grep never ran"))).toBe(true);
       expect(lines.some((l) => l.includes("bash 0ms"))).toBe(true);

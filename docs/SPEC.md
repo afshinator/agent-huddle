@@ -184,7 +184,7 @@ export interface LoadedConfig {
 
 ---
 
-### 3.2 Launching a run (`rooms/launch.sh`, e12c556)
+### 3.2 Launching a run (`rooms/launch.sh` → `src/launch-plan.ts`, e12c556)
 
 A run is created by one command, and the launcher owns the steps a human used to remember:
 
@@ -196,11 +196,14 @@ A run is created by one command, and the launcher owns the steps a human used to
 | the worktree | `worktreeAction`: create, reuse, replace (behind, clean, branch merged), or refuse (behind and dirty, or behind and unmerged) |
 | dependencies | `warmPlan`: clone the launching checkout's `node_modules` when the lockfile hashes match; install when they differ or no source tree exists; refuse when two lockfiles disagree |
 | the ticket's ` ```claims ` block | `claimsRows`: a ticket with no block is fatal (`--no-claims` skips the check); with one, `claim-check run --phase before` must exit 0, and a non-zero exit is a refusal the prep room may repair. A missing `claim-check` binary exits 2, which stops the launch there — a missing tool is not something a room can repair (`#70`) |
-| the ask, before a resolver room sees it | `prepFirst`: a refused launch boots the `ticket-prep` room over the same body and relaunches afterwards; if a prep room has already run (`AH_PREP_RAN`) or `--template` named a room, it stops instead of booting a second one. A repair the prep room made is republished to the ticket, and the rerun reads the repaired body |
+| the ask, before a resolver room sees it | `prepFirst`: a refused launch boots the `ticket-prep` room over the same body and relaunches afterwards; if a prep room has already run (`--prep-ran`) or `--template` named a room, it stops instead of booting a second one. A repair the prep room made is republished to the ticket, and the rerun reads the repaired body |
 
-The decisions live in `src/launch.ts` and are unit-tested; the shell script keeps the git and gh calls.
-Nothing is silently reused: a worktree cut from an older commit is replaced or refused, because a run
-quietly based on last week's commit looks healthy and is not.
+The decisions live in `src/launch.ts` and are unit-tested; the sequence of effects lives in
+`src/launch-plan.ts`, where `planLaunch` returns the ordered steps and `performLaunch` runs them through
+git, gh and a boot function injected as parameters (#78). `rooms/launch.sh` resolves where the repo is and
+starts that entry point: it parses no YAML, decodes no exit code, and re-execs nothing. Nothing is silently
+reused: a worktree cut from an older commit is replaced or refused, because a run quietly based on last
+week's commit looks healthy and is not.
 
 ## 4. Room persistence schemas (D3)
 

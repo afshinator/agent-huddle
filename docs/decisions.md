@@ -723,15 +723,17 @@ launcher again. Two facts made a naive chain unsafe. The default run name for an
 (`src/run-slug.ts:45`) and `formatRunName` hands back an existing directory for a name it has seen
 (`:20-27`), so whoever asks for that name second gets the first one's collateral: prep runs first, so a prep
 run asking for `ticket-<n>` would leave the resolver's re-run reusing the prep directory. And the launcher
-resumes an existing ask, taking the template from its `template:` line (`rooms/launch.sh:112-116`,
-`:126-127`), so a second launch that resumed would boot the room recorded *before* the repair.
+resumes an existing ask, taking the template from its `template:` line (`src/launch-plan.ts`, the `ask` step,
+reading it through `templateFromRunFile`), so a second launch that resumed would boot the room recorded
+*before* the repair.
 
 **Decision:** the launcher asks one question of `prepFirst()` in `src/launch.ts` — `prep`, `resolver` or
-`stop` — and `rooms/launch.sh` only obeys the answer. A refusal runs the prep room once, under
-`ticket-<n>-prep`, in its own detached worktree with the gate skipped, and then re-runs the original
-command rather than reusing its collateral: the ticket is read again, the template is picked again from the
-repaired body, and the preflight runs again in the new worktree. `AH_PREP_RAN=1` marks the pass spent, so a
-second refusal stops with one message and a ticket that is still red does not boot a second room.
+`stop` — and the plan only carries the answer (`src/launch-plan.ts`, `planLaunch`). A refusal runs the prep
+room once, under `ticket-<n>-prep`, in its own detached worktree with the gate skipped, and then re-runs the
+original command rather than reusing its collateral: the ticket is read again, the template is picked again
+from the repaired body, and the preflight runs again in the new worktree. `--prep-ran` marks the pass spent
+(a field on the launch, not an environment variable), so a second refusal stops with one message and a
+ticket that is still red does not boot a second room.
 
 **Rejected:** looping until green — a room cannot repair a ticket whose ask is broken, and every launch
 would spend two rooms over the same body; deciding in `rooms/launch.sh` — nothing executes that script in
@@ -760,7 +762,7 @@ already said; and skipping the gate when the binary is absent — silence has ne
 printed `002-ticket-70`, and `ticket-70-prep` printed `003-ticket-70-prep`). Prep runs first and the resolver
 then asks for the default name, so if prep had asked for `ticket-<n>` the *resolver* would inherit prep's
 directory and its `template:` line. (The resolver's own directory is removed before prep starts —
-`rooms/launch.sh:186` — so the collision is the second asker's, not the first's.)
+`src/launch-plan.ts`'s cleanup step — so the collision is the second asker's, not the first's.)
 
 **Decision:** the prep run asks for `ticket-<n>-prep`, so the two phases read apart in `ls _run/` and the
 resolver's re-run gets a fresh `ticket-<n>` of its own, with the template it picked from the repaired body.
