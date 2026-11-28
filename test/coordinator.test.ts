@@ -1262,3 +1262,75 @@ describe("Coordinator (fakes)", () => {
     });
   });
 });
+
+describe("a failure the harness reported reaches the room (#82)", () => {
+  const REFUSAL = "Tool call was not executed: the response hit the output token limit";
+
+  test("a refused tool end prints once per call, and a second call prints again", async () => {
+    await harness({ task: "write the file" }, async ({ coordinator, pi, telemetry, out, store, dir }) => {
+      pi.script("lead", [{ hold: true }]);
+      const boot = coordinator.boot();
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt"), 2000);
+      const panePath = join(dir, "agents", "lead", "output.log");
+
+      // The same call reported twice is one fact; a second call is another.
+      pi.toolFailed("lead", "write", REFUSAL, { toolCallId: "c1" });
+      pi.toolFailed("lead", "write", REFUSAL, { toolCallId: "c1" });
+      pi.toolFailed("lead", "write", REFUSAL, { toolCallId: "c2" });
+
+      const pane = await waitForText(panePath, "[error] tool write failed");
+      await waitUntil(
+        () => (readFileSync(panePath, "utf8").match(/\[error\] tool write failed/g)?.length ?? 0) === 2,
+        2000,
+      );
+      const lines = (await readFile(panePath, "utf8")).split("\n").filter((l) => l.includes("[error] tool write failed"));
+
+      expect(lines).toHaveLength(2);
+      expect(pane).toContain(`[error] tool write failed: ${REFUSAL}`);
+      // One telemetry error per printed failure, not one per record.
+      expect(telemetry.errors).toEqual(["tool write failed", "tool write failed"]);
+      // The lead sees it in the transcript it already watches.
+      expect(out.join("")).toContain(`· agent lead: tool write failed: ${REFUSAL}`);
+      await waitForMessage(store, (m) => m.kind === "notice" && m.text.includes("tool write failed"));
+      const notices = (await store.readMessages()).messages.filter(
+        (m) => m.kind === "notice" && m.text.includes("tool write failed"),
+      );
+      expect(notices).toHaveLength(2);
+
+      await coordinator.shutdown();
+      await boot.catch(() => undefined);
+    });
+  }, 20_000);
+
+  test("a turn the provider ended with an error shows the message, not an empty turn", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, out, telemetry }) => {
+      pi.script("lead", [{ lastText: null, stopReason: "error", errorMessage: "529 overloaded" }]);
+      await coordinator.boot();
+
+      // Before #82 this settled with no text, and the room printed nothing at all.
+      expect(out.join("")).toContain("· agent lead: turn ended on a provider error: 529 overloaded");
+      expect(telemetry.errors).toEqual(["turn ended on a provider error"]);
+    });
+  }, 20_000);
+
+  test("a tool end with no duration says it never ran, and 0ms says it ran", async () => {
+    await harness({ task: "do the work" }, async ({ coordinator, pi, dir }) => {
+      pi.script("lead", [{ hold: true }]);
+      const boot = coordinator.boot();
+      await waitUntil(() => pi.calls.some((c) => c.op === "prompt"), 2000);
+
+      pi.toolNeverRan("lead", "grep");
+      pi.toolFinished("lead", "bash", 0);
+
+      const logPath = join(dir, "agents", "lead", "log.jsonl");
+      const log = await waitForText(logPath, "grep never ran");
+      const lines = log.split("\n").filter((l) => l.includes('"tool_end"'));
+      expect(lines.some((l) => l.includes("grep never ran"))).toBe(true);
+      expect(lines.some((l) => l.includes("bash 0ms"))).toBe(true);
+      expect(lines.some((l) => l.includes("grep 0ms"))).toBe(false);
+
+      await coordinator.shutdown();
+      await boot.catch(() => undefined);
+    });
+  }, 20_000);
+});

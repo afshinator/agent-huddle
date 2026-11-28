@@ -161,6 +161,7 @@ started.
 | The prep room carries its nine repair rules, and a template that is not gating must be exempt with a reason | `test/template-prompts.test.ts`, #69, D30, D35, D36, D37 |
 | Every agent granted `write` is told what a refused call means: scaffold and extend, retry smaller than the call that failed, report the refusal; the writers are derived from each template's agents, so the prep room's `prep` is covered too | `test/template-prompts.test.ts`, #83 |
 | The client seam carries what the harness sends for the records the room reads: a refused tool's `isError` and reason, a turn's `stopReason`, and an absent `durationMs` distinguishable from `0`, through one event union | `test/pi-protocol.test.ts`, `test/client-parity.test.ts`, #81, D38 |
+| A failure the harness reports reaches the room once per call: a pane `[error]` line, a room notice, an `error` record in the agent's log and one telemetry `error`; a tool end with no duration prints `never ran` | `test/coordinator.test.ts`, `test/client-parity.test.ts`, #82, D39 |
 
 ## Not proven
 

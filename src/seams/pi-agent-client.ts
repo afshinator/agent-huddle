@@ -52,6 +52,10 @@ export interface ScriptedTurn {
   lastText?: string | null;
   aborted?: boolean;
   error?: Error;
+  /** The provider's verdict on how the turn stopped (`stop`, `length`, `error`), when a test scripts one. */
+  stopReason?: string;
+  /** The provider's error text, the way a run that ends on one reports it (#82). */
+  errorMessage?: string;
   hold?: boolean; // leave the turn unsettled, so "shutdown mid-turn" is testable
 }
 
@@ -232,6 +236,8 @@ export class FakePiAgentClient implements PiAgentClient {
       const result: SettledResult = {
         aborted: turn.aborted ?? false,
         lastText: turn.lastText ?? null,
+        ...(turn.stopReason === undefined ? {} : { stopReason: turn.stopReason }),
+        ...(turn.errorMessage === undefined ? {} : { errorMessage: turn.errorMessage }),
       };
       a.lastText = result.lastText;
       resolveSettle(result);
@@ -274,7 +280,12 @@ export class FakePiAgentClient implements PiAgentClient {
    * Emit a tool end the harness refused, the way a truncated call arrives: an error verdict, the
    * reason in `result`, and no `durationMs` because the tool never ran (#81).
    */
-  toolFailed(agentId: string, name = "bash", result = "the tool call was not executed", durationMs?: number): void {
+  toolFailed(
+    agentId: string,
+    name = "bash",
+    result = "the tool call was not executed",
+    opts: { toolCallId?: string; durationMs?: number } = {},
+  ): void {
     const a = this.requireAgent(agentId);
     if (!a.settle) return;
     this.bus.emit(agentId, {
@@ -282,7 +293,8 @@ export class FakePiAgentClient implements PiAgentClient {
       name,
       isError: true,
       result,
-      ...(durationMs === undefined ? {} : { durationMs }),
+      ...(opts.toolCallId === undefined ? {} : { toolCallId: opts.toolCallId }),
+      ...(opts.durationMs === undefined ? {} : { durationMs: opts.durationMs }),
     });
   }
 

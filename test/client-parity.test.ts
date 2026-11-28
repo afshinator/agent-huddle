@@ -63,6 +63,23 @@ createInterface({ input: process.stdin }).on("line", (line: string) => {
 });
 `;
 
+const PROVIDER_ERROR_STUB = `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (o: unknown): void => { process.stdout.write(JSON.stringify(o) + "\\n"); };
+createInterface({ input: process.stdin }).on("line", (line: string) => {
+  if (line.trim() === "") return;
+  const cmd = JSON.parse(line) as { id?: string; type?: string };
+  if (cmd.type === "prompt") {
+    // How a run that ends on a provider error reports itself: the completed message carries both.
+    out({ type: "agent_start" });
+    out({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "529 overloaded" } });
+    out({ type: "agent_settled", aborted: false });
+  }
+  if (cmd.type === "get_last_assistant_text") out({ id: cmd.id, type: "response", command: cmd.type, success: true, data: { text: null } });
+  else if (cmd.id) out({ id: cmd.id, type: "response", success: true, data: {} });
+});
+`;
+
 const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 
 interface Observed {
@@ -224,6 +241,36 @@ describe("PiAgentClient parity", () => {
         { type: "tool_end", name: "write", isError: true, result: "the tool call was not executed", ran: false },
       ]);
       expect(fakeEnds).toEqual(realEnds);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  /**
+   * #82 reports a provider error from the settle, so the fake has to deliver the same settle a stub pi
+   * delivers — otherwise the room's test of that path is written against a shape only the fake produces.
+   */
+  test("a turn ended on a provider error settles the same way through either implementation", async () => {
+    const shape = (r: { stopReason?: string; errorMessage?: string; lastText: string | null }): unknown => ({
+      stopReason: r.stopReason,
+      errorMessage: r.errorMessage,
+      lastText: r.lastText,
+    });
+
+    const { client: real, dir } = await realClient(PROVIDER_ERROR_STUB);
+    try {
+      await real.spawn(dev1, { cwd: dir });
+      await real.prompt(dev1.id, { message: "go" });
+      const realSettled = await real.waitForSettled(dev1.id, 5_000);
+
+      const fake = new FakePiAgentClient();
+      await fake.spawn(dev1, { cwd: "/fake" });
+      fake.script(dev1.id, [{ lastText: null, stopReason: "error", errorMessage: "529 overloaded" }]);
+      await fake.prompt(dev1.id, { message: "go" });
+      const fakeSettled = await fake.waitForSettled(dev1.id, 5_000);
+
+      expect(shape(realSettled)).toEqual({ stopReason: "error", errorMessage: "529 overloaded", lastText: null });
+      expect(shape(fakeSettled)).toEqual(shape(realSettled));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,7 +1,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_LAUNCH_GUARD } from "./config";
-import type { LoadedConfig } from "./config";
+import type { AgentSpec, LoadedConfig } from "./config";
 import { RoomStore, reconcileState } from "./store";
 import { buildRolePrompt, buildSocialContract } from "./prompts";
 import { TurnLoop, type SubmitResult } from "./turn-loop";
@@ -81,6 +81,8 @@ export class Coordinator {
   private readonly agentStream: AgentStream;
   private readonly inbox: PaneInbox;
   private readonly reportedFailures = new Set<string>();
+  /** Turns each agent has settled, so a provider error is reported once per turn, not once per run. */
+  private readonly settledTurns = new Map<string, number>();
   private roomState: RoomState | null = null;
   private roomStatus: RoomStatus = "idle";
   /** Set the moment shutdown begins: a turn that dies after this was stopped, not failed. */
@@ -230,12 +232,24 @@ export class Coordinator {
             return;
           }
           case "tool_end": {
-            const ms = event.durationMs === undefined ? "" : ` ${event.durationMs}ms`;
+            // A missing duration is the harness's own word for "the tool did not run"; `0` is a call that
+            // took no measurable time. The record keeps them apart (#81), so the line does too (#82).
+            const ms = event.durationMs === undefined ? "never ran" : `${event.durationMs}ms`;
             this.watchFailure(
               "agent log write",
               agent.id,
-              this.appendAgentLog(agent.id, "tool_end", `${event.name}${ms}`),
+              this.appendAgentLog(agent.id, "tool_end", `${event.name} ${ms}`),
             );
+            if (event.isError) {
+              // Identity is the call, not the operation: the same agent truncating twice is two facts, and
+              // a run-long key would print the first and swallow the second.
+              this.reportHarnessFailure(
+                agent,
+                `tool ${event.name} failed`,
+                event.result ?? "the harness gave no reason",
+                `tool_failed:${agent.id}:${event.toolCallId ?? event.name}`,
+              );
+            }
             return;
           }
           case "tool": {
@@ -253,6 +267,18 @@ export class Coordinator {
           }
           case "settled": {
             const r = event.result;
+            const turn = (this.settledTurns.get(agent.id) ?? 0) + 1;
+            this.settledTurns.set(agent.id, turn);
+            // The provider's own verdict on the turn, reported once for each turn it spoils. A provider
+            // error used to settle like a clean stop with no text, which the room printed as nothing.
+            if (r.errorMessage !== undefined) {
+              this.reportHarnessFailure(
+                agent,
+                "turn ended on a provider error",
+                r.errorMessage,
+                `provider_error:${agent.id}:${turn}`,
+              );
+            }
             // A turn that streamed nothing still ran: mark it before its text lands.
             this.markWorking(agent.id);
             // Only an agent that actually ran a turn moves its activity stamp.
@@ -473,6 +499,38 @@ export class Coordinator {
     return reconcileState(this.config, await this.store.readState(), messages);
   }
 
+  /**
+   * A failure the harness reported, through one funnel: one telemetry record, one `[error]` line in the
+   * agent's pane, one `error` record in its log, and one room notice.
+   *
+   * The pane is for the operator watching the room; the notice is for the lead, who until now had to take
+   * "the write was truncated" on the agent's word (#82). No halt: the agent is still working, which is
+   * exactly what run 008's dev1 did for twenty minutes around two refused writes.
+   */
+  private reportHarnessFailure(agent: AgentSpec, message: string, reason: string, key: string): void {
+    if (!this.reportFailure("harness failure", agent.id, reason, key, message)) return;
+    this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "error", `${message}: ${reason}`));
+    this.watchFailure("agent pane write", agent.id, this.agentStream.line(agent.id, `[error] ${message}: ${reason}`));
+    this.watchFailure("agent notice write", agent.id, this.noteHarnessFailure(agent.id, `${message}: ${reason}`));
+  }
+
+  /** The room's own note, so the lead reads the failure in the transcript it already watches. */
+  private async noteHarnessFailure(agentId: string, text: string): Promise<void> {
+    const chain = this.roomState?.chain;
+    if (chain?.status !== "active" && chain?.status !== "wrap_up") return;
+    await this.store.appendMessage({
+      id: crypto.randomUUID(),
+      ts: this.now(),
+      kind: "notice",
+      from: "room",
+      handle: "room",
+      text: `agent ${agentId}: ${text}`,
+      mentions: [],
+      chainId: chain.chainId,
+      hop: chain.hopCount,
+    });
+  }
+
   private async handleAgentError(agentId: string, error: Error): Promise<void> {
     await this.appendAgentLog(agentId, "error", error.message);
     this.watchFailure("agent pane write", agentId, this.agentStream.line(agentId, `[error] ${error.message}`));
@@ -515,11 +573,10 @@ export class Coordinator {
    * `warn`: the inbox is an input channel, so a failed read degrades a feature
    * without losing anything already committed — unlike a failed log write.
    */
-  private reportFailure(op: string, agentId: string, e: unknown): boolean {
-    const key = `${op}:${agentId}`;
+  private reportFailure(op: string, agentId: string, e: unknown, key = `${op}:${agentId}`, message = `${op} failed`): boolean {
     if (this.reportedFailures.has(key)) return false;
     this.reportedFailures.add(key);
-    this.telemetry.log(op === "pane inbox read" ? "warn" : "error", `${op} failed`, {
+    this.telemetry.log(op === "pane inbox read" ? "warn" : "error", message, {
       agentId,
       error: errorMessage(e),
     });

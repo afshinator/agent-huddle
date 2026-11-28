@@ -861,3 +861,26 @@ without telling any listener the field exists, so the fake drifts silently again
 **Cost:** every `on(event, …)` site becomes a `subscribe` with a `switch`, and a new harness field is a
 compile error in the coordinator, the turn loop, the fake and the tests. That is the point, and it is 27
 call sites.
+
+## D39 — A harness failure goes through one funnel, keyed on the failure itself (#82)
+
+**Context:** #81 made the seam carry `isError`, the refusal text, and the provider's `stopReason` /
+`errorMessage`; nothing read them. The room's only failure reporter, `reportFailure`, was called exclusively
+by the room about its own operations. So run 008's two refused writes were logged as `tool_end write` and
+announced as `working — 60s, 0 tool calls, no text yet`.
+
+**Decision:** `reportHarnessFailure` funnels a refused tool end and a provider error into one record: one
+telemetry `error`, one `[error]` line in the agent's pane, one `error` record in its log, and one room
+notice. Both surfaces, because they have different readers: the pane is for the operator watching, the
+notice for the lead, who otherwise learns of a truncation from the agent's own account of it. No halt, and
+no chain-status change — run 008's dev1 kept working around the refusals. The de-duplication key is the
+failure's identity, the `toolCallId` for a tool and the settled turn for a provider error, so an agent that
+truncates twice reports twice; the run-long `(op, agent)` key the room's own operations use would have
+printed the first and swallowed the second. A missing `durationMs` now prints `never ran`, not a blank.
+
+**Rejected:** keying on `(op, agent)` for the new funnel too — one line per agent per run, which hides the
+recurrence that matters; and notice-only — the operator watching the pane is the one who can stop a room
+that is failing in a loop, and the pane was where the failure was already invisible.
+
+**Cost:** three more `watchFailure` sites (14 → 17 lines, no existing message edited), one new notice per
+harness failure in the transcript, and a room that can now say "failed" where it used to say nothing.
