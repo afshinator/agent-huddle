@@ -26,6 +26,38 @@ function firstLine(text: string): string {
   return text.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? "";
 }
 
+/**
+ * Every name a failed write can report under.
+ *
+ * Closed on purpose: the level is looked up by this name, so a typo has to be a compile error rather than a
+ * silently different severity and a second de-duplication key (#85). The two names called directly on
+ * `reportFailure` — `pane inbox read` and `harness failure` — are in the set too, because they are the ones
+ * the old string comparison treated differently.
+ */
+export type FailureOp =
+  | "agent log write"
+  | "agent pane write"
+  | "agent notice write"
+  | "agent error handling"
+  | "pane inbox read"
+  | "harness failure";
+
+/**
+ * How loud each failure is.
+ *
+ * `pane inbox read` is the only warning: the inbox is an input channel, so a failed read degrades a feature
+ * without losing anything already committed — unlike a failed log write. A table and not a comparison, so the
+ * rule is visible where the names are.
+ */
+export const FAILURE_LEVEL: Record<FailureOp, "warn" | "error"> = {
+  "agent log write": "error",
+  "agent pane write": "error",
+  "agent notice write": "error",
+  "agent error handling": "error",
+  "pane inbox read": "warn",
+  "harness failure": "error",
+};
+
 export interface CoordinatorDeps {
   config: LoadedConfig;
   store: RoomStore;
@@ -562,7 +594,7 @@ export class Coordinator {
    * which Bun turns into a process exit, so the failure is reported once per
    * agent and operation instead.
    */
-  private watchFailure(op: string, agentId: string, work: Promise<void>): Promise<void> {
+  private watchFailure(op: FailureOp, agentId: string, work: Promise<void>): Promise<void> {
     return work.catch((e: unknown) => {
       this.reportFailure(op, agentId, e);
     });
@@ -570,13 +602,21 @@ export class Coordinator {
 
   /**
    * Report one agent's failure once, not once per poll or per delta.
-   * `warn`: the inbox is an input channel, so a failed read degrades a feature
-   * without losing anything already committed — unlike a failed log write.
+   *
+   * `key` defaults to the operation, which is what an internal write wants; the harness funnel passes the
+   * failure's own identity instead (`tool_failed:<agent>:<callId>`), because an agent that truncates twice is
+   * two facts (#82). The level comes from `FAILURE_LEVEL`, never from the spelling at the call site.
    */
-  private reportFailure(op: string, agentId: string, e: unknown, key = `${op}:${agentId}`, message = `${op} failed`): boolean {
+  private reportFailure(
+    op: FailureOp,
+    agentId: string,
+    e: unknown,
+    key = `${op}:${agentId}`,
+    message = `${op} failed`,
+  ): boolean {
     if (this.reportedFailures.has(key)) return false;
     this.reportedFailures.add(key);
-    this.telemetry.log(op === "pane inbox read" ? "warn" : "error", message, {
+    this.telemetry.log(FAILURE_LEVEL[op], message, {
       agentId,
       error: errorMessage(e),
     });

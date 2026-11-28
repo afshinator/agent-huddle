@@ -962,3 +962,27 @@ real client's version also aborts the turn on timeout, and that is a fact about 
 
 **Cost:** one more module in the seam, and the fake inherits the real client's per-turn reset rules
 (`lastAborted`, verdict cleared on a new prompt) it previously did not need.
+
+## D43 — A failure's severity is a table, and the de-duplication key stays a parameter (#85)
+
+**Context:** `reportFailure` decided loudness by comparing its `op` argument to the literal `pane inbox read`,
+and defaulted the de-duplication key to `${op}:${agentId}`. Sixteen call sites typed that name by hand, four
+through `watchFailure` and two calling `reportFailure` directly — and the two direct ones are the names the
+comparison exists for. #82 had already given `reportFailure` a `key` and a `message` parameter, so the harness
+funnel keys on the failure's identity (`tool_failed:<agent>:<callId>`), because an agent that truncates twice
+is two facts.
+
+**Decision:** `FailureOp` is a closed union of the six names, `FAILURE_LEVEL: Record<FailureOp, "warn" | "error">`
+says how loud each is, and both `watchFailure` and `reportFailure` take the union. Severity is a table lookup.
+`key` and `message` stay parameters with their defaults, so closing the set does not touch de-duplication. A
+test asserts every name in the table is the first argument of a call, because a table entry nobody uses is a
+rename that silently became a second key.
+
+**Rejected:** one supervisor object per agent, registering writes — a bigger shape for the same guarantee, and
+the table already makes a typo a compile error; folding the de-duplication key into the op — that would re-merge
+the funnel's two records per call into one per run, which is what #82 removed; a `switch` in `reportFailure` —
+the same comparison with more syntax, and no place to see all six names at once.
+
+**Cost:** a name added to the union now fails the build until it has a level, which is the point but makes the
+table the place two thoughts meet; and the dead-key test reads `src/coordinator.ts` as text, so it fails loudly
+when the file is restructured even when the code is right.

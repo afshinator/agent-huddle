@@ -4,7 +4,7 @@ import { appendFile, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/prom
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Coordinator } from "../src/coordinator";
+import { Coordinator, FAILURE_LEVEL, type FailureOp } from "../src/coordinator";
 import { colorOf } from "../src/colors";
 import { RoomStore } from "../src/store";
 import { RecordingTelemetry } from "./recording-telemetry";
@@ -1333,4 +1333,25 @@ describe("a failure the harness reported reaches the room (#82)", () => {
       await boot.catch(() => undefined);
     });
   }, 20_000);
+});
+
+describe("A failure's severity is a table, not a spelling (#85)", () => {
+  const source = readFileSync(join(import.meta.dir, "..", "src", "coordinator.ts"), "utf8");
+
+  test("every name in the table is used at a call site, so a rename leaves no dead key", () => {
+    // Counting the literal is not enough: the union and the table both spell it, so `>= 2` is satisfied by
+    // the declaration alone. Ask the question that matters: is it the first argument of a call?
+    const atCallSite = (op: FailureOp): boolean => {
+      const quoted = op.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(?:watchFailure|reportFailure)\\(\\s*"${quoted}"`).test(source);
+    };
+    expect((Object.keys(FAILURE_LEVEL) as FailureOp[]).filter((op) => !atCallSite(op))).toEqual([]);
+  });
+
+  test("the only warning is the inbox read, and every other name is an error", () => {
+    const warn = (Object.entries(FAILURE_LEVEL) as Array<[FailureOp, string]>)
+      .filter(([, level]) => level === "warn")
+      .map(([op]) => op);
+    expect(warn).toEqual(["pane inbox read"]);
+  });
 });
