@@ -909,3 +909,34 @@ nondeterministic, so the test would prove the format and not the branch.
 
 **Cost:** `cmdWarm` is no longer testable end to end without a directory, the fake answers seven methods, and
 the IO test is longer than the decision test it sits beside.
+
+## D41 — A run directory whose room has not finished is refused, and the override is the human's (#80)
+
+**Context:** `nextRunName` reuses a directory whose name it has already seen, by design (D34's context). Nothing
+checked whether the room that wrote that directory was done, so a second launch into it interleaved two chains
+in `messages.jsonl` and `telemetry.jsonl`, had the last writer win `state.json`, and dropped the first room's
+`paneId`s, because `reconcileState` carries only `sessionFile` forward. `state.json` is the only record a
+launch can read: `shutdown` marks every agent `exited` and persists, a boot starts every agent at `starting`,
+and no field is refreshed while a room waits — so a live idle room and a room killed with `kill -9` look
+alike apart from a stalled `lastActivityAt`.
+
+**Decision:** `liveRoom` reads that directory's own `state.json` and calls it live when any agent's status is
+not `exited`, naming those agents. The plan's first step is that check, before `ask` creates the directory and
+`prepare` rewrites the config inside it; a live directory refuses with the directory and the agents in the
+reason, and `--reuse-live` drops the step. No lock file, no heartbeat, no process probe: the state a room
+already writes is the signal, and the human who knows the room is gone is the escape.
+
+**Rejected:** a lock file written on boot — a `kill -9` leaves it too, so it needs the same override and adds a
+file to explain; `kill -0` on the persisted agent pid — that pid is the `pi` child, not the room, and an
+orphan outlives the parent it was started by; a heartbeat timer in the room — correct, but it changes every
+room's write path and the window this ticket closes does not need it; refusing only on room `status: "active"`
+— a live room between turns reads `idle`, which is exactly the window in which a second launch boots unnoticed.
+
+**Cost:** a killed room blocks until a human passes `--reuse-live`, and that flag is a foot-gun: it shares the
+directory with a room that may still be writing. A room whose agents all exited but whose process lives is not
+refused, which reads as finished.
+
+**Measured, not assumed:** `liveRoom` and the refusal were exercised on a fabricated directory carrying
+`lead idle, dev1 busy`: the launch printed the refusal, wrote nothing into the directory and exited `1`; with
+`--reuse-live` it ran the same dry run to exit `0`. A directory whose agents are all `exited` (a copy of a
+finished run's state) passed without the flag.

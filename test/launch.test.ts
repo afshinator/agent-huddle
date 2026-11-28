@@ -19,6 +19,8 @@ import {
   worktreeAction,
   warmPlan,
   warmUp,
+  liveRoom,
+  readRoomState,
   type WarmIo,
 } from "../src/launch";
 import {
@@ -535,6 +537,7 @@ describe("the launch as a value (#78)", () => {
       anyState: false,
       ignoreBlockers: false,
       prepRan: false,
+      reuseLive: false,
       ...over,
     };
     return {
@@ -739,8 +742,69 @@ describe("the launch as a value (#78)", () => {
       anyState: true,
       ignoreBlockers: true,
       prepRan: true,
+      reuseLive: false,
     });
     expect(() => parseLaunchFlags(["--nope"])).toThrow("unknown argument");
     expect(() => parseLaunchFlags(["--issue"])).toThrow("needs a value");
   });
+  describe("a run directory held by a live room (#80)", () => {
+  const live = (agents: Record<string, string>): unknown => ({
+    agents: Object.fromEntries(Object.entries(agents).map(([id, status]) => [id, { id, status }])),
+  });
+
+  test("only agents that did not report exiting count as live", () => {
+    expect(liveRoom(null)).toEqual({ live: false, detail: "" });
+    expect(liveRoom({})).toEqual({ live: false, detail: "" });
+    expect(liveRoom({ agents: {} })).toEqual({ live: false, detail: "" });
+    expect(liveRoom(live({ lead: "exited", dev1: "exited" }))).toEqual({ live: false, detail: "" });
+    expect(liveRoom(live({ lead: "exited", dev1: "busy" }))).toEqual({ live: true, detail: "dev1 busy" });
+    expect(liveRoom(live({ lead: "idle", dev1: "busy" })).detail).toBe("lead idle, dev1 busy");
+    // A killed room leaves the statuses it had: no process list is consulted, so this still reads live.
+    expect(liveRoom(live({ lead: "starting" })).live).toBe(true);
+  });
+
+  test("a missing or damaged state file is no room, not a crash", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-room-"));
+    try {
+      expect(readRoomState(dir)).toBeNull();
+      await writeFile(join(dir, "state.json"), "{ not json");
+      expect(readRoomState(dir)).toBeNull();
+      await writeFile(join(dir, "state.json"), JSON.stringify(live({ dev1: "busy" })));
+      expect(readRoomState(dir)).toEqual(live({ dev1: "busy" }));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the room check is the first step, and --reuse-live is the way past it", () => {
+    expect(planLaunch(launch(), null).map((s) => s.kind).slice(0, 2)).toEqual(["room", "check"]);
+    expect(planLaunch(launch({ reuseLive: true }), null).map((s) => s.kind).slice(0, 2)).toEqual(["check", "ask"]);
+    expect(parseLaunchFlags(["--repo", "/r", "--reuse-live"]).reuseLive).toBe(true);
+  });
+
+  test("a live directory is refused before anything runs, and --reuse-live starts it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-live-"));
+    try {
+      await writeFile(join(dir, "state.json"), JSON.stringify(live({ lead: "idle", dev1: "busy" })));
+      await writeFile(join(dir, "run.resolved.yaml"), "name: room\n");
+      const held = { ...launch(), runDir: dir };
+
+      const refused = fakeDeps({ worktree: "create", claims: 0, config: join(dir, "run.resolved.yaml") });
+      expect(performLaunch(held, refused.deps)).toBe(1);
+      expect(refused.calls).toEqual([]);
+      expect(refused.boots()).toBe(0);
+      const refusal = refused.writes.find((w) => w.includes("belongs to a room that has not finished"));
+      expect(refusal).toBe(
+        `launch: refused — ${dir} belongs to a room that has not finished (lead idle, dev1 busy); pass --reuse-live to launch into it anyway`,
+      );
+
+      const allowed = fakeDeps({ worktree: "create", claims: 0, config: join(dir, "run.resolved.yaml") });
+      expect(performLaunch({ ...held, flags: { ...held.flags, reuseLive: true } }, allowed.deps)).toBe(0);
+      expect(allowed.boots()).toBe(1);
+      expect(allowed.calls.length).toBeGreaterThan(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
 });

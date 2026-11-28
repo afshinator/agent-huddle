@@ -76,7 +76,50 @@ export function warmPlan(input: WarmInput): WarmDecision {
   return { mode: "clone", reason: "the lockfile matches the source checkout" };
 }
 
-// ---------------------------------------------------------------- worktrees
+// ---------------------------------------------------------------- the run directory
+
+export interface RoomVerdict {
+  live: boolean;
+  /** The agents that did not report exiting, as `id status`, in config order. */
+  detail: string;
+}
+
+/**
+ * Did the room that wrote this state finish?
+ *
+ * `shutdown` marks every agent `exited` and persists (`src/coordinator.ts`), and a boot starts every agent
+ * at `starting`, so any other status means a room wrote that file and did not finish shutting down. Nothing
+ * here reads a process: a room killed with `kill -9` leaves the statuses it had, which is why the launcher
+ * treats the verdict as a refusal a human can overrule (`--reuse-live`) rather than as proof of life (#80).
+ */
+export function liveRoom(state: unknown): RoomVerdict {
+  const none: RoomVerdict = { live: false, detail: "" };
+  if (typeof state !== "object" || state === null) return none;
+  const agents = (state as { agents?: unknown }).agents;
+  if (typeof agents !== "object" || agents === null) return none;
+  const open: string[] = [];
+  for (const [id, runtime] of Object.entries(agents as Record<string, unknown>)) {
+    const status = (runtime as { status?: unknown } | null)?.status;
+    if (typeof status === "string" && status !== "exited") open.push(`${id} ${status}`);
+  }
+  return open.length === 0 ? none : { live: true, detail: open.join(", ") };
+}
+
+/** The run directory's own `state.json`, or `null` when it is absent or damaged (the store's reading). */
+export function readRoomState(runDir: string): unknown | null {
+  let text: string;
+  try {
+    text = readFileSync(join(runDir, "state.json"), "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    // A room's state is a cache it rebuilds on boot: a run directory without a readable one has no room.
+    return null;
+  }
+}
 
 export type WorktreeAction = "create" | "reuse" | "replace" | "refuse";
 

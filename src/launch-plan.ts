@@ -13,7 +13,15 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { PREP_TEMPLATE, prepFirst, templateFromRunFile, templatePath, type WorktreeAction } from "./launch";
+import {
+  liveRoom,
+  PREP_TEMPLATE,
+  prepFirst,
+  readRoomState,
+  templateFromRunFile,
+  templatePath,
+  type WorktreeAction,
+} from "./launch";
 import { defaultRequested, nextRunName } from "./run-slug";
 
 // ---------------------------------------------------------------- the launch
@@ -36,6 +44,8 @@ export interface LaunchFlags {
   ignoreBlockers: boolean;
   /** `--prep-ran`: this invocation is the second half of a launch whose prep pass is spent. */
   prepRan: boolean;
+  /** `--reuse-live`: launch into a run directory whose room has not finished, on purpose. */
+  reuseLive: boolean;
 }
 
 export interface Launch {
@@ -66,6 +76,7 @@ export interface LaunchFacts {
 }
 
 export type Step =
+  | { kind: "room" }
   | { kind: "check" }
   | { kind: "ask" }
   | { kind: "prepare" }
@@ -100,6 +111,9 @@ const carried = (flags: LaunchFlags): string[] => [
 export function planLaunch(launch: Launch, facts: LaunchFacts | null): Step[] {
   if (facts === null) {
     return [
+      // First, because `ask` creates the directory and `prepare` rewrites the config inside it: a room that
+      // has not finished owns that directory, and nothing is written into it before the verdict (#80).
+      ...(launch.flags.reuseLive ? [] : [{ kind: "room" } as Step]),
       { kind: "check" },
       { kind: "ask" },
       { kind: "prepare" },
@@ -238,6 +252,14 @@ export function performLaunch(launch: Launch, deps: LaunchDeps): number {
 
   const perform = (step: Step): number | null => {
     switch (step.kind) {
+      case "room": {
+        const verdict = liveRoom(readRoomState(launch.runDir));
+        if (!verdict.live) return null;
+        deps.write(
+          `launch: refused — ${launch.runDir} belongs to a room that has not finished (${verdict.detail}); pass --reuse-live to launch into it anyway`,
+        );
+        return 1;
+      }
       case "check": {
         const args = ["check", "--repo", launch.flags.repo, "--slug", launch.slug];
         if (launch.flags.issue !== null) args.push("--issue", launch.flags.issue);
@@ -448,6 +470,7 @@ export function parseLaunchFlags(argv: string[]): LaunchFlags {
     anyState: false,
     ignoreBlockers: false,
     prepRan: false,
+    reuseLive: false,
   };
   const value = (i: number): string => {
     const v = argv[i + 1];
@@ -469,6 +492,7 @@ export function parseLaunchFlags(argv: string[]): LaunchFlags {
       case "--check": flags.checkOnly = true; break;
       case "--no-warm": flags.warm = false; break;
       case "--prep-ran": flags.prepRan = true; break;
+      case "--reuse-live": flags.reuseLive = true; break;
       case "-h":
       case "--help": throw new HelpRequested();
       default: throw new FlagError(`launch: unknown argument ${argv[i]}`);
@@ -479,7 +503,7 @@ export function parseLaunchFlags(argv: string[]): LaunchFlags {
 
 const USAGE = `launch: --repo <path> [--issue <n> | --run <run.yaml>] [--template <name>] [--slug <slug>]
                 [--branch] [--check] [--dry-run] [--no-warm] [--any-state] [--ignore-blockers]
-                [--no-claims] [--prep-ran]`;
+                [--no-claims] [--prep-ran] [--reuse-live]`;
 
 /** `--help`: the usage block plus the templates the repo ships, the way the shell's `usage` did. */
 function usage(): string {

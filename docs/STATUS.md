@@ -163,6 +163,7 @@ started.
 | The client seam carries what the harness sends for the records the room reads: a refused tool's `isError` and reason, a turn's `stopReason`, and an absent `durationMs` distinguishable from `0`, through one event union | `test/pi-protocol.test.ts`, `test/client-parity.test.ts`, #81, D38 |
 | A failure the harness reports reaches the room once per call: a pane `[error]` line, a room notice, an `error` record in the agent's log and one telemetry `error`; a tool end with no duration prints `never ran` | `test/coordinator.test.ts`, `test/client-parity.test.ts`, #82, D39 |
 | The warm-up's copy, install and two skip branches and its refusal, each with the row it prints, driven through a fake filesystem and clock; the lockfile names come from `lockfileFor` over the worktree's listing, so the list has one owner | `test/launch.test.ts`, #90, D40 |
+| A launch into a run directory whose room has not finished is refused before the ask is written, naming the directory and the agents that did not exit; a finished room's directory passes, and `--reuse-live` is the way past a killed one | `test/launch.test.ts`, #80, D41 |
 
 ## Not proven
 
