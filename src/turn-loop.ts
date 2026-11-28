@@ -193,21 +193,32 @@ export class TurnLoop {
     // The room's own copy of what has streamed this turn: a turn that times out has already said
     // things on screen, and dropping them ends the chain one step short (#73).
     for (const agent of deps.config.allAgents) {
-      deps.pi.on("stream", agent.id, (delta) => {
-        this.streamed.set(agent.id, (this.streamed.get(agent.id) ?? "") + delta);
-        this.lastEvent.set(agent.id, Date.now());
-      });
-      // A tool call is activity too: an agent that runs forty of them is working, not stuck. A tool
-      // that has *started* is still activity while it runs — `npm run check` takes minutes, and a
-      // status request injected into that is a question the agent cannot answer until it ends.
-      deps.pi.on("tool", agent.id, () => {
-        this.lastEvent.set(agent.id, Date.now());
-        this.openTools.set(agent.id, (this.openTools.get(agent.id) ?? 0) + 1);
-        this.toolsThisTurn.set(agent.id, (this.toolsThisTurn.get(agent.id) ?? 0) + 1);
-      });
-      deps.pi.on("tool_end", agent.id, () => {
-        this.lastEvent.set(agent.id, Date.now());
-        this.openTools.set(agent.id, Math.max(0, (this.openTools.get(agent.id) ?? 0) - 1));
+      // One subscription per agent, switched on the event tag: the same seam the room reads, so the
+      // turn loop can tell a refused tool call from a finished one without the client's help (#81).
+      deps.pi.subscribe(agent.id, (event) => {
+        switch (event.type) {
+          case "stream": {
+            this.streamed.set(agent.id, (this.streamed.get(agent.id) ?? "") + event.delta);
+            this.lastEvent.set(agent.id, Date.now());
+            return;
+          }
+          case "tool": {
+            // A tool call is activity too: an agent that runs forty of them is working, not stuck. A tool
+            // that has *started* is still activity while it runs — `npm run check` takes minutes, and a
+            // status request injected into that is a question the agent cannot answer until it ends.
+            this.lastEvent.set(agent.id, Date.now());
+            this.openTools.set(agent.id, (this.openTools.get(agent.id) ?? 0) + 1);
+            this.toolsThisTurn.set(agent.id, (this.toolsThisTurn.get(agent.id) ?? 0) + 1);
+            return;
+          }
+          case "tool_end": {
+            this.lastEvent.set(agent.id, Date.now());
+            this.openTools.set(agent.id, Math.max(0, (this.openTools.get(agent.id) ?? 0) - 1));
+            return;
+          }
+          default:
+            return;
+        }
       });
     }
   }

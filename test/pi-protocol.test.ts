@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { RealPiAgentClient } from "../src/real/pi-agent-client-real";
 import { waitUntil } from "./helpers";
 import type { AgentSpec } from "../src/config";
+import type { AgentEvent } from "../src/seams/pi-agent-client";
 
 /**
  * The real client's record mapping, driven by a stub that speaks pi's RPC framing.
@@ -51,7 +52,9 @@ describe("RealPiAgentClient (stub pi, protocol level)", () => {
     const tools: Array<{ name: string; args: unknown }> = [];
     try {
       await client.spawn(dev1, { cwd: dir });
-      client.on("tool", "dev1", (t) => tools.push(t));
+      client.subscribe("dev1", (e) => {
+        if (e.type === "tool") tools.push({ name: e.name, args: e.args });
+      });
 
       await client.prompt("dev1", { message: "look at the files" });
       const settled = await client.waitForSettled("dev1", 5000);
@@ -256,7 +259,9 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     try {
       await client.spawn(dev1, { cwd: dir });
       // After spawn: registering the agent resets its listener list.
-      client.on("stream", "dev1", (delta) => streamed.push(delta));
+      client.subscribe("dev1", (e) => {
+        if (e.type === "stream") streamed.push(e.delta);
+      });
       await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
       const settled = await client.waitForSettled("dev1", 10_000);
       // Both messages, each on its own line, in the order they were written.
@@ -297,13 +302,153 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     );
     await chmod(stub, 0o755);
     const client = new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } });
-    const ends: Array<{ name: string; durationMs?: number }> = [];
+    const ends: Array<Extract<AgentEvent, { type: "tool_end" }>> = [];
     try {
       await client.spawn(dev1, { cwd: dir });
-      client.on("tool_end", "dev1", (t) => ends.push(t));
+      client.subscribe("dev1", (e) => {
+        if (e.type === "tool_end") ends.push(e);
+      });
       await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
       await client.waitForSettled("dev1", 10_000);
-      expect(ends).toEqual([{ name: "bash", durationMs: 1234 }]);
+      // The seam now hands over what the harness sent: the verdict and the call id cross too (#81).
+      expect(ends).toEqual([{ type: "tool_end", name: "bash", isError: false, toolCallId: "c1", durationMs: 1234 }]);
+    } finally {
+      await client.shutdown("dev1").catch(() => undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("a refused tool call reaches the room with its verdict and its reason (#81)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-stub-refused-"));
+    const stub = join(dir, "fake-pi");
+    // The shape the shipped bundle emits from `failToolCallsFromTruncatedMessage`: the tool never ran,
+    // so there is no duration, the verdict is `isError: true`, and the reason is the result text.
+    await writeFile(
+      stub,
+      `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (v) => console.log(JSON.stringify(v));
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const cmd = JSON.parse(line);
+  if (cmd.type === "prompt") {
+    out({ id: cmd.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } });
+    out({ type: "agent_start" });
+    out({ type: "tool_execution_start", toolCallId: "c9", toolName: "write", args: { path: "a.ts" } });
+    out({ type: "tool_execution_end", toolCallId: "c9", toolName: "write", isError: true, result: { content: [{ type: "text", text: "Tool call \\"write\\" was not executed: the response hit the output token limit" }], details: {} } });
+    out({ type: "agent_settled", aborted: false });
+  }
+  if (cmd.type === "get_last_assistant_text") {
+    out({ id: cmd.id, type: "response", command: cmd.type, success: true, data: { text: "gave up" } });
+  }
+});
+`,
+      "utf8",
+    );
+    await chmod(stub, 0o755);
+    const client = new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } });
+    const ends: unknown[] = [];
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      client.subscribe("dev1", (e) => {
+        if (e.type === "tool_end") ends.push(e);
+      });
+      await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
+      await client.waitForSettled("dev1", 10_000);
+      expect(ends).toEqual([
+        {
+          type: "tool_end",
+          name: "write",
+          isError: true,
+          toolCallId: "c9",
+          result: 'Tool call "write" was not executed: the response hit the output token limit',
+        },
+      ]);
+    } finally {
+      await client.shutdown("dev1").catch(() => undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("a tool end with no duration is distinguishable from one that took no measurable time (#81)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-stub-neverran-"));
+    const stub = join(dir, "fake-pi");
+    // Two ends, same tool: one ran and took 0ms, one did not run at all. The harness documents the
+    // missing field as "the tool did not run", so the seam must not coalesce them into 0.
+    await writeFile(
+      stub,
+      `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (v) => console.log(JSON.stringify(v));
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const cmd = JSON.parse(line);
+  if (cmd.type === "prompt") {
+    out({ id: cmd.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } });
+    out({ type: "agent_start" });
+    out({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", isError: false, durationMs: 0 });
+    out({ type: "tool_execution_end", toolCallId: "c2", toolName: "bash", isError: false });
+    out({ type: "agent_settled", aborted: false });
+  }
+  if (cmd.type === "get_last_assistant_text") {
+    out({ id: cmd.id, type: "response", command: cmd.type, success: true, data: { text: "done" } });
+  }
+});
+`,
+      "utf8",
+    );
+    await chmod(stub, 0o755);
+    const client = new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } });
+    const ends: Array<Extract<AgentEvent, { type: "tool_end" }>> = [];
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      client.subscribe("dev1", (e) => {
+        if (e.type === "tool_end") ends.push(e);
+      });
+      await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
+      await client.waitForSettled("dev1", 10_000);
+      expect(ends[0]).toEqual({ type: "tool_end", name: "bash", isError: false, toolCallId: "c1", durationMs: 0 });
+      expect(ends[1]!.durationMs).toBeUndefined();
+      expect("durationMs" in ends[1]!).toBe(false);
+    } finally {
+      await client.shutdown("dev1").catch(() => undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("a turn the provider cut off keeps its own stop reason in the settle (#81)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ah-stub-stopreason-"));
+    const stub = join(dir, "fake-pi");
+    // `message_end` is the record that carries the verdict; it used to be dropped entirely, so a
+    // `length` cut and a clean `stop` produced the same settle. Nothing prints it yet (#82).
+    await writeFile(
+      stub,
+      `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (v) => console.log(JSON.stringify(v));
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const cmd = JSON.parse(line);
+  if (cmd.type === "prompt") {
+    out({ id: cmd.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } });
+    out({ type: "agent_start" });
+    out({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "half a sen" } });
+    out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "half a sen" }], stopReason: "length" } });
+    out({ type: "agent_settled", aborted: false });
+  }
+  if (cmd.type === "get_last_assistant_text") {
+    out({ id: cmd.id, type: "response", command: cmd.type, success: true, data: { text: "half a sen" } });
+  }
+});
+`,
+      "utf8",
+    );
+    await chmod(stub, 0o755);
+    const client = new RealPiAgentClient({ roomDir: dir, piBin: stub, stderr: { write: () => {} } });
+    try {
+      await client.spawn(dev1, { cwd: dir });
+      await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
+      const settled = await client.waitForSettled("dev1", 10_000);
+      expect(settled.lastText).toBe("half a sen");
+      expect(settled.stopReason).toBe("length");
+      expect(settled.aborted).toBe(false);
     } finally {
       await client.shutdown("dev1").catch(() => undefined);
       await rm(dir, { recursive: true, force: true });
@@ -344,8 +489,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     const boundaries: string[] = [];
     try {
       await client.spawn(dev1, { cwd: dir });
-      client.on("stream", "dev1", (delta) => streamed.push(delta));
-      client.on("message_end", "dev1", (m) => boundaries.push(m.text));
+      client.subscribe("dev1", (e) => {
+        if (e.type === "stream") streamed.push(e.delta);
+        if (e.type === "message_end") boundaries.push(e.text);
+      });
       await client.prompt("dev1", { message: "go", streamingBehavior: "followUp" });
       const settled = await client.waitForSettled("dev1", 10_000);
 
@@ -439,7 +586,9 @@ describe("RealPiAgentClient (stub pi, the room's subscription order)", () => {
 
     const client = new RealPiAgentClient({ roomDir: dir, piBin: stub });
     const deltas: string[] = [];
-    client.on("stream", "dev1", (d) => deltas.push(d));
+    client.subscribe("dev1", (e) => {
+      if (e.type === "stream") deltas.push(e.delta);
+    });
 
     try {
       await client.spawn(dev1, { cwd: dir });

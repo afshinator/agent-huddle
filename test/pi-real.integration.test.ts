@@ -61,7 +61,9 @@ while (true) {
     const errors: Error[] = [];
     try {
       await client.spawn({ id: "fixture", handle: "@fixture", role: "test" }, { cwd: roomDir });
-      client.on("error", "fixture", (error) => errors.push(error));
+      client.subscribe("fixture", (e) => {
+        if (e.type === "error") errors.push(e.error);
+      });
       await client.prompt("fixture", { message: "go" });
       const result = await client.waitForSettled("fixture", 2_000);
       // The room showed TEXT_END, so the record says TEXT_END: preferring the provider's
@@ -97,7 +99,9 @@ while (!(await reader.read()).done) {}
     const errors: Error[] = [];
     try {
       const info = await client.spawn({ id: "killed", handle: "@killed", role: "test" }, { cwd: roomDir });
-      client.on("error", "killed", (error) => errors.push(error));
+      client.subscribe("killed", (e) => {
+        if (e.type === "error") errors.push(e.error);
+      });
 
       const turn = client.prompt("killed", { message: "go" });
       const turnError = turn.catch((error: unknown) => error);
@@ -132,7 +136,9 @@ describe.skipIf(!piAvailable() || integrationDisabled())("RealPiAgentClient (int
         expect(info.pid).toBeGreaterThan(0);
 
         let settledEvents = 0;
-        client.on("settled", "itest", () => settledEvents++);
+        client.subscribe("itest", (e) => {
+          if (e.type === "settled") settledEvents++;
+        });
 
         await client.prompt("itest", { message: "Reply with exactly: OK" });
         const result = await client.waitForSettled("itest", 120_000);

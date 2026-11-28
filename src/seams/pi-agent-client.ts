@@ -15,6 +15,10 @@ export interface PromptRequest {
 export interface SettledResult {
   aborted: boolean;
   lastText: string | null;
+  /** The provider's own verdict on how the turn stopped (`stop`, `length`, `aborted`, `error`). */
+  stopReason?: string;
+  /** The provider's error text, when it stopped with one. */
+  errorMessage?: string;
 }
 
 export interface AgentProcessInfo {
@@ -29,14 +33,14 @@ export interface PiAgentClient {
   pushContext(agentId: string, text: string): Promise<void>;       // D8/Q3 (§6.6)
   waitForSettled(agentId: string, timeoutMs: number): Promise<SettledResult>;
   shutdown(agentId: string): Promise<void>;
-  on(event: "settled", agentId: string, fn: (r: SettledResult) => void): void;
-  on(event: "stream", agentId: string, fn: (delta: string) => void): void;
-  on(event: "error", agentId: string, fn: (err: Error) => void): void;
-  on(event: "tool", agentId: string, fn: (t: { name: string; args: unknown }) => void): void;
-  /** A new assistant message began inside text already streamed: the last `text` chars are it (#73). */
-  on(event: "message_end", agentId: string, fn: (m: { text: string }) => void): void;
-  /** A tool call finished. `durationMs` is what the tool's own `execute()` took (#76). */
-  on(event: "tool_end", agentId: string, fn: (t: { name: string; durationMs?: number }) => void): void;
+  /**
+   * Every event this agent's process produced, in order, as one union.
+   *
+   * One callback rather than a method per event: a field the harness sends but the room ignores today
+   * still crosses the boundary, and a new field is a compile error in every listener and in the fake
+   * (#81). What each harness record contributes is in the doc block above `AgentEvent`.
+   */
+  subscribe(agentId: string, fn: (event: AgentEvent) => void): void;
   /** Tokens and cost this agent's session has spent so far, when the provider reports them. */
   sessionStats?(agentId: string): Promise<SessionStats>;
 }
@@ -58,17 +62,41 @@ export interface RecordedCall {
 }
 
 
-/** Payload per event on the `PiAgentClient` listener seam. */
-export interface AgentEventMap {
-  settled: SettledResult;
-  stream: string;
-  error: Error;
-  /** A tool the agent started running. `args` is whatever the tool received. */
-  tool: { name: string; args: unknown };
-  /** Where a new assistant message starts, inside text already streamed (see `ChatStream`). */
-  message_end: { text: string };
-  tool_end: { name: string; durationMs?: number };
-}
+/**
+ * What the room keeps from the records pi sends. Sources: `docs/json.md` in the installed pi package,
+ * sections "Session events" and "Tool execution events".
+ *
+ * | harness record | kept | dropped on purpose |
+ * |---|---|---|
+ * | `message_update` (`text_delta`, `text_end`) | `assistantMessageEvent.delta`, `.content` | `partial` snapshots and cumulative `usage` (the session-stats command answers spend) |
+ * | `agent_start` | the message boundary it marks | nothing else it carries |
+ * | `message_end` | `message.stopReason`, `message.errorMessage` | `message.content` (already streamed), `timestamp` |
+ * | `agent_settled` | `aborted` | nothing else it carries |
+ * | `tool_execution_start` | `toolName`, `args`, `toolCallId` | nothing else it carries |
+ * | `tool_execution_end` | `toolName`, `toolCallId`, `isError`, `durationMs`, `result` text | `result.details` (bulk, never printed) |
+ *
+ * A missing `durationMs` is kept as a missing field. The harness documents it as "absent when the tool
+ * did not run"; `0` means it ran and took no measurable time, and coalescing the two throws away the
+ * only signal a refused call carries (#81).
+ */
+export type AgentEvent =
+  | { type: "settled"; result: SettledResult }
+  | { type: "stream"; delta: string }
+  | { type: "error"; error: Error }
+  | { type: "tool"; name: string; args: unknown; toolCallId?: string }
+  /** A new assistant message began inside text already streamed: the last `text` chars are it (#73). */
+  | { type: "message_end"; text: string }
+  | {
+      type: "tool_end";
+      name: string;
+      /** The harness's own verdict. A refused call reports `true` and carries its reason in `result`. */
+      isError: boolean;
+      toolCallId?: string;
+      /** Absent: the tool never ran. `0`: it ran and took no measurable time. */
+      durationMs?: number;
+      /** The tool's result text, or the harness's refusal message. */
+      result?: string;
+    };
 
 /**
  * What one agent has spent. `cost` is null when the provider does not report it — a room must be able
@@ -80,42 +108,24 @@ export interface SessionStats {
   toolCalls: number;
 }
 
-export type AgentEvent = keyof AgentEventMap;
-
-interface AgentListenerLists {
-  settled: Array<(r: SettledResult) => void>;
-  stream: Array<(delta: string) => void>;
-  error: Array<(err: Error) => void>;
-  tool: Array<(t: { name: string; args: unknown }) => void>;
-  message_end: Array<(m: { text: string }) => void>;
-  tool_end: Array<(t: { name: string; durationMs?: number }) => void>;
-}
-
 /** Per-agent event fan-out shared by the fake and the real client. */
 export class AgentListeners {
-  private readonly byAgent = new Map<string, AgentListenerLists>();
+  private readonly byAgent = new Map<string, Array<(event: AgentEvent) => void>>();
 
-  on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {
-    (this.lists(agentId)[event] as Array<(arg: AgentEventMap[K]) => void>).push(fn);
+  subscribe(agentId: string, fn: (event: AgentEvent) => void): void {
+    const listeners = this.byAgent.get(agentId);
+    if (listeners) listeners.push(fn);
+    else this.byAgent.set(agentId, [fn]);
   }
 
-  emit<K extends AgentEvent>(agentId: string, event: K, arg: AgentEventMap[K]): void {
-    for (const fn of this.lists(agentId)[event] as Array<(arg: AgentEventMap[K]) => void>) fn(arg);
+  emit(agentId: string, event: AgentEvent): void {
+    for (const fn of this.byAgent.get(agentId) ?? []) fn(event);
   }
 
   /**
    * Listeners are the room's, not the child's: they survive a spawn. Dropping them here is how
    * D20's "hand on what it wrote" died in a live room while every stub test stayed green (#T13).
    */
-
-  private lists(agentId: string): AgentListenerLists {
-    let lists = this.byAgent.get(agentId);
-    if (!lists) {
-      lists = { settled: [], stream: [], error: [], tool: [], message_end: [], tool_end: [] };
-      this.byAgent.set(agentId, lists);
-    }
-    return lists;
-  }
 }
 
 /** Look an agent up, or fail with the client's name in the message. */
@@ -200,16 +210,16 @@ export class FakePiAgentClient implements PiAgentClient {
 
     queueMicrotask(() => {
       if (turn.error) {
-        this.bus.emit(agentId, "error", turn.error);
+        this.bus.emit(agentId, { type: "error", error: turn.error });
         a.lastText = null;
         rejectSettle(turn.error);
         return;
       }
       for (const tool of turn.tools ?? []) {
-        this.bus.emit(agentId, "tool", tool);
+        this.bus.emit(agentId, { type: "tool", name: tool.name, args: tool.args });
       }
       for (const delta of turn.deltas ?? []) {
-        this.bus.emit(agentId, "stream", delta);
+        this.bus.emit(agentId, { type: "stream", delta });
       }
       // A held turn means the settle never arrives, not that the model said nothing:
       // production streams deltas before it settles, so the fake must too (#63).
@@ -220,7 +230,7 @@ export class FakePiAgentClient implements PiAgentClient {
       };
       a.lastText = result.lastText;
       resolveSettle(result);
-      this.bus.emit(agentId, "settled", result);
+      this.bus.emit(agentId, { type: "settled", result });
     });
   }
 
@@ -238,21 +248,44 @@ export class FakePiAgentClient implements PiAgentClient {
     a.lastText = lastText;
     const result: SettledResult = { aborted: false, lastText };
     settle.resolve(result);
-    this.bus.emit(agentId, "settled", result);
+    this.bus.emit(agentId, { type: "settled", result });
   }
 
   /** Emit a tool start on a turn already in flight (T16). */
   toolStarted(agentId: string, name = "bash"): void {
     const a = this.requireAgent(agentId);
     if (!a.settle) return;
-    this.bus.emit(agentId, "tool", { name, args: {} });
+    this.bus.emit(agentId, { type: "tool", name, args: {} });
   }
 
   /** Emit that tool's end, so a test can show a long call finishing (T16). */
   toolFinished(agentId: string, name = "bash", durationMs = 1): void {
     const a = this.requireAgent(agentId);
     if (!a.settle) return;
-    this.bus.emit(agentId, "tool_end", { name, durationMs });
+    this.bus.emit(agentId, { type: "tool_end", name, isError: false, durationMs });
+  }
+
+  /**
+   * Emit a tool end the harness refused, the way a truncated call arrives: an error verdict, the
+   * reason in `result`, and no `durationMs` because the tool never ran (#81).
+   */
+  toolFailed(agentId: string, name = "bash", result = "the tool call was not executed", durationMs?: number): void {
+    const a = this.requireAgent(agentId);
+    if (!a.settle) return;
+    this.bus.emit(agentId, {
+      type: "tool_end",
+      name,
+      isError: true,
+      result,
+      ...(durationMs === undefined ? {} : { durationMs }),
+    });
+  }
+
+  /** Emit a tool end that never ran and did not fail: no `durationMs`, which is what says "did not run". */
+  toolNeverRan(agentId: string, name = "bash"): void {
+    const a = this.requireAgent(agentId);
+    if (!a.settle) return;
+    this.bus.emit(agentId, { type: "tool_end", name, isError: false });
   }
 
   /**
@@ -264,7 +297,7 @@ export class FakePiAgentClient implements PiAgentClient {
   streamDelta(agentId: string, delta: string): void {
     const a = this.requireAgent(agentId);
     if (!a.settle) return;
-    this.bus.emit(agentId, "stream", delta);
+    this.bus.emit(agentId, { type: "stream", delta });
   }
 
   async pushContext(agentId: string, text: string): Promise<void> {
@@ -319,8 +352,8 @@ export class FakePiAgentClient implements PiAgentClient {
     settle?.reject(new Error(`pi process for ${agentId} exited before settling`));
   }
 
-  on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {
-    this.bus.on(event, agentId, fn);
+  subscribe(agentId: string, fn: (event: AgentEvent) => void): void {
+    this.bus.subscribe(agentId, fn);
   }
 
   private requireAgent(agentId: string): FakeAgent {

@@ -839,3 +839,25 @@ needs its own AC and a fixture that is a git repo.
 refusing `dir: "."` — a whole-repo absence claim is sometimes exactly right, and the cost lands in narrow
 dirs; and `git ls-files` as the file list — it would hide a symbol declared in an untracked new file, which
 is what a working-tree row must see.
+
+## D38 — The client seam hands over one event union, not six callbacks (#81)
+
+**Context:** the seam narrowed every harness record to the fields a consumer happened to want. Three
+separate failures came from that one boundary, each fixed on its own: a nudge that replaced the settle
+(`0e48519`), a turn with no text (#49), and a tool call the harness refused, which arrived as an ordinary
+`tool_end` while run 008's dev1 burned a Gate 2 turn on it. The fourth instance was already foreseeable,
+which is why the fix belongs at the boundary rather than at the fourth symptom.
+
+**Decision:** one discriminated `AgentEvent` union behind a single `subscribe(agentId, fn)`, carrying what
+the harness sends for the records the room reads: `isError`, `result` text and `toolCallId` on a tool end;
+`stopReason` and `errorMessage` from the completed message; and an absent `durationMs` kept absent, because
+the harness documents it as "the tool did not run". The mapping, with what is dropped and why, is in the
+module doc above the union. Nothing about what the room prints changes; #82 decides how a failure reads.
+
+**Rejected:** widening the `tool_end` payload only — it fixes the third failure and leaves the fourth to
+another seam edit, which is the pattern being paid for; and a `Record<string, unknown>` bag — it compiles
+without telling any listener the field exists, so the fake drifts silently again.
+
+**Cost:** every `on(event, …)` site becomes a `subscribe` with a `switch`, and a new harness field is a
+compile error in the coordinator, the turn loop, the fake and the tests. That is the point, and it is 27
+call sites.

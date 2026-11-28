@@ -4,7 +4,6 @@ import { join } from "node:path";
 import type { AgentSpec } from "../config";
 import type {
   AgentEvent,
-  AgentEventMap,
   AgentProcessInfo,
   PiAgentClient,
   PromptRequest,
@@ -33,6 +32,10 @@ interface RealAgent {
   /** Messages this dispatch has already finished, in order: one turn can hold several (§T11). */
   turnMessages: string[];
   lastText: string | null;
+  /** The provider's verdict from the turn's last `message_end`; the seam keeps it (#81). */
+  stopReason?: string;
+  /** The provider's own error text, when it sent one. */
+  providerError?: string;
   pendingSettle: PendingSettle | null;
   exited: boolean;
   shuttingDown: boolean;
@@ -49,8 +52,28 @@ interface RpcRecord {
   data?: unknown;
   assistantMessageEvent?: { type?: string; delta?: string; content?: string };
   toolName?: string;
+  toolCallId?: string;
   args?: unknown;
+  /** Absent when the tool did not run; `0` when it ran and took no measurable time. */
   durationMs?: number;
+  isError?: boolean;
+  result?: unknown;
+  message?: { role?: string; stopReason?: string; errorMessage?: string };
+}
+
+/** The text a tool's `result` carries: `{ content: [{ type: "text", text }] }`, or a bare string. */
+function resultText(result: unknown): string | undefined {
+  if (typeof result === "string") return result;
+  const content = (result as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .map((block) =>
+      typeof block === "object" && block !== null && typeof (block as { text?: unknown }).text === "string"
+        ? (block as { text: string }).text
+        : "",
+    )
+    .join("");
+  return text === "" ? undefined : text;
 }
 
 function asError(value: unknown): Error {
@@ -162,9 +185,12 @@ export class RealPiAgentClient implements PiAgentClient {
     let rejectSettle: ((e: Error) => void) | null = null;
     if (!steersLiveTurn) {
       // A dispatch starts a turn: clear both buffers here, not on `agent_start`, which arrives
-      // once per assistant message and would discard the ones before it (§T11).
+      // once per assistant message and would discard the ones before it (§T11). The provider's verdict
+      // is per turn too: a `length` cut must not be read as the next turn's stop reason.
       agent.textBuffer = "";
       agent.turnMessages = [];
+      agent.stopReason = undefined;
+      agent.providerError = undefined;
 
       let resolveSettle!: (r: SettledResult) => void;
       let reject!: (e: Error) => void;
@@ -228,7 +254,9 @@ export class RealPiAgentClient implements PiAgentClient {
   async waitForSettled(agentId: string, timeoutMs: number): Promise<SettledResult> {
     const agent = this.requireAgent(agentId);
     const settle = agent.pendingSettle;
-    if (!settle) return { aborted: false, lastText: agent.lastText };
+    // A turn that settled before anyone asked still carries its verdict: the provider's stop reason is
+    // part of what the turn was, not part of the promise (#81).
+    if (!settle) return { aborted: false, lastText: agent.lastText, ...this.verdict(agent) };
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -265,8 +293,8 @@ export class RealPiAgentClient implements PiAgentClient {
     agent.child.kill("SIGKILL");
   }
 
-  on<K extends AgentEvent>(event: K, agentId: string, fn: (arg: AgentEventMap[K]) => void): void {
-    this.bus.on(event, agentId, fn);
+  subscribe(agentId: string, fn: (event: AgentEvent) => void): void {
+    this.bus.subscribe(agentId, fn);
   }
 
   /** Append the child's stderr to `agents/<id>/stderr.log`, in order. */
@@ -330,7 +358,7 @@ export class RealPiAgentClient implements PiAgentClient {
       const a = this.agents.get(agent.id);
       if (a) a.exited = true;
       if (a && !a.shuttingDown) {
-        this.bus.emit(agent.id, "error", new Error(`pi process for ${agent.id} exited unexpectedly`));
+        this.bus.emit(agent.id, { type: "error", error: new Error(`pi process for ${agent.id} exited unexpectedly`) });
       }
       for (const [id, p] of this.pendingCommands) {
         if (p.agentId === agent.id) {
@@ -369,7 +397,7 @@ export class RealPiAgentClient implements PiAgentClient {
       const ev = rec.assistantMessageEvent;
       if (ev?.type === "text_delta" && typeof ev.delta === "string") {
         agent.textBuffer += ev.delta;
-        this.bus.emit(agentId, "stream", ev.delta);
+        this.bus.emit(agentId, { type: "stream", delta: ev.delta });
       } else if (ev?.type === "text_end" && typeof ev.content === "string") {
         // A provider may emit text_end with no text_delta before it (nothing streamed): take the
         // content. Or it may restate only the last message of a turn whose earlier messages already
@@ -384,7 +412,7 @@ export class RealPiAgentClient implements PiAgentClient {
             if (!prefix.endsWith("\n")) agent.textBuffer = `${prefix}\n${ev.content}`;
             // The room has printed both messages glued; it needs the same boundary to split the
             // line it is still holding (#73).
-            this.bus.emit(agentId, "message_end", { text: ev.content });
+            this.bus.emit(agentId, { type: "message_end", text: ev.content });
           }
         } else if (!agent.textBuffer.includes(ev.content)) {
           agent.textBuffer += `${agent.textBuffer.endsWith("\n") ? "" : "\n"}${ev.content}`;
@@ -401,9 +429,21 @@ export class RealPiAgentClient implements PiAgentClient {
         agent.turnMessages.push(agent.textBuffer);
         // A new message starts on a new line in the room too; without this the live run showed
         // `…their files.go` when the model wrote "go" as a second message (§T11).
-        if (!agent.textBuffer.endsWith("\n")) this.bus.emit(agentId, "stream", "\n");
+        if (!agent.textBuffer.endsWith("\n")) this.bus.emit(agentId, { type: "stream", delta: "\n" });
       }
       agent.textBuffer = "";
+      return;
+    }
+
+    // The completed assistant message is the only record carrying the provider's own verdict on how the
+    // turn stopped, and its error text. The room keeps both: a `length` cut and a clean `stop` are not the
+    // same event to anyone reading the record (#81).
+    if (rec.type === "message_end") {
+      const message = rec.message;
+      if (message?.role === "assistant") {
+        if (typeof message.stopReason === "string") agent.stopReason = message.stopReason;
+        if (typeof message.errorMessage === "string") agent.providerError = message.errorMessage;
+      }
       return;
     }
 
@@ -413,16 +453,20 @@ export class RealPiAgentClient implements PiAgentClient {
 
       void this.settleText(agent).then(
         (lastText) => {
-          const result: SettledResult = { aborted: !!rec.aborted, lastText };
+          const result: SettledResult = {
+            aborted: !!rec.aborted,
+            lastText,
+            ...this.verdict(agent),
+          };
           agent.lastText = lastText;
           agent.pendingSettle = null;
-          this.bus.emit(agentId, "settled", result);
+          this.bus.emit(agentId, { type: "settled", result });
           settle.resolve(result);
         },
         (error: unknown) => {
           const err = asError(error);
           agent.pendingSettle = null;
-          this.bus.emit(agentId, "error", err);
+          this.bus.emit(agentId, { type: "error", error: err });
           settle.reject(err);
         },
       );
@@ -430,25 +474,42 @@ export class RealPiAgentClient implements PiAgentClient {
     }
 
     if (rec.type === "tool_execution_start") {
-      this.bus.emit(agentId, "tool", {
+      this.bus.emit(agentId, {
+        type: "tool",
         name: typeof rec.toolName === "string" ? rec.toolName : "unknown",
         args: rec.args,
+        ...(typeof rec.toolCallId === "string" ? { toolCallId: rec.toolCallId } : {}),
       });
       return;
     }
 
     // The end record is what makes a pause legible: without a duration, "the agent is thinking" and
-    // "the tool is still running" look identical in the record (#76).
+    // "the tool is still running" look identical in the record (#76). It is also the only place the
+    // harness says a call failed: a refused call arrives here with `isError` true, the reason in
+    // `result`, and no `durationMs` because the tool never ran (#81).
     if (rec.type === "tool_execution_end") {
       const durationMs = typeof rec.durationMs === "number" ? rec.durationMs : undefined;
-      this.bus.emit(agentId, "tool_end", {
+      const result = resultText(rec.result);
+      this.bus.emit(agentId, {
+        type: "tool_end",
         name: typeof rec.toolName === "string" ? rec.toolName : "unknown",
+        isError: rec.isError === true,
+        ...(typeof rec.toolCallId === "string" ? { toolCallId: rec.toolCallId } : {}),
         ...(durationMs === undefined ? {} : { durationMs }),
+        ...(result === undefined ? {} : { result }),
       });
       return;
     }
 
     // agent_end, bash_execution_update, queue_update, etc. are ignored.
+  }
+
+  /** The provider's verdict on this turn, as the seam carries it (#81). */
+  private verdict(agent: RealAgent): { stopReason?: string; errorMessage?: string } {
+    return {
+      ...(agent.stopReason === undefined ? {} : { stopReason: agent.stopReason }),
+      ...(agent.providerError === undefined ? {} : { errorMessage: agent.providerError }),
+    };
   }
 
   /**
@@ -471,7 +532,7 @@ export class RealPiAgentClient implements PiAgentClient {
   }
 
   private reportProtocolError(agentId: string, message: string): void {
-    this.bus.emit(agentId, "error", new Error(`pi RPC protocol error: ${message}`));
+    this.bus.emit(agentId, { type: "error", error: new Error(`pi RPC protocol error: ${message}`) });
   }
 
   private command(

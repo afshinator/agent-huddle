@@ -45,6 +45,24 @@ createInterface({ input: process.stdin }).on("line", (line: string) => {
 });
 `;
 
+const FAILED_TOOL_STUB = `#!/usr/bin/env bun
+import { createInterface } from "node:readline";
+const out = (o: unknown): void => { process.stdout.write(JSON.stringify(o) + "\\n"); };
+createInterface({ input: process.stdin }).on("line", (line: string) => {
+  if (line.trim() === "") return;
+  const cmd = JSON.parse(line) as { id?: string; type?: string };
+  if (cmd.type === "prompt") {
+    // The harness's own refusal shape: no duration, an error verdict, the reason in the result.
+    out({ type: "agent_start" });
+    out({ type: "tool_execution_start", toolCallId: "c1", toolName: "write", args: { path: "a.ts" } });
+    out({ type: "tool_execution_end", toolCallId: "c1", toolName: "write", isError: true, result: { content: [{ type: "text", text: "the tool call was not executed" }] } });
+    out({ type: "agent_settled", aborted: false });
+  }
+  if (cmd.type === "get_last_assistant_text") out({ id: cmd.id, type: "response", command: cmd.type, success: true, data: { text: "gave up" } });
+  else if (cmd.id) out({ id: cmd.id, type: "response", success: true, data: {} });
+});
+`;
+
 const dev1: AgentSpec = { id: "dev1", handle: "@dev1", role: "dev" };
 
 interface Observed {
@@ -56,7 +74,9 @@ interface Observed {
 
 async function stopMidTurn(client: PiAgentClient, agentId: string): Promise<Observed> {
   const errorEvents: string[] = [];
-  client.on("error", agentId, (e) => errorEvents.push(e.message));
+  client.subscribe(agentId, (e) => {
+    if (e.type === "error") errorEvents.push(e.error.message);
+  });
 
   await client.prompt(agentId, { message: "hold the turn" });
   const pending = client.waitForSettled(agentId, 5_000).then(
@@ -150,6 +170,60 @@ describe("PiAgentClient parity", () => {
 
       expect(realSettle).toBe("resolved: still on it");
       expect(fakeSettle).toBe(realSettle);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  /**
+   * #81: the fake must be able to say what the harness says when it refuses a call, or every test of a
+   * failure is written against a shape the real client never produces. Compared field by field, with the
+   * fields the harness owns (the call id) left out.
+   */
+  test("a refused tool end looks the same to a caller through either implementation", async () => {
+    interface Verdict {
+      type: string;
+      name: string;
+      isError: boolean;
+      result?: string;
+      ran: boolean;
+    }
+    const verdict = (e: { type: string; name: string; isError: boolean; result?: string; durationMs?: number }): Verdict => ({
+      type: e.type,
+      name: e.name,
+      isError: e.isError,
+      result: e.result,
+      ran: "durationMs" in e,
+    });
+    const seen = async (client: PiAgentClient, drive: () => Promise<void>): Promise<Verdict[]> => {
+      const ends: Verdict[] = [];
+      client.subscribe(dev1.id, (e) => {
+        if (e.type === "tool_end") ends.push(verdict(e));
+      });
+      await drive();
+      return ends;
+    };
+
+    const { client: real, dir } = await realClient(FAILED_TOOL_STUB);
+    try {
+      await real.spawn(dev1, { cwd: dir });
+      const realEnds = await seen(real, async () => {
+        await real.prompt(dev1.id, { message: "write the file" });
+        await real.waitForSettled(dev1.id, 5_000);
+      });
+
+      const fake = await fakeClient();
+      const fakeEnds = await seen(fake, async () => {
+        await fake.prompt(dev1.id, { message: "write the file" });
+        fake.toolFailed(dev1.id, "write", "the tool call was not executed");
+        fake.release(dev1.id, "gave up");
+      });
+
+      // Anchor the shared expectation, so two identically wrong clients cannot pass.
+      expect(realEnds).toEqual([
+        { type: "tool_end", name: "write", isError: true, result: "the tool call was not executed", ran: false },
+      ]);
+      expect(fakeEnds).toEqual(realEnds);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

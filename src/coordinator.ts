@@ -213,57 +213,74 @@ export class Coordinator {
       const scriptPath = join(agentDir, "pane.sh");
       await writeFile(scriptPath, paneScript({ stream: streamPath, inbox: inboxPath }), "utf8");
 
-      // A provider that streams a whole turn glued says afterwards where the next message started,
-      // so the room can split the line it is still holding (#73).
-      this.pi.on("message_end", agent.id, ({ text }) => {
-        this.chat.messageBoundary(agent.id, text);
-        this.chat.flush(agent.id);
-      });
-
-      this.pi.on("stream", agent.id, (delta) => {
-        this.markWorking(agent.id);
-        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", delta));
-        // The room sees the prose as it is written, not when the turn ends (#63).
-        this.chat.delta(agent.id, delta);
-      });
-      this.pi.on("tool_end", agent.id, (t) => {
-        const ms = t.durationMs === undefined ? "" : ` ${t.durationMs}ms`;
-        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "tool_end", `${t.name}${ms}`));
-      });
-
-      this.pi.on("tool", agent.id, (tool) => {
-        this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "tool_start", tool.name));
-        this.markWorking(agent.id);
-        // A tool call cannot happen inside a sentence, so the line the provider left unterminated
-        // ends here — otherwise "Got it: …" stays hidden until the turn's final report (#75).
-        this.chat.flush(agent.id);
-        this.watchFailure("agent pane write", agent.id, this.agentStream.tool(agent.id, tool));
-      });
-      this.pi.on("settled", agent.id, (r) => {
-        // A turn that streamed nothing still ran: mark it before its text lands.
-        this.markWorking(agent.id);
-        // Only an agent that actually ran a turn moves its activity stamp.
-        if (this.roomState) {
-          const runtime = this.roomState.agents[agent.id];
-          runtime.status = "idle";
-          runtime.lastActivityAt = this.now();
+      // One subscription, switched on the event's own tag: the seam hands over everything the harness
+      // said, so a field nobody prints today still reaches the room when it decides to print it (#81).
+      this.pi.subscribe(agent.id, (event) => {
+        switch (event.type) {
+          case "message_end": {
+            this.chat.messageBoundary(agent.id, event.text);
+            this.chat.flush(agent.id);
+            return;
+          }
+          case "stream": {
+            this.markWorking(agent.id);
+            this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "delta", event.delta));
+            // The room sees the prose as it is written, not when the turn ends (#63).
+            this.chat.delta(agent.id, event.delta);
+            return;
+          }
+          case "tool_end": {
+            const ms = event.durationMs === undefined ? "" : ` ${event.durationMs}ms`;
+            this.watchFailure(
+              "agent log write",
+              agent.id,
+              this.appendAgentLog(agent.id, "tool_end", `${event.name}${ms}`),
+            );
+            return;
+          }
+          case "tool": {
+            this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "tool_start", event.name));
+            this.markWorking(agent.id);
+            // A tool call cannot happen inside a sentence, so the line the provider left unterminated
+            // ends here — otherwise "Got it: …" stays hidden until the turn's final report (#75).
+            this.chat.flush(agent.id);
+            this.watchFailure(
+              "agent pane write",
+              agent.id,
+              this.agentStream.tool(agent.id, { name: event.name, args: event.args }),
+            );
+            return;
+          }
+          case "settled": {
+            const r = event.result;
+            // A turn that streamed nothing still ran: mark it before its text lands.
+            this.markWorking(agent.id);
+            // Only an agent that actually ran a turn moves its activity stamp.
+            if (this.roomState) {
+              const runtime = this.roomState.agents[agent.id];
+              runtime.status = "idle";
+              runtime.lastActivityAt = this.now();
+            }
+            // Stats first: the readout closes a turn at `settled`, so anything after it belongs to no turn.
+            this.watchFailure(
+              "agent log write",
+              agent.id,
+              (async () => {
+                await this.appendTurnStats(agent.id);
+                await this.appendAgentLog(agent.id, "settled", r.lastText ?? "");
+              })(),
+            );
+            // A provider may settle with text and no deltas; then the room still needs the words.
+            if (!this.chat.end(agent.id)) this.printAgentText(agent.handle, r.lastText);
+            this.working.delete(agent.id);
+            return;
+          }
+          case "error": {
+            this.chat.end(agent.id, "turn failed");
+            this.watchFailure("agent error handling", agent.id, this.handleAgentError(agent.id, event.error));
+            return;
+          }
         }
-        // Stats first: the readout closes a turn at `settled`, so anything after it belongs to no turn.
-        this.watchFailure(
-          "agent log write",
-          agent.id,
-          (async () => {
-            await this.appendTurnStats(agent.id);
-            await this.appendAgentLog(agent.id, "settled", r.lastText ?? "");
-          })(),
-        );
-        // A provider may settle with text and no deltas; then the room still needs the words.
-        if (!this.chat.end(agent.id)) this.printAgentText(agent.handle, r.lastText);
-        this.working.delete(agent.id);
-      });
-      this.pi.on("error", agent.id, (e) => {
-        this.chat.end(agent.id, "turn failed");
-        this.watchFailure("agent error handling", agent.id, this.handleAgentError(agent.id, e));
       });
       this.watchFailure("agent log write", agent.id, this.appendAgentLog(agent.id, "spawned", `pid=${info.pid}`));
       if (this.panes) {

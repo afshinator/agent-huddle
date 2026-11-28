@@ -606,7 +606,12 @@ export interface PromptRequest {
   streamingBehavior?: "followUp" | "steer";
 }
 
-export interface SettledResult { aborted: boolean; lastText: string | null; }
+export interface SettledResult {
+  aborted: boolean;
+  lastText: string | null;
+  stopReason?: string;      // the provider's own verdict: stop, length, aborted, error
+  errorMessage?: string;    // the provider's error text, when it stopped with one
+}
 
 export interface AgentProcessInfo { sessionDir: string; sessionFile?: string; pid: number; }
 
@@ -616,16 +621,23 @@ export interface PiAgentClient {
   pushContext(agentId: string, text: string): Promise<void>;       // D8/Q3 (§6.6)
   waitForSettled(agentId: string, timeoutMs: number): Promise<SettledResult>;
   shutdown(agentId: string): Promise<void>;
-  on(event: "settled", agentId: string, fn: (r: SettledResult) => void): void;
-  on(event: "stream", agentId: string, fn: (delta: string) => void): void;
-  on(event: "tool", agentId: string, fn: (t: { name: string; args: unknown }) => void): void;
-  on(event: "error", agentId: string, fn: (err: Error) => void): void;
+  // One union, not a method per event: a field the harness sends is carried even when the room does
+  // not print it yet, so the boundary does not have to be reopened for each new failure (#81, D38).
+  subscribe(agentId: string, fn: (event: AgentEvent) => void): void;
 }
+
+export type AgentEvent =
+  | { type: "settled"; result: SettledResult }
+  | { type: "stream"; delta: string }
+  | { type: "error"; error: Error }
+  | { type: "tool"; name: string; args: unknown; toolCallId?: string }
+  | { type: "message_end"; text: string }
+  | { type: "tool_end"; name: string; isError: boolean; toolCallId?: string; durationMs?: number; result?: string };
 ```
 
 Real implementation: spawns `pi --mode rpc`, parses JSONL, correlates by `id`, emits `stream` on `text_delta`, `settled` on `agent_settled`. Fake: in-memory map of `agentId → {messages, replayScript}`, returns scripted responses, records all calls for assertions.
 
-The completed text reaches the caller through `SettledResult.lastText` only. The real client asks `pi` for the authoritative text at settle time (`get_last_assistant_text`) and puts it there, so no seam method exposes the last text separately (removed in v1; #21).
+The completed text reaches the caller through `SettledResult.lastText`, and the provider's verdict on how the turn stopped rides beside it (`stopReason`, `errorMessage`); nothing prints that verdict yet (#82). The real client asks `pi` for the authoritative text at settle time (`get_last_assistant_text`) and puts it there, so no seam method exposes the last text separately (removed in v1; #21).
 
 **Failure semantics** (required section: a seam is signatures *plus* this grammar):
 
@@ -636,7 +648,7 @@ The completed text reaches the caller through `SettledResult.lastText` only. The
 | `pushContext` | the RPC fails or the child is gone | caller treats every rejection as best-effort and never halts a chain (§10). Each successful push emits one `context.push` telemetry record carrying `agentId` and `chars` — before that, success and failure were both silent |
 | `waitForSettled` | `timeoutMs` elapses (it then sends `abort` and re-rejects), the child exits before settling, or the turn failed | a timeout **rejects**; it does not resolve `{aborted:true}`. `aborted:true` means the turn ended aborted on its own |
 | `shutdown` | never after the child has exited | idempotent; stdin close → SIGTERM → SIGKILL after a grace period |
-| `on` | never | listeners run synchronously while records are handled, so a throwing listener breaks that record's dispatch: callers wrap them (the coordinator routes every listener through `watchFailure`) |
+| `subscribe` | never | listeners run synchronously while records are handled, so a throwing listener breaks that record's dispatch: callers wrap them (the coordinator routes every listener through `watchFailure`). A refused tool is not a rejection: the event arrives with `isError: true` and the harness's reason in `result`, and what the room does with it is #82 |
 
 ### 9.2 `HerdrPaneManager`
 

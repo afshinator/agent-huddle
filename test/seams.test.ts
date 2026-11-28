@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { FakePiAgentClient } from "../src/seams/pi-agent-client";
-import type { SettledResult } from "../src/seams/pi-agent-client";
+import type { AgentEvent, SettledResult } from "../src/seams/pi-agent-client";
 import { FakeHerdrPaneManager } from "../src/seams/herdr-pane-manager";
 import type { AgentSpec } from "../src/config";
 
@@ -22,8 +22,10 @@ describe("FakePiAgentClient", () => {
 
     const deltas: string[] = [];
     const settled: SettledResult[] = [];
-    c.on("stream", "dev1", (d) => deltas.push(d));
-    c.on("settled", "dev1", (r) => settled.push(r));
+    c.subscribe("dev1", (e) => {
+      if (e.type === "stream") deltas.push(e.delta);
+      if (e.type === "settled") settled.push(e.result);
+    });
 
     c.script("dev1", [{ deltas: ["hel", "lo"], lastText: "hello" }]);
     await c.prompt("dev1", { message: "hi" });
@@ -40,8 +42,10 @@ describe("FakePiAgentClient", () => {
     await c.spawn(dev1, { cwd: "/w" });
 
     const seen: string[] = [];
-    c.on("tool", "dev1", (t) => seen.push(`tool:${t.name}`));
-    c.on("stream", "dev1", (d) => seen.push(`delta:${d}`));
+    c.subscribe("dev1", (e) => {
+      if (e.type === "tool") seen.push(`tool:${e.name}`);
+      if (e.type === "stream") seen.push(`delta:${e.delta}`);
+    });
 
     c.script("dev1", [
       {
@@ -63,14 +67,10 @@ describe("FakePiAgentClient", () => {
     await c.spawn(dev1, { cwd: "/w" });
 
     const received: { settled?: SettledResult; stream?: string; error?: Error } = {};
-    c.on("settled", "dev1", (r) => {
-      received.settled = r;
-    });
-    c.on("stream", "dev1", (d) => {
-      received.stream = d;
-    });
-    c.on("error", "dev1", (e) => {
-      received.error = e;
+    c.subscribe("dev1", (e) => {
+      if (e.type === "settled") received.settled = e.result;
+      if (e.type === "stream") received.stream = e.delta;
+      if (e.type === "error") received.error = e.error;
     });
 
     c.script("dev1", [{ deltas: ["x"], lastText: "x" }]);
@@ -123,12 +123,39 @@ describe("FakePiAgentClient", () => {
     const c = new FakePiAgentClient();
     await c.spawn(dev1, { cwd: "/w" });
     const errors: Error[] = [];
-    c.on("error", "dev1", (e) => errors.push(e));
+    c.subscribe("dev1", (e) => {
+      if (e.type === "error") errors.push(e.error);
+    });
     c.script("dev1", [{ error: new Error("boom") }]);
     await c.prompt("dev1", { message: "x" });
     await expect(c.waitForSettled("dev1", 1000)).rejects.toThrow("boom");
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toBe("boom");
+  });
+
+  test("a refused tool end and a tool that never ran are both expressible, and tell apart", async () => {
+    const c = new FakePiAgentClient();
+    await c.spawn(dev1, { cwd: "/w" });
+    const ends: Array<Extract<AgentEvent, { type: "tool_end" }>> = [];
+    c.subscribe("dev1", (e) => {
+      if (e.type === "tool_end") ends.push(e);
+    });
+
+    c.script("dev1", [{ hold: true }]);
+    await c.prompt("dev1", { message: "write" });
+    c.toolFinished("dev1", "bash", 12);
+    c.toolFailed("dev1", "write", "the response hit the output token limit");
+    c.toolNeverRan("dev1", "grep");
+    c.release("dev1", "done");
+
+    expect(ends[0]).toEqual({ type: "tool_end", name: "bash", isError: false, durationMs: 12 });
+    expect(ends[1]).toEqual({
+      type: "tool_end",
+      name: "write",
+      isError: true,
+      result: "the response hit the output token limit",
+    });
+    expect("durationMs" in ends[2]!).toBe(false);
   });
 
   test("aborted turn reports aborted=true", async () => {

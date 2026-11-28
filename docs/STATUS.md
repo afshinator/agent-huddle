@@ -160,6 +160,7 @@ started.
 | A refused preflight decides to run the prep room once, and stops when the pass is spent; a template named with `--template` keeps the chain out | `test/launch.test.ts`, #70, D32 |
 | The prep room carries its nine repair rules, and a template that is not gating must be exempt with a reason | `test/template-prompts.test.ts`, #69, D30, D35, D36, D37 |
 | Every agent granted `write` is told what a refused call means: scaffold and extend, retry smaller than the call that failed, report the refusal; the writers are derived from each template's agents, so the prep room's `prep` is covered too | `test/template-prompts.test.ts`, #83 |
+| The client seam carries what the harness sends for the records the room reads: a refused tool's `isError` and reason, a turn's `stopReason`, and an absent `durationMs` distinguishable from `0`, through one event union | `test/pi-protocol.test.ts`, `test/client-parity.test.ts`, #81, D38 |
 
 ## Not proven
 
