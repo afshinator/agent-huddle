@@ -1323,7 +1323,10 @@ describe("a failure the harness reported reaches the room (#82)", () => {
       pi.toolFinished("lead", "bash", 0);
 
       const logPath = join(dir, "agents", "lead", "log.jsonl");
-      const log = await waitForText(logPath, "grep never ran", 5_000);
+      // Two independent appends: the grep record and the bash record are separate `appendFile` calls, so
+      // waiting for the first and then asserting the second races (CI failed here in 8ms). Wait for both.
+      await waitForText(logPath, "grep never ran", 5_000);
+      const log = await waitForText(logPath, "bash 0ms", 5_000);
       const lines = log.split("\n").filter((l) => l.includes('"tool_end"'));
       expect(lines.some((l) => l.includes("grep never ran"))).toBe(true);
       expect(lines.some((l) => l.includes("bash 0ms"))).toBe(true);
